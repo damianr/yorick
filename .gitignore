@@ -1,0 +1,30 @@
+# Xcode
+build/
+DerivedData/
+*.xcworkspace
+xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+
+# SPM
+.build/
+.swiftpm/
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Environment
+.env
+
+# Local, uncommitted project notes (personal)
+CLAUDE.local.md
+
+# Release pipeline
+scripts/.sparkle-tools/
+dist/

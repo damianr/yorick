@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+<key>NSMicrophoneUsageDescription</key>
+	<string>Yorick records your voice during capture sessions to transcribe and structure your feedback.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Yorick uses on-device speech recognition to transcribe your voice recordings.</string>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/damianr/yorick/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>N+0Un+ZU/MsWNDM+9d7x5Opyi6oVWLUpMb7VcYl5M+Q=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+</dict>
+</plist>

@@ -1,0 +1,47 @@
+name: Yorick
+options:
+  bundleIdPrefix: com.heyyorick
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts.git
+    from: "2.0.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle.git
+    from: "2.6.0"
+
+targets:
+  Yorick:
+    type: application
+    platform: macOS
+    sources:
+      - path: Yorick
+        excludes:
+          - Resources
+      - path: Yorick/Resources/Assets.xcassets
+        buildPhase: resources
+      - path: Yorick/Resources/Whisper
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: KeyboardShortcuts
+      - package: Sparkle
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.heyyorick.Yorick
+        PRODUCT_NAME: Yorick
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: JD2ZUW2N95
+        CODE_SIGN_IDENTITY: Apple Development
+        INFOPLIST_FILE: Yorick/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Yorick/Resources/Yorick.entitlements
+        SWIFT_STRICT_CONCURRENCY: complete
