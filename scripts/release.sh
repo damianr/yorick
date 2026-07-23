@@ -40,7 +40,20 @@ security find-identity -v -p codesigning | grep -q "Developer ID Application" \
   || { echo "✗ No Developer ID Application certificate in keychain."; exit 1; }
 xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 \
   || { echo "✗ notarytool profile '$NOTARY_PROFILE' not found. Run store-credentials."; exit 1; }
-[ -x "$SPARKLE_BIN/sign_update" ] || { echo "✗ Sparkle tools missing at $SPARKLE_BIN"; exit 1; }
+# Sparkle's CLI tools (sign_update, generate_appcast) ship inside the SPM
+# artifact bundle. Resolve packages if needed and symlink them into place, so a
+# fresh checkout (where scripts/.sparkle-tools is gitignored/absent) just works.
+if [ ! -x "$SPARKLE_BIN/sign_update" ]; then
+  xcodebuild -resolvePackageDependencies -project "$APP_NAME.xcodeproj" \
+    -scheme "$SCHEME" -derivedDataPath "$DERIVED" >/dev/null 2>&1 || true
+  SPK_ARTIFACT="$(find "$DERIVED/SourcePackages/artifacts" -type d -path '*/Sparkle/bin' -print -quit 2>/dev/null || true)"
+  if [ -n "$SPK_ARTIFACT" ]; then
+    mkdir -p "$(dirname "$SPARKLE_BIN")"
+    ln -sfn "$SPK_ARTIFACT" "$SPARKLE_BIN"
+    echo "✓ linked Sparkle tools from SPM artifact bundle"
+  fi
+fi
+[ -x "$SPARKLE_BIN/sign_update" ] || { echo "✗ Sparkle tools missing at $SPARKLE_BIN (SPM artifact not found — build once, then retry)"; exit 1; }
 echo "✓ cert, notary profile, Sparkle tools present — releasing v$VERSION"
 
 # ── 1. Build (Release) ──────────────────────────────────────────────────────

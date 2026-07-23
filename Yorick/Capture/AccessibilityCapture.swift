@@ -60,6 +60,33 @@ enum AccessibilityCapture {
         "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"
     ]
 
+    /// Rich editors whose focused canvas is AX-opaque: it exposes no editable
+    /// role, no settable value, and no text attributes we can read (verified via
+    /// AX probe — Pages focuses a bare AXScrollArea, Word/Keynote similar). A ⌘V
+    /// paste still lands, so we trust app identity: if one of these is frontmost
+    /// and a plausible text container is focused, treat it as a dictation target.
+    private static let richEditorBundleIDs: Set<String> = [
+        "com.apple.iWork.Pages",
+        "com.apple.iWork.Keynote",
+        "com.apple.iWork.Numbers",
+        "com.apple.mail",              // also caught by settable-value, listed for clarity
+        "com.microsoft.Word",
+        "com.microsoft.Powerpoint",
+        "com.microsoft.Excel",
+        "com.microsoft.Outlook",
+        "com.literatureandlatte.scrivener3",
+        "com.coteditor.CotEditor",
+        "com.apple.TextEdit"
+    ]
+
+    /// Roles that can plausibly hold a text cursor in a rich editor. Guards the
+    /// bundle-ID trust path so a focused button/slider/menu in Pages is never
+    /// mistaken for the document canvas.
+    private static let textContainerRoles: Set<String> = [
+        "AXScrollArea", "AXTextArea", "AXTextField", "AXWebArea",
+        "AXGroup", "AXLayoutArea", "AXUnknown"
+    ]
+
     /// The cursor location in AX hit-test coordinates (global, top-left origin).
     /// The flip must use the PRIMARY screen (`screens[0]`) — `NSScreen.main` is
     /// the key window's screen and gives wrong coordinates on multi-display setups.
@@ -75,6 +102,23 @@ enum AccessibilityCapture {
         focusedEditability(editableRoles: editableRoles).isEditable
     }
 
+    /// Whether the frontmost app has ANY element focused, editable or not
+    /// (excluding password fields). Detection routes rather than vetoes: a
+    /// focused element we can't classify is almost always a text field we failed
+    /// to recognize, so a dictation still pastes there — only a truly focus-less
+    /// desktop falls through to the saved list.
+    static func hasAnyFocusedElement() -> Bool {
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return false }
+        let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+              let focused = focusedRef else { return false }
+        let element = focused as! AXUIElement
+        // Never blind-paste a transcript into a password field.
+        if attribute(element, kAXSubroleAttribute) as? String == "AXSecureTextField" { return false }
+        return true
+    }
+
     /// The focused editable field with enough identity to track it over time:
     /// frame (global top-left AX coords), the AX element itself, and the
     /// owning app's pid. The HUD anchors to this and dismisses the moment the
@@ -84,10 +128,29 @@ enum AccessibilityCapture {
         let frame: CGRect
         let element: AXUIElement
         let pid: pid_t
+        /// The insertion-point rectangle (global top-left AX coords) when the app
+        /// exposes it — Pages, Mail, and native text views do once their
+        /// assistive tree is unlocked. Nil for AX-opaque targets.
+        var caret: CGRect? = nil
 
-        /// Same identity (element + app), regardless of geometry.
+        /// What the pill positions against: the caret when we have it (pill rides
+        /// the cursor), else the field frame (pill hugs the field's top-left).
+        var anchorRect: CGRect { caret ?? frame }
+
+        /// Whether this is the same field as `other`. Element identity is the
+        /// strong signal, but WebKit (Mail's compose body) and some Electron
+        /// views hand back NON-equal AXUIElement refs for the same element on
+        /// every read — so `CFEqual` alone made the receipt think focus had moved
+        /// each tick and hide within a beat. Fall back to geometry: same app plus
+        /// a heavily-overlapping frame is the same field for our purposes.
         func isSameField(as other: FieldTarget) -> Bool {
-            pid == other.pid && CFEqual(element, other.element)
+            guard pid == other.pid else { return false }
+            if CFEqual(element, other.element) { return true }
+            let inter = frame.intersection(other.frame)
+            guard !inter.isNull else { return false }
+            let overlapArea = inter.width * inter.height
+            let minArea = min(frame.width * frame.height, other.frame.width * other.frame.height)
+            return minArea > 0 && overlapArea / minArea > 0.7
         }
     }
 
@@ -119,8 +182,112 @@ enum AccessibilityCapture {
             )
         }
 
-        return FieldTarget(frame: frame, element: element, pid: frontApp.processIdentifier)
+        let role = attribute(element, kAXRoleAttribute) as? String ?? ""
+        let isRich = frontApp.bundleIdentifier.map { richEditorBundleIDs.contains($0) } ?? false
+        let caret = caretRect(
+            focusedElement: element,
+            role: role,
+            pid: frontApp.processIdentifier,
+            isRichEditor: isRich,
+            fieldFrame: frame
+        )
+        return FieldTarget(frame: frame, element: element, pid: frontApp.processIdentifier, caret: caret)
     }
+
+    // MARK: - Caret geometry (pill rides the cursor)
+
+    /// Apps whose full accessibility tree we've unlocked so the caret becomes
+    /// readable. WebKit (Mail) and Pages only populate it once a client asks —
+    /// the same signal VoiceOver sets. `true` = we also escalated to the broader
+    /// AXEnhancedUserInterface flag (needed by a few native editors like Pages).
+    /// main-actor–only in practice (called from the HUD tracker); the unchecked
+    /// annotation keeps the shared cache off the strict-concurrency radar.
+    nonisolated(unsafe) private static var assistiveTreeEnabled: [pid_t: Bool] = [:]
+
+    private static func enableAssistiveTree(pid: pid_t, enhanced: Bool) {
+        // Already at (or above) the requested level — nothing to do.
+        if let escalated = assistiveTreeEnabled[pid], escalated || !enhanced { return }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        if enhanced {
+            AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        }
+        assistiveTreeEnabled[pid] = enhanced
+    }
+
+    /// The caret rectangle for the focused editor, or nil when the app exposes
+    /// none. Unlocks the app's assistive tree on first use, escalating to the
+    /// broader flag only for rich editors that stay opaque under the minimal one
+    /// — so most apps never get the heavier signal.
+    private static func caretRect(
+        focusedElement: AXUIElement,
+        role: String,
+        pid: pid_t,
+        isRichEditor: Bool,
+        fieldFrame: CGRect
+    ) -> CGRect? {
+        enableAssistiveTree(pid: pid, enhanced: false)
+        if let r = resolveCaretRect(focusedElement, role: role, within: fieldFrame) { return r }
+        if isRichEditor, assistiveTreeEnabled[pid] != true {
+            enableAssistiveTree(pid: pid, enhanced: true)
+            // The tree may take a beat to populate; the 4 Hz HUD tracker re-reads
+            // and lands the caret on a subsequent tick.
+            return resolveCaretRect(focusedElement, role: role, within: fieldFrame)
+        }
+        return nil
+    }
+
+    private static func resolveCaretRect(_ element: AXUIElement, role: String, within fieldFrame: CGRect) -> CGRect? {
+        // Read the caret ONLY from the focused element's own insertion point.
+        // A descendant search looked tempting but returned the first static-text
+        // run's bounds — a fixed wrong spot that pinned the pill while the cursor
+        // moved. Once the assistive tree is unlocked, focus lands on the real
+        // text element (Pages → AXTextArea) whose selected-range bounds tracks
+        // the caret; WebKit (Mail) exposes it via text markers instead.
+        if let r = boundsForSelectedRange(element), isSaneCaret(r, within: fieldFrame) { return r }
+        if let r = boundsForSelectedTextMarker(element), isSaneCaret(r, within: fieldFrame) { return r }
+        return nil
+    }
+
+    /// A caret must be a thin, finite rectangle sitting inside (or barely
+    /// outside) the field — rejects the degenerate `(0, big) 0×0` some
+    /// containers return, and selection rects that span the whole field.
+    private static func isSaneCaret(_ r: CGRect, within field: CGRect) -> Bool {
+        guard r.origin.x.isFinite, r.origin.y.isFinite, r.height > 1, r.height < 200 else { return false }
+        if r.origin.x == 0, r.width == 0, r.height == 0 { return false }
+        return field.insetBy(dx: -40, dy: -40).intersects(r)
+    }
+
+    /// Caret from an element's own selected-text range (an empty range = the
+    /// insertion point; a non-empty one = the selection, whose top-left we use).
+    private static func boundsForSelectedRange(_ element: AXUIElement) -> CGRect? {
+        var rangeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+              let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
+        var out: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element, kAXBoundsForRangeParameterizedAttribute as CFString, rangeRef, &out
+        ) == .success, let out, CFGetTypeID(out) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue((out as! AXValue), .cgRect, &rect) else { return nil }
+        return rect
+    }
+
+    /// WebKit exposes the caret through text markers, not ranges — only after
+    /// the assistive tree is unlocked (Mail's compose body).
+    private static func boundsForSelectedTextMarker(_ element: AXUIElement) -> CGRect? {
+        var markerRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXSelectedTextMarkerRange" as CFString, &markerRef) == .success,
+              let markerRef else { return nil }
+        var out: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element, "AXBoundsForTextMarkerRange" as CFString, markerRef, &out
+        ) == .success, let out, CFGetTypeID(out) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue((out as! AXValue), .cgRect, &rect) else { return nil }
+        return rect
+    }
+
 
     /// Screen bounds (global top-left coords) of the field's first character,
     /// or of the caret when the field is empty. Nil when the app doesn't
@@ -156,9 +323,18 @@ enum AccessibilityCapture {
     }
 
     static func fieldContentSignature(_ element: AXUIElement) -> ContentSignature? {
-        if let value = attribute(element, kAXValueAttribute) as? String {
+        // An EMPTY value string is not a reliable signal: WebKit (Mail's compose
+        // body) always reports kAXValue as "" no matter what's typed, so trusting
+        // it made the receipt read "length 0" right after inserting and dismiss
+        // itself as "text gone." Only a non-empty value counts; otherwise fall
+        // through to the character count, then to geometry-based tracking.
+        if let value = attribute(element, kAXValueAttribute) as? String, !value.isEmpty {
             return ContentSignature(raw: "v:\(value.count):\(value.hashValue)", length: value.count)
         }
+        // Character count (Chromium/Electron expose this even when they won't hand
+        // over the string). A count of 0 IS meaningful here — a native field going
+        // empty is a send/delete we should retire the receipt on — so it's kept,
+        // unlike the always-empty WebKit value string above.
         if let count = attribute(element, "AXNumberOfCharacters") as? Int {
             return ContentSignature(raw: "n:\(count)", length: count)
         }
@@ -284,6 +460,38 @@ enum AccessibilityCapture {
 
         if isLikelyEditableTextElement(focusedElement, role: role, subrole: subrole) {
             return FocusedEditability(isEditable: true, summary: focusedSummary, frame: frame, element: focusedElement)
+        }
+
+        // A focused element with a SETTABLE value is a text sink even when it
+        // advertises nothing else — Mail's compose body focuses an AXWebArea
+        // ("HTML content") whose only editable tell is valueSettable=true. This
+        // check is safe here because we only reach it via keyboard focus (the
+        // ambiguous mouse-hover path resolves earlier); a focused, settable,
+        // non-secure, enabled element accepts pasted text.
+        var valueSettable: DarwinBoolean = false
+        if textContainerRoles.contains(role),
+           AXUIElementIsAttributeSettable(focusedElement, kAXValueAttribute as CFString, &valueSettable) == .success,
+           valueSettable.boolValue {
+            return FocusedEditability(
+                isEditable: true,
+                summary: focusedSummary + " valueSettable=true",
+                frame: frame,
+                element: focusedElement
+            )
+        }
+
+        // AX-opaque rich editors (Pages et al.) expose no signal at all on their
+        // focused canvas. Recognize them by app identity, but only when a
+        // plausible text container holds focus — never a button/inspector.
+        if let bundleID = frontApp.bundleIdentifier,
+           richEditorBundleIDs.contains(bundleID),
+           textContainerRoles.contains(role) {
+            return FocusedEditability(
+                isEditable: true,
+                summary: focusedSummary + " richEditorApp=\(bundleID)",
+                frame: frame,
+                element: focusedElement
+            )
         }
 
         // Check 3: walk up from focused element looking for editable containers

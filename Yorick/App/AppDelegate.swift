@@ -97,10 +97,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             onKeyUp: { [weak self] in
                 print("[Hotkeys] KEY UP — stopping capture")
                 self?.sessionManager.stopIfRecording()
-            },
-            onFlip: { [weak self] in
-                print("[Hotkeys] FLIP — redirecting last utterance")
-                self?.sessionManager.flipLastUtterance()
             }
         )
         print("[Hotkeys] Registration complete")

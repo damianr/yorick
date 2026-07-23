@@ -1,11 +1,15 @@
 import SwiftUI
-import KeyboardShortcuts
 
 struct HUDContentView: View {
     @Environment(SessionManager.self) private var session
     /// Which receipt action the pointer is on — its label renders inline in
     /// the pill (`.help()` tooltips are unreliable on non-activating panels).
-    @State private var hoveredReceiptAction: String?
+    /// The receipt rests as a bare skull and expands to its actions on hover —
+    /// a quiet marker that doesn't sit over the text it just inserted.
+    @State private var receiptHovering = false
+    /// The recording pill reveals its stop button only on hover — the EQ already
+    /// signals "recording," and push-to-talk means release is the usual stop.
+    @State private var recordingHovering = false
 
     private var isVisible: Bool {
         session.state == .recording ||
@@ -84,73 +88,94 @@ struct HUDContentView: View {
     // action's label renders inline (system tooltips don't reliably appear
     // on non-activating panels), and hover suspends the fade clock.
 
+    // The receipt is a composite: a fixed skull circle that never moves, and —
+    // on hover — a column of labeled action pills to its right. The column is
+    // bottom-aligned to the circle, so the LAST action (Dismiss) lines up with
+    // the skull and earlier actions stack upward, left-aligned.
+    private static let receiptPillHeight: CGFloat = 30
+
     private func insertionReceiptPill(_ receipt: InsertionReceipt) -> some View {
-        HStack(spacing: 7) {
+        HStack(alignment: .bottom, spacing: 6) {
+            skullCircle
             if session.cleanupInProgress {
-                ProgressView()
-                    .controlSize(.mini)
-                    .tint(.white)
-                Text("Cleaning up…")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
-            } else {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.green)
-                if LocalIntelligence.isCleanupAvailable {
-                    receiptIcon("wand.and.stars", label: "Clean up") {
-                        session.cleanupLastInsertion()
+                cleaningPill
+            } else if receiptHovering {
+                VStack(alignment: .leading, spacing: 5) {
+                    if LocalIntelligence.isCleanupAvailable {
+                        receiptOption("wand.and.stars", "Clean up") {
+                            session.cleanupLastInsertion()
+                        }
+                    }
+                    receiptOption("arrow.uturn.backward", "Undo") {
+                        session.undoLastInsertion()
+                    }
+                    receiptOption("xmark", "Dismiss", dim: true) {
+                        session.dismissInsertionReceipt()
                     }
                 }
-                receiptIcon("arrow.uturn.backward", label: "Undo") {
-                    session.undoLastInsertion()
-                }
-                receiptIcon("xmark", label: "Dismiss", dim: true) {
-                    session.dismissInsertionReceipt()
-                }
-                if let label = hoveredReceiptAction {
-                    Text(label)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .lineLimit(1)
-                        .fixedSize()
-                        .transition(.opacity)
-                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottomLeading)))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .pillGlass()
         .onHover { hovering in
+            receiptHovering = hovering
             session.receiptHoverChanged(hovering)
-            if !hovering { hoveredReceiptAction = nil }
         }
-        .animation(.easeOut(duration: 0.12), value: hoveredReceiptAction)
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: receiptHovering)
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: session.cleanupInProgress)
     }
 
-    private func receiptIcon(
+    /// The always-present skull marker — a glass circle that stays put across
+    /// resting, hovered, and cleanup states.
+    private var skullCircle: some View {
+        Image("MenuBarIcon")
+            .resizable()
+            .renderingMode(.template)
+            .frame(width: 14, height: 14)
+            .foregroundStyle(.white.opacity(0.9))
+            .frame(width: Self.receiptPillHeight, height: Self.receiptPillHeight)
+            .pillGlass()
+    }
+
+    /// One labeled action as its own pill. Fixed height so the bottom pill
+    /// aligns cleanly with the skull circle.
+    private func receiptOption(
         _ systemImage: String,
-        label: String,
+        _ label: String,
         dim: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.white.opacity(dim ? 0.5 : 0.85))
-                .frame(width: 19, height: 19)
-                .background(.white.opacity(dim ? 0.08 : 0.15))
-                .clipShape(Circle())
-                .contentShape(Circle())
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(dim ? 0.6 : 0.9))
+                    .frame(width: 14)
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .fixedSize()
+            }
+            .padding(.horizontal, 11)
+            .frame(height: Self.receiptPillHeight)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            if hovering {
-                hoveredReceiptAction = label
-            } else if hoveredReceiptAction == label {
-                hoveredReceiptAction = nil
-            }
+        .pillGlass()
+    }
+
+    private var cleaningPill: some View {
+        HStack(spacing: 7) {
+            ProgressView()
+                .controlSize(.mini)
+                .tint(.white)
+            Text("Cleaning up…")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.8))
+                .fixedSize()
         }
+        .padding(.horizontal, 11)
+        .frame(height: Self.receiptPillHeight)
+        .pillGlass()
     }
 
     // MARK: - Transient Notice (warnings + past-tense receipts)
@@ -218,14 +243,23 @@ struct HUDContentView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.7))
                     .lineLimit(1)
-                if let flip = KeyboardShortcuts.getShortcut(for: .flipLastUtterance) {
-                    Text("\(flip)  insert at cursor instead")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white.opacity(0.45))
-                        .lineLimit(1)
-                }
             }
             Spacer()
+            // Copy is the recovery path: a dictation that wasn't typed lands here,
+            // one obvious click from the clipboard — no hidden keystroke to learn.
+            Button(action: {
+                ClipboardOutput.copy(capture.transcript)
+                session.lastSavedCapture = nil
+            }) {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .frame(width: 20, height: 20)
+                    .background(.white.opacity(0.12))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Copy transcript")
             Button(action: {
                 session.lastSavedCapture = nil
             }) {
@@ -263,8 +297,9 @@ struct HUDContentView: View {
 
     // MARK: - Recording Pill
     //
-    // Quiet by design: logo · dot-grid equalizer · timer · stop. No mode
-    // word, no mode color — the pill's POSITION says dictation vs observation.
+    // Quiet by design: logo · dot-grid equalizer, with the stop button revealed
+    // on hover. No timer, no mode word, no mode color — the EQ says "recording"
+    // and the pill's POSITION says dictation vs observation.
 
     private var recordingPill: some View {
         VStack(spacing: 4) {
@@ -274,20 +309,19 @@ struct HUDContentView: View {
                     .renderingMode(.template)
                     .frame(width: 12, height: 12)
                     .foregroundStyle(.white.opacity(0.75))
+                    .frame(height: 19) // seat at button height so hover adds no vertical jump
                 DotEqualizer(level: session.audioLevel)
-                Text(session.formattedDuration)
-                    .monospacedDigit()
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
-                Button(action: { session.stopIfRecording() }) {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .frame(width: 19, height: 19)
-                        .background(.white.opacity(0.15))
-                        .clipShape(Circle())
+                if recordingHovering {
+                    Button(action: { session.stopIfRecording() }) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .frame(width: 19, height: 19)
+                            .background(.white.opacity(0.15))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             if session.showSilenceWarning {
                 Text("No audio detected — check your microphone")
@@ -295,9 +329,13 @@ struct HUDContentView: View {
                     .foregroundStyle(.orange)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        // Constant padding so the logo + EQ never shift on hover — the stop
+        // button simply appends on the right, the pill grows rightward.
+        .padding(.horizontal, 11)
+        .padding(.vertical, 5)
         .pillGlass()
+        .onHover { recordingHovering = $0 }
+        .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
         .animation(.easeOut(duration: 0.15), value: session.showSilenceWarning)
     }
 
@@ -341,25 +379,35 @@ private struct PillGlass: ViewModifier {
             .overlay(
                 Capsule().strokeBorder(
                     LinearGradient(
-                        colors: [.white.opacity(0.38), .white.opacity(0.07)],
+                        colors: [.white.opacity(0.30), .white.opacity(0.06)],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 1
+                    lineWidth: 0.75
                 )
             )
-            .shadow(color: .black.opacity(0.35), radius: 11, y: 4)
+            .compositingGroup()
+            // Tight, defined shadow — the old radius-11 cloud smudged badly on
+            // white backgrounds (Pages, a white webpage). Two layers: a soft
+            // lift plus a crisp contact edge that reads on any backdrop.
+            .shadow(color: .black.opacity(0.26), radius: 5, y: 2)
+            .shadow(color: .black.opacity(0.14), radius: 1, y: 0.5)
     }
 
-    @ViewBuilder
+    /// A DARK capsule, not light glass — and explicitly NOT Liquid Glass, whose
+    /// `.regular` material re-adapts to a bright backdrop and washed the pill out
+    /// (it "flashed black then went light" over a white page). An opaque-enough
+    /// dark fill over a faint frost keeps white text and icons legible on ANY
+    /// background, the way the macOS system HUD does — and it holds.
     private func glassed(_ content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: .capsule)
-        } else {
-            content
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-        }
+        content
+            .background {
+                ZStack {
+                    Capsule().fill(.ultraThinMaterial)
+                    Capsule().fill(Color.black.opacity(0.78))
+                }
+            }
+            .clipShape(Capsule())
     }
 }
 

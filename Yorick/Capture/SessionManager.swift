@@ -100,6 +100,10 @@ final class SessionManager {
     /// Geometry fallback for fields exposing no content info: a send snaps an
     /// autogrown composer back toward its single-line height.
     private var receiptBaselineFieldHeight: CGFloat?
+    /// Caret position just after the paste, for content-blind fields (Mail's
+    /// WebKit body): any later caret movement means the user typed or edited, so
+    /// the receipt retires — ⌘Z/Cleanup no longer map cleanly to our insertion.
+    private var receiptBaselineCaret: CGRect?
     /// Where the pill sits relative to its anchor (see HUDPillPlacement).
     var hudPillPlacement: HUDPillPlacement = .bottomCenter
     let captureStore = CaptureStore()
@@ -174,11 +178,40 @@ final class SessionManager {
             print("[Session] Cursor element: role=\(ctx.role) app=\(ctx.appName) title=\(ctx.title ?? "nil")")
             modeDecisionSummary += ", cursorElement=\(ctx.role):\(ctx.title ?? ctx.label ?? "untitled") in \(ctx.appName)"
         }
-        // Field-adjacent pill for dictation (the position IS the mode
-        // indicator); bottom-center for observations and when the target
-        // app reports no field geometry.
-        setHUDAnchor(captureMode == .dictation ? AccessibilityCapture.focusedEditableFieldTarget() : nil)
+        // The pill anchors to a focused editable field whenever one exists, and
+        // sits bottom-center only when none does — a field-adjacent pill means
+        // "will type here," bottom-center means "will save." This is driven by
+        // focus, NOT the start-mode guess: after switching into an app (Electron
+        // especially) the guess is often .contextual on the first capture because
+        // the cursor probe hasn't settled, yet a field IS focused — so gating on
+        // the guess left the first pill stranded at bottom-center.
+        setHUDAnchor(AccessibilityCapture.focusedEditableFieldTarget())
         startCapture()
+        // Focus can lag the hotkey by well over a second (app still coming
+        // forward, focus just moved in). If we didn't anchor, keep polling for
+        // the whole recording so the pill lands on the field mid-utterance
+        // instead of only on the next capture.
+        if hudAnchor == nil {
+            acquireFieldAnchorWithRetry()
+        }
+    }
+
+    /// Poll for a focused editable field for as long as the recording runs,
+    /// anchoring the pill the moment focus resolves. Independent of capture mode:
+    /// the routing decision happens at stop, but the pill should follow focus
+    /// throughout. Self-cancelling: bails the moment an anchor lands or the
+    /// session ends.
+    private func acquireFieldAnchorWithRetry() {
+        Task { @MainActor in
+            for _ in 0..<50 { // ~5s cap at 100ms; recording usually ends first
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                guard state == .recording, hudAnchor == nil else { return }
+                if let target = AccessibilityCapture.focusedEditableFieldTarget() {
+                    setHUDAnchor(target)
+                    return
+                }
+            }
+        }
     }
 
     /// Stop capture — transcribes and either types text or saves capture.
@@ -208,107 +241,6 @@ final class SessionManager {
         transientNotice = TransientNotice(message: rejection.userMessage)
     }
 
-    // MARK: - Flip ("do the other thing")
-
-    /// Apply the OTHER disposition to the last utterance. No expiry window:
-    /// an inserted dictation becomes a real observation in the stream; a noted
-    /// observation gets inserted at wherever the cursor is focused right now.
-    /// Each flip is also recorded as a labeled routing correction.
-    func flipLastUtterance() {
-        // Only when idle: during transcription the utterance the user means
-        // isn't saved yet, and the flip would silently hit the previous one.
-        guard state == .idle else { return }
-
-        // The flip supersedes any pending Cleanup/Undo receipt.
-        dismissInsertionReceipt()
-
-        let capture = captureStore.captures.first(where: { $0.id == lastUtteranceID })
-            ?? captureStore.captures.first
-        guard var capture else {
-            transientNotice = TransientNotice(message: "Nothing to flip yet")
-            return
-        }
-
-        let lastKind = capture.effects.last?.kind ?? (capture.mode == .dictation ? .inserted : .noted)
-        switch lastKind {
-        case .inserted, .copied:
-            // Dictation → observation. The context was captured uniformly, so
-            // this is a full promotion, not a downgraded copy.
-            capture.effects.append(CaptureEffect(kind: .noted, target: nil, timestamp: Date()))
-            let promoted = Self.rebuilding(capture, kind: .note)
-            captureStore.update(promoted)
-            lastUtteranceID = promoted.id
-            transientNotice = TransientNotice(
-                message: "Saved to Yorick",
-                style: .receipt,
-                detail: Self.flipHint(to: "insert at cursor")
-            )
-            RoutingCorrections.record(
-                appName: capture.appName,
-                transcript: capture.transcript,
-                from: lastKind,
-                to: .noted
-            )
-            print("[Session] Flip: promoted \(capture.id) to observation")
-
-        case .noted:
-            // Observation → dictation: insert where focus is NOW.
-            let targetApp = NSWorkspace.shared.frontmostApplication?.localizedName
-            if AXIsProcessTrusted(), AccessibilityCapture.hasFocusedEditableElement() {
-                setHUDAnchor(AccessibilityCapture.focusedEditableFieldTarget())
-                receiptPreInsertSignature = hudAnchor.flatMap {
-                    AccessibilityCapture.fieldContentSignature($0.element)
-                }
-                Self.insertTextAtCursor(capture.transcript + " ")
-                capture.effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
-                captureStore.update(capture)
-                lastUtteranceID = capture.id
-                presentInsertionReceipt(
-                    captureID: capture.id,
-                    insertedText: capture.transcript + " ",
-                    targetApp: targetApp
-                )
-                RoutingCorrections.record(
-                    appName: capture.appName,
-                    transcript: capture.transcript,
-                    from: lastKind,
-                    to: .inserted
-                )
-                print("[Session] Flip: inserted \(capture.id) at cursor")
-            } else {
-                ClipboardOutput.copy(capture.transcript)
-                capture.effects.append(CaptureEffect(kind: .copied, target: nil, timestamp: Date()))
-                captureStore.update(capture)
-                lastUtteranceID = capture.id
-                transientNotice = TransientNotice(
-                    message: "No text field focused — transcript copied to clipboard"
-                )
-                print("[Session] Flip: no focused field; copied \(capture.id) to clipboard")
-            }
-        }
-    }
-
-    /// Copy of a capture with only the kind replaced.
-    private static func rebuilding(_ c: Capture, kind: CaptureKind) -> Capture {
-        Capture(
-            id: c.id, timestamp: c.timestamp, mode: c.mode, appName: c.appName,
-            windowTitle: c.windowTitle, transcript: c.transcript,
-            processedInstructions: c.processedInstructions,
-            transcriptSegments: c.transcriptSegments, durationSeconds: c.durationSeconds,
-            screenshotFileNames: c.screenshotFileNames, state: c.state,
-            doneAt: c.doneAt, kind: kind,
-            title: c.title, content: c.content, appliedTags: c.appliedTags,
-            suggestedTags: c.suggestedTags, actionHint: c.actionHint,
-            effects: c.effects,
-            diagnostics: c.diagnostics
-        )
-    }
-
-    /// Receipt hint naming the flip key and what pressing it would do next.
-    private static func flipHint(to action: String) -> String? {
-        guard let shortcut = KeyboardShortcuts.getShortcut(for: .flipLastUtterance) else { return nil }
-        return "\(shortcut) — \(action)"
-    }
 
     // MARK: - HUD placement (field-adjacent pill)
 
@@ -336,7 +268,9 @@ final class SessionManager {
 
         // AX coordinates are global top-left; Cocoa windows are bottom-left,
         // flipped against the PRIMARY screen (same convention as axCursorPoint).
-        let frame = target.frame
+        // anchorRect is the caret when the app exposes it (pill rides the
+        // cursor), otherwise the field frame.
+        let frame = target.anchorRect
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let field = NSRect(
             x: frame.minX,
@@ -357,17 +291,28 @@ final class SessionManager {
         var x = field.minX - 6
         x = min(max(x, visible.minX), visible.maxX - size.width)
 
+        let fitsAbove = field.maxY + Self.hudFieldGap + Self.hudPillClearance <= visible.maxY
+        let fitsBelow = field.minY - Self.hudFieldGap - Self.hudPillClearance >= visible.minY
         let origin: NSPoint
-        if field.maxY + Self.hudFieldGap + Self.hudPillClearance <= visible.maxY {
+        if fitsAbove {
             // Above the field: window bottom edge sits on the field top, pill
             // hugs the window's bottom-leading corner and grows upward.
             hudPillPlacement = .aboveField
             origin = NSPoint(x: x, y: field.maxY + Self.hudFieldGap)
-        } else {
+        } else if fitsBelow {
             // Below the field: window top edge kisses the field bottom, pill
             // hugs the window's top-leading corner and grows downward.
             hudPillPlacement = .belowField
             origin = NSPoint(x: x, y: field.minY - Self.hudFieldGap - size.height)
+        } else {
+            // The field fills the screen (Terminal, a full-window editor) and its
+            // caret is unreadable, so neither side leaves the pill on-screen —
+            // anchoring to a frame edge would clip it off entirely. Home to
+            // bottom-center so it's visible. Tracking stays live: if a caret
+            // becomes readable on a later tick, we re-anchor to it.
+            hudPillPlacement = .bottomCenter
+            NotificationCenter.default.post(name: .hudReposition, object: nil)
+            return
         }
         NotificationCenter.default.post(
             name: .hudReposition,
@@ -464,8 +409,20 @@ final class SessionManager {
                             receiptContentSignature = signature
                         }
                     } else {
-                        // No content attributes at all — geometry tell: a send
-                        // snaps an autogrown composer back toward one line.
+                        // No content attributes at all (Mail's WebKit body). The
+                        // caret is the edit tell: it sits at the end of the paste,
+                        // and any movement means the user typed or clicked away —
+                        // retire the receipt. Geometry (a composer collapsing on
+                        // send) is the backstop.
+                        if let baseCaret = receiptBaselineCaret {
+                            if let c = current.caret,
+                               hypot(c.midX - baseCaret.midX, c.midY - baseCaret.midY) > 6 {
+                                dismissInsertionReceipt(reason: "caret moved — manual edit")
+                                return
+                            }
+                        } else if let c = current.caret {
+                            receiptBaselineCaret = c
+                        }
                         let height = current.frame.height
                         if let baseline = receiptBaselineFieldHeight {
                             if height < baseline * 0.55, baseline - height > 20 {
@@ -483,11 +440,19 @@ final class SessionManager {
                     receiptHidden = false
                     scheduleReceiptAutoDismiss(receipt)
                 }
-                followAnchorGeometry(current)
+                // Deliberately DON'T follow the caret here: the receipt stays
+                // pinned where the insertion BEGAN (its pre-paste anchor), marking
+                // the start of the transcribed text, rather than chasing the caret
+                // to the end of what was just typed. The dismiss checks above still
+                // track the live caret to retire it on edits.
             } else if current != nil {
-                // Positive evidence of a different field — hide immediately.
-                anchorMissTicks = 0
-                hideReceipt()
+                // A single tick resolving a DIFFERENT element is usually WebKit/AX
+                // identity flapping (Mail's compose body hands back non-equal
+                // element refs across ticks), not a real focus change. Require
+                // sustained evidence before hiding — the same grace a missed read
+                // gets — so the receipt stops vanishing a beat after it appears.
+                anchorMissTicks += 1
+                if anchorMissTicks >= 2 { hideReceipt() }
             } else {
                 anchorMissTicks += 1
                 if anchorMissTicks >= 2 { hideReceipt() }
@@ -497,13 +462,16 @@ final class SessionManager {
 
         // Recording/transcribing: the pill previews wherever the dictation
         // would land NOW, so it follows focus freely — and goes home when no
-        // field is focused (insertion at stop re-anchors as needed).
+        // field is focused (insertion at stop re-anchors as needed). A transient
+        // AX read failure must NOT send the pill home: keep the last good anchor
+        // and only relocate to bottom-center after sustained loss (~1s), which
+        // reads as a deliberate move rather than a flicker.
         if let current {
             anchorMissTicks = 0
             followAnchorGeometry(current)
         } else {
             anchorMissTicks += 1
-            if anchorMissTicks >= 2 { setHUDAnchor(nil) }
+            if anchorMissTicks >= 4 { setHUDAnchor(nil) }
         }
     }
 
@@ -522,8 +490,11 @@ final class SessionManager {
     /// Reposition only on real movement — AX geometry jitters by a pixel —
     /// but always refresh the stored identity.
     private func followAnchorGeometry(_ target: AccessibilityCapture.FieldTarget) {
-        let old = hudAnchor?.frame ?? .zero
-        let f = target.frame
+        // Compare the rect the pill actually positions against (caret when
+        // available), so the pill follows the cursor line to line, not just the
+        // field as it grows.
+        let old = hudAnchor?.anchorRect ?? .zero
+        let f = target.anchorRect
         if abs(f.minX - old.minX) > 1 || abs(f.minY - old.minY) > 1 ||
            abs(f.width - old.width) > 1 || abs(f.height - old.height) > 1 {
             setHUDAnchor(target)
@@ -545,13 +516,14 @@ final class SessionManager {
             captureID: captureID,
             insertedText: insertedText,
             targetApp: targetApp,
-            hint: Self.flipHint(to: "save as a note")
+            hint: nil
         )
         insertionReceipt = receipt
         receiptHidden = false
         receiptDeadline = Date().addingTimeInterval(90)
         receiptContentSignature = nil
         receiptBaselineFieldHeight = nil
+        receiptBaselineCaret = nil
         // receiptPreInsertSignature is NOT reset here — the insert paths
         // capture it right before pasting, just ahead of this call.
         Self.receiptLog.info("presented target=\(targetApp ?? "nil", privacy: .public) preInsert=\(self.receiptPreInsertSignature?.raw ?? "nil", privacy: .public)")
@@ -628,8 +600,7 @@ final class SessionManager {
         dismissInsertionReceipt()
         transientNotice = TransientNotice(
             message: "Insertion undone",
-            style: .receipt,
-            detail: Self.flipHint(to: "file it as a note instead")
+            style: .receipt
         )
         print("[Session] Undo: removed insertion for \(receipt.captureID)")
     }
@@ -915,8 +886,7 @@ final class SessionManager {
                 let routed = UtteranceRouter.route(
                     transcript: cleaned,
                     modeAtStart: mode,
-                    focusedEditableAtStop: focusedEditableNow,
-                    appName: sessionAppName
+                    focusedEditableAtStop: focusedEditableNow
                 )
                 effectiveMode = routed.disposition == .insert ? .dictation : .contextual
                 modeDecisionSummary += ", routed=\(effectiveMode.rawValue) (\(routed.reason))"
@@ -931,6 +901,10 @@ final class SessionManager {
             // and an untrusted ⌘V silently drops the transcript entirely.
             let captureID = UUID()
             var effects: [CaptureEffect] = []
+            // A dictation that couldn't be typed (nothing was focused) is kept in
+            // the list rather than typed — recorded so the capture is filed as a
+            // note, not a phantom insertion.
+            var dictationSavedUntyped = false
             if effectiveMode == .dictation {
                 guard isLive() else { return }
                 let targetApp = NSWorkspace.shared.frontmostApplication?.localizedName
@@ -949,12 +923,28 @@ final class SessionManager {
                         targetApp: targetApp
                     )
                     print("[Session] Text inserted at cursor")
-                } else {
-                    ClipboardOutput.copy(cleaned)
-                    effects.append(CaptureEffect(kind: .copied, target: nil, timestamp: Date()))
+                } else if AccessibilityCapture.hasAnyFocusedElement() {
+                    // Detection couldn't confirm a field, but SOMETHING is focused
+                    // — almost always a text field we failed to classify. Trust the
+                    // dictation and paste; the transcript is saved to the list
+                    // regardless, so a rare misfire costs nothing.
                     setHUDAnchor(nil)
-                    transientNotice = TransientNotice(message: "No text field focused — transcript copied to clipboard")
-                    print("[Session] Paste skipped (no focused editable element); transcript left on clipboard")
+                    Self.insertTextAtCursor(cleaned + " ")
+                    effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
+                    presentInsertionReceipt(
+                        captureID: captureID,
+                        insertedText: cleaned + " ",
+                        targetApp: targetApp
+                    )
+                    print("[Session] Text pasted into unclassified focused element")
+                } else {
+                    // Nothing focused at all — genuine no-field. Keep it in the
+                    // list, where every transcript already lives one Copy click away.
+                    effects.append(CaptureEffect(kind: .noted, target: nil, timestamp: Date()))
+                    dictationSavedUntyped = true
+                    setHUDAnchor(nil)
+                    transientNotice = TransientNotice(message: "No field focused — saved to your list")
+                    print("[Session] No focus anywhere; dictation saved to list")
                 }
             } else {
                 effects.append(CaptureEffect(kind: .noted, target: nil, timestamp: Date()))
@@ -967,7 +957,7 @@ final class SessionManager {
             let identified = AppIdentifier.identify(appName: sessionAppName, windowTitle: sessionWindowTitle)
             let primaryApp = identified.name
 
-            let effectiveKind: CaptureKind = effectiveMode == .dictation ? .dictation : .note
+            let effectiveKind: CaptureKind = (effectiveMode == .dictation && !dictationSavedUntyped) ? .dictation : .note
             let microphoneDeviceUID = microphoneManager.effectiveDeviceUID
             let microphoneDeviceName = microphoneManager.selectedDeviceName
                 ?? (microphoneDeviceUID == nil ? "System Default" : nil)
@@ -1174,8 +1164,7 @@ final class SessionManager {
                 self.lastUtteranceID = updated.id
                 self.transientNotice = TransientNotice(
                     message: "Transcribed — in your stream",
-                    style: .receipt,
-                    detail: Self.flipHint(to: "insert at cursor")
+                    style: .receipt
                 )
             } catch {
                 self?.transientNotice = TransientNotice(
