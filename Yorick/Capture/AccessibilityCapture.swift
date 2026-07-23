@@ -458,6 +458,21 @@ enum AccessibilityCapture {
             return FocusedEditability(isEditable: true, summary: focusedSummary, frame: frame, element: focusedElement)
         }
 
+        // Toolkit-agnostic signal: a focused element that exposes a text caret
+        // (AXSelectedTextRange — a CHARACTER range, distinct from a row/child
+        // selection) is a text editor, whatever its role or app. Keyboard focus
+        // plus a caret can't be a false positive the way a hovered generic
+        // container can, so this catches editors across AppKit, Electron, and web
+        // without any per-app allowlist — the widest net we can cast safely.
+        if hasTextCaret(focusedElement) {
+            return FocusedEditability(
+                isEditable: true,
+                summary: focusedSummary + " textCaret=true",
+                frame: frame,
+                element: focusedElement
+            )
+        }
+
         if isLikelyEditableTextElement(focusedElement, role: role, subrole: subrole) {
             return FocusedEditability(isEditable: true, summary: focusedSummary, frame: frame, element: focusedElement)
         }
@@ -667,5 +682,21 @@ enum AccessibilityCapture {
         var value: CFTypeRef?
         AXUIElementCopyAttributeValue(element, attr as CFString, &value)
         return value
+    }
+
+    /// Whether the element exposes a text insertion point — a character-range
+    /// selection or an insertion-point line. Both are text-only attributes, so
+    /// their presence marks the element as a real text editor.
+    private static func hasTextCaret(_ element: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
+           let value, CFGetTypeID(value) == AXValueGetTypeID() {
+            return true
+        }
+        if AXUIElementCopyAttributeValue(element, kAXInsertionPointLineNumberAttribute as CFString, &value) == .success,
+           value != nil {
+            return true
+        }
+        return false
     }
 }
