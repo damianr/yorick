@@ -178,6 +178,13 @@ final class SessionManager {
             print("[Session] Cursor element: role=\(ctx.role) app=\(ctx.appName) title=\(ctx.title ?? "nil")")
             modeDecisionSummary += ", cursorElement=\(ctx.role):\(ctx.title ?? ctx.label ?? "untitled") in \(ctx.appName)"
         }
+        // A new utterance supersedes any lingering receipt — and it must be
+        // cleared BEFORE the anchor is chosen: setHUDAnchor routes to the
+        // receipt's gutter dock while a receipt exists, which parked the
+        // RECORDING pill at the field's left edge when dictations came
+        // back-to-back.
+        dismissInsertionReceipt(reason: "superseded by new utterance")
+
         // The pill anchors to a focused editable field whenever one exists, and
         // sits bottom-center only when none does — a field-adjacent pill means
         // "will type here," bottom-center means "will save." This is driven by
@@ -247,9 +254,10 @@ final class SessionManager {
     /// Must match HUDWindow's contentRect — the window never resizes, the
     /// transparent panel just gets repositioned and the pill re-aligned inside.
     private static let hudWindowSize = NSSize(width: 500, height: 300)
-    /// Vertical clearance the pill needs on the chosen side of the field.
+    /// Vertical clearance the pill needs on the chosen side of the caret.
     private static let hudPillClearance: CGFloat = 84
-    private static let hudFieldGap: CGFloat = 6
+    /// Small lift of the pill off the caret midline so it doesn't crowd the text.
+    private static let hudCaretGap: CGFloat = 8
 
     /// Anchor the HUD to a field or reset to bottom-center. The pill sits at
     /// the field's TOP-LEFT — right where the text goes in — and falls below
@@ -266,11 +274,30 @@ final class SessionManager {
         }
         startAnchorTracking()
 
+        // The receipt has its own placement rule: the gutter dock (left margin of
+        // the field), which by construction never covers the inserted text and is
+        // reflow-stable in bottom-anchored composers. Recording/transcribing keep
+        // the caret-anchored placement below.
+        if insertionReceipt != nil {
+            setReceiptGutterAnchor(target)
+            return
+        }
+
+        // Two-tier placement: the pill sits at the CARET when the app exposes it,
+        // otherwise honest bottom-center. There is no frame-anchored middle tier —
+        // a pill near-but-off the cursor reads as broken (it claims to know where
+        // you're typing and then misses), whereas bottom-center makes no such
+        // claim. The field is still tracked (for receipt dismiss) either way.
+        guard let caret = target.caret else {
+            Self.placementLog.info("no caret → bottom-center (frame=\(NSStringFromRect(target.frame), privacy: .public))")
+            hudPillPlacement = .bottomCenter
+            NotificationCenter.default.post(name: .hudReposition, object: nil)
+            return
+        }
+
         // AX coordinates are global top-left; Cocoa windows are bottom-left,
         // flipped against the PRIMARY screen (same convention as axCursorPoint).
-        // anchorRect is the caret when the app exposes it (pill rides the
-        // cursor), otherwise the field frame.
-        let frame = target.anchorRect
+        let frame = caret
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let field = NSRect(
             x: frame.minX,
@@ -291,29 +318,100 @@ final class SessionManager {
         var x = field.minX - 6
         x = min(max(x, visible.minX), visible.maxX - size.width)
 
-        let fitsAbove = field.maxY + Self.hudFieldGap + Self.hudPillClearance <= visible.maxY
-        let fitsBelow = field.minY - Self.hudFieldGap - Self.hudPillClearance >= visible.minY
+        // The pill hovers just ABOVE the caret line (8px off its midline) —
+        // tried directly on the caret and it covered the landing text; tried
+        // fully above the line and it floated into toolbars. This is the tuned
+        // middle. Falls below the caret only when there's no room above.
+        let caretMidY = field.midY
+        let fitsAbove = caretMidY + Self.hudPillClearance <= visible.maxY
+        let fitsBelow = caretMidY - Self.hudPillClearance >= visible.minY
         let origin: NSPoint
         if fitsAbove {
-            // Above the field: window bottom edge sits on the field top, pill
-            // hugs the window's bottom-leading corner and grows upward.
             hudPillPlacement = .aboveField
-            origin = NSPoint(x: x, y: field.maxY + Self.hudFieldGap)
+            origin = NSPoint(x: x, y: caretMidY + Self.hudCaretGap)
         } else if fitsBelow {
-            // Below the field: window top edge kisses the field bottom, pill
-            // hugs the window's top-leading corner and grows downward.
             hudPillPlacement = .belowField
-            origin = NSPoint(x: x, y: field.minY - Self.hudFieldGap - size.height)
+            origin = NSPoint(x: x, y: caretMidY - size.height - Self.hudCaretGap)
         } else {
-            // The field fills the screen (Terminal, a full-window editor) and its
-            // caret is unreadable, so neither side leaves the pill on-screen —
-            // anchoring to a frame edge would clip it off entirely. Home to
-            // bottom-center so it's visible. Tracking stays live: if a caret
-            // becomes readable on a later tick, we re-anchor to it.
             hudPillPlacement = .bottomCenter
             NotificationCenter.default.post(name: .hudReposition, object: nil)
             return
         }
+        Self.placementLog.info("""
+            caret placement: caretAX=\(NSStringFromRect(caret), privacy: .public) \
+            fieldAX=\(NSStringFromRect(target.frame), privacy: .public) \
+            flippedField=\(NSStringFromRect(field), privacy: .public) \
+            visible=\(NSStringFromRect(visible), privacy: .public) \
+            placement=\(self.hudPillPlacement.rawValue, privacy: .public) \
+            origin=\(NSStringFromPoint(origin), privacy: .public)
+            """)
+        NotificationCenter.default.post(
+            name: .hudReposition,
+            object: nil,
+            userInfo: ["origin": NSValue(point: origin)]
+        )
+    }
+
+    /// Diameter of the receipt's skull circle (HUDContentView.receiptPillHeight)
+    /// and its clearance from the field's edge.
+    private static let receiptSkullSize: CGFloat = 30
+    private static let receiptGutterGap: CGFloat = 6
+
+    /// The receipt's gutter dock: the skull sits in the margin just OUTSIDE the
+    /// field's left edge — marginalia, like a Docs comment or an editor gutter.
+    /// Vertically it rides the caret line when the app exposes one; otherwise it
+    /// aligns with the field's bottom-left corner, which in a bottom-anchored
+    /// composer (every chat/messaging app) is exactly where the cursor lives —
+    /// and, because those composers grow UPWARD, the bottom edge never moves, so
+    /// this dock is naturally reflow-stable. Outside the field means it can never
+    /// cover the inserted text. No margin room → honest bottom-center.
+    private func setReceiptGutterAnchor(_ target: AccessibilityCapture.FieldTarget) {
+        let fieldAX = target.frame
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+
+        // Skull center in AX coords: outside-left, at caret line or bottom corner.
+        let skullCenterX = fieldAX.minX - Self.receiptGutterGap - Self.receiptSkullSize / 2
+        let skullCenterYAX = target.caret?.midY ?? (fieldAX.maxY - Self.receiptSkullSize / 2)
+
+        // Flip to Cocoa and find the screen via the field's flipped rect.
+        let flippedField = NSRect(
+            x: fieldAX.minX,
+            y: primaryHeight - fieldAX.maxY,
+            width: fieldAX.width,
+            height: fieldAX.height
+        )
+        let skullCenterY = primaryHeight - skullCenterYAX
+        guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(flippedField) }) ?? NSScreen.main else {
+            hudPillPlacement = .bottomCenter
+            NotificationCenter.default.post(name: .hudReposition, object: nil)
+            return
+        }
+        let visible = screen.visibleFrame
+
+        // The dock must fit: skull fully on-screen in the margin. A field flush
+        // against the screen edge has no gutter — fall home rather than cover text.
+        let skullLeft = skullCenterX - Self.receiptSkullSize / 2
+        guard skullLeft >= visible.minX + 2,
+              skullCenterY - Self.receiptSkullSize / 2 >= visible.minY,
+              skullCenterY + Self.receiptSkullSize / 2 <= visible.maxY else {
+            Self.placementLog.info("gutter: no margin room → bottom-center (field=\(NSStringFromRect(fieldAX), privacy: .public))")
+            hudPillPlacement = .bottomCenter
+            NotificationCenter.default.post(name: .hudReposition, object: nil)
+            return
+        }
+
+        // Window carries the pill at its bottom-leading corner (content padding
+        // 6pt horizontal, 8pt vertical) and the hover stack grows up/rightward.
+        hudPillPlacement = .aboveField
+        let origin = NSPoint(
+            x: skullLeft - 6,
+            y: (skullCenterY - Self.receiptSkullSize / 2) - 8
+        )
+        Self.placementLog.info("""
+            gutter placement: fieldAX=\(NSStringFromRect(fieldAX), privacy: .public) \
+            caret=\(target.caret.map(NSStringFromRect) ?? "nil", privacy: .public) \
+            origin=\(NSStringFromPoint(origin), privacy: .public)
+            """)
         NotificationCenter.default.post(
             name: .hudReposition,
             object: nil,
@@ -351,20 +449,29 @@ final class SessionManager {
     /// Consecutive ticks where no editable field had focus — one tick of
     /// grace absorbs transient AX read failures before the pill reacts.
     private var anchorMissTicks = 0
+    /// Consecutive ticks with no pill content visible — lets the exit animation
+    /// finish in place before the window goes home.
+    private var pillGoneTicks = 0
 
     private func anchorTrackTick() {
         guard let anchor = hudAnchor else {
             stopAnchorTracking()
             return
         }
-        // The pill disappeared without an explicit dismiss (a notice faded on
-        // its own timer) — send the window home and stop polling.
+        // The pill disappeared without an explicit dismiss (dictation finished,
+        // a notice faded) — send the window home and stop polling. But WAIT for
+        // the exit animation (~0.3s) first: repositioning the window while the
+        // pill is mid-fade flashed a ghost of it at the new spot.
         let pillVisible = state == .recording || state == .transcribing
             || insertionReceipt != nil || transientNotice != nil
         guard pillVisible else {
-            setHUDAnchor(nil)
+            pillGoneTicks += 1
+            if pillGoneTicks >= 2 { // ≥500ms at 4 Hz — fade is long done
+                setHUDAnchor(nil)
+            }
             return
         }
+        pillGoneTicks = 0
 
         let current = AccessibilityCapture.focusedEditableFieldTarget()
 
@@ -440,11 +547,14 @@ final class SessionManager {
                     receiptHidden = false
                     scheduleReceiptAutoDismiss(receipt)
                 }
-                // Deliberately DON'T follow the caret here: the receipt stays
-                // pinned where the insertion BEGAN (its pre-paste anchor), marking
-                // the start of the transcribed text, rather than chasing the caret
-                // to the end of what was just typed. The dismiss checks above still
-                // track the live caret to retire it on edits.
+                // Follow the LIVE cursor. A fixed pin drifts badly in composers
+                // that grow/reflow after the paste (every chat + messaging app:
+                // the text slides up through the pinned screen point). Tracking
+                // lets the receipt settle at the cursor once the reflow finishes
+                // and hold there. The dismiss checks above run FIRST, so a genuine
+                // user edit still retires it before this repositions — only the
+                // post-paste settle (inside the grace window) moves the pill.
+                followAnchorGeometry(current)
             } else if current != nil {
                 // A single tick resolving a DIFFERENT element is usually WebKit/AX
                 // identity flapping (Mail's compose body hands back non-equal
@@ -490,16 +600,34 @@ final class SessionManager {
     /// Reposition only on real movement — AX geometry jitters by a pixel —
     /// but always refresh the stored identity.
     private func followAnchorGeometry(_ target: AccessibilityCapture.FieldTarget) {
-        // Compare the rect the pill actually positions against (caret when
-        // available), so the pill follows the cursor line to line, not just the
-        // field as it grows.
-        let old = hudAnchor?.anchorRect ?? .zero
-        let f = target.anchorRect
-        if abs(f.minX - old.minX) > 1 || abs(f.minY - old.minY) > 1 ||
-           abs(f.width - old.width) > 1 || abs(f.height - old.height) > 1 {
+        // Placement tracks the CARET only. Reposition when it moves, appears
+        // (bottom-center → caret once the assistive tree unlocks), or disappears
+        // (caret → bottom-center). When neither old nor new has a caret, there's
+        // nothing to follow — just refresh the tracked identity.
+        let oldCaret = hudAnchor?.caret
+        let newCaret = target.caret
+        switch (oldCaret, newCaret) {
+        case (nil, nil):
+            // No caret either side — but the FIELD may have moved (window drag,
+            // composer reflow), and the receipt's gutter dock derives from it.
+            let old = hudAnchor?.frame ?? .zero
+            let f = target.frame
+            if abs(f.minX - old.minX) > 1 || abs(f.minY - old.minY) > 1 ||
+               abs(f.width - old.width) > 1 || abs(f.height - old.height) > 1 {
+                setHUDAnchor(target)
+            } else {
+                hudAnchor = target
+            }
+        case let (old?, new?):
+            if abs(new.minX - old.minX) > 1 || abs(new.minY - old.minY) > 1 ||
+               abs(new.width - old.width) > 1 || abs(new.height - old.height) > 1 {
+                setHUDAnchor(target)
+            } else {
+                hudAnchor = target
+            }
+        default:
+            // Caret appeared or disappeared — re-place.
             setHUDAnchor(target)
-        } else {
-            hudAnchor = target
         }
     }
 
@@ -510,8 +638,16 @@ final class SessionManager {
     /// `log show --process Yorick --last 5m | grep receipt`
     /// (print() is lost for apps launched via Finder/open).
     private static let receiptLog = Logger(subsystem: "com.heyyorick.Yorick", category: "receipt")
+    /// HUD placement diagnostics: `log show --process Yorick --info | grep placement`.
+    private static let placementLog = Logger(subsystem: "com.heyyorick.Yorick", category: "placement")
+
+    /// The post-insertion receipt (Cleanup/Undo pill) is opt-in: the inserted
+    /// words appearing at the cursor are their own confirmation, and with flip
+    /// gone the receipt's real payload is just Cleanup. Off by default.
+    static let showInsertionReceiptKey = "showInsertionReceipt"
 
     private func presentInsertionReceipt(captureID: UUID, insertedText: String, targetApp: String?) {
+        guard UserDefaults.standard.bool(forKey: Self.showInsertionReceiptKey) else { return }
         let receipt = InsertionReceipt(
             captureID: captureID,
             insertedText: insertedText,
@@ -524,6 +660,11 @@ final class SessionManager {
         receiptContentSignature = nil
         receiptBaselineFieldHeight = nil
         receiptBaselineCaret = nil
+        // Move the pill from its recording spot to the receipt's gutter dock —
+        // the anchor was set before the receipt existed, so re-place it now.
+        if let anchor = hudAnchor {
+            setHUDAnchor(anchor)
+        }
         // receiptPreInsertSignature is NOT reset here — the insert paths
         // capture it right before pasting, just ahead of this call.
         Self.receiptLog.info("presented target=\(targetApp ?? "nil", privacy: .public) preInsert=\(self.receiptPreInsertSignature?.raw ?? "nil", privacy: .public)")

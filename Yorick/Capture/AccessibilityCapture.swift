@@ -111,8 +111,14 @@ enum AccessibilityCapture {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return false }
         let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
         var focusedRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-              let focused = focusedRef else { return false }
+        if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) != .success
+            || focusedRef == nil {
+            // Same Electron unlock as focusedEditability — a locked tree reads
+            // as "nothing focused" and would wrongly divert the paste to a note.
+            enableAssistiveTree(pid: frontApp.processIdentifier, enhanced: true)
+            AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef)
+        }
+        guard let focused = focusedRef else { return false }
         let element = focused as! AXUIElement
         // Never blind-paste a transcript into a password field.
         if attribute(element, kAXSubroleAttribute) as? String == "AXSecureTextField" { return false }
@@ -132,10 +138,6 @@ enum AccessibilityCapture {
         /// exposes it — Pages, Mail, and native text views do once their
         /// assistive tree is unlocked. Nil for AX-opaque targets.
         var caret: CGRect? = nil
-
-        /// What the pill positions against: the caret when we have it (pill rides
-        /// the cursor), else the field frame (pill hugs the field's top-left).
-        var anchorRect: CGRect { caret ?? frame }
 
         /// Whether this is the same field as `other`. Element identity is the
         /// strong signal, but WebKit (Mail's compose body) and some Electron
@@ -184,6 +186,11 @@ enum AccessibilityCapture {
 
         let role = attribute(element, kAXRoleAttribute) as? String ?? ""
         let isRich = frontApp.bundleIdentifier.map { richEditorBundleIDs.contains($0) } ?? false
+        // No follower-frame heuristics here: Google Docs' hidden input reports a
+        // STATIC frame (top of the content area, tested with Chrome's full
+        // accessibility tree unlocked — no range/marker/line bounds either), so
+        // inferring a caret from a hidden input's frame produced a confidently
+        // wrong pill. Canvas editors that expose no caret get bottom-center.
         let caret = caretRect(
             focusedElement: element,
             role: role,
@@ -246,6 +253,11 @@ enum AccessibilityCapture {
         // the caret; WebKit (Mail) exposes it via text markers instead.
         if let r = boundsForSelectedRange(element), isSaneCaret(r, within: fieldFrame) { return r }
         if let r = boundsForSelectedTextMarker(element), isSaneCaret(r, within: fieldFrame) { return r }
+        // Widen coverage: some editors expose the caret's LINE but not usable
+        // selected-range bounds (or return garbage for them, like Terminal).
+        // The line rectangle gives the right vertical position — enough to place
+        // the pill on the caret's line rather than falling to bottom-center.
+        if let r = boundsForInsertionLine(element), isSaneCaret(r, within: fieldFrame) { return r }
         return nil
     }
 
@@ -264,6 +276,25 @@ enum AccessibilityCapture {
         var rangeRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
               let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
+        var out: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element, kAXBoundsForRangeParameterizedAttribute as CFString, rangeRef, &out
+        ) == .success, let out, CFGetTypeID(out) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue((out as! AXValue), .cgRect, &rect) else { return nil }
+        return rect
+    }
+
+    /// The caret's LINE rectangle, via insertion-point-line → range-for-line →
+    /// bounds. A fallback for editors that expose line info but not a usable
+    /// selected-range bound; gives correct vertical placement, left-aligned.
+    private static func boundsForInsertionLine(_ element: AXUIElement) -> CGRect? {
+        guard var line = attribute(element, kAXInsertionPointLineNumberAttribute) as? Int else { return nil }
+        guard let lineNumber = CFNumberCreate(nil, .intType, &line) else { return nil }
+        var rangeRef: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element, kAXRangeForLineParameterizedAttribute as CFString, lineNumber, &rangeRef
+        ) == .success, let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
         var out: CFTypeRef?
         guard AXUIElementCopyParameterizedAttributeValue(
             element, kAXBoundsForRangeParameterizedAttribute as CFString, rangeRef, &out
@@ -420,8 +451,17 @@ enum AccessibilityCapture {
         let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
 
         var focusedRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-              let focused = focusedRef else {
+        if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) != .success
+            || focusedRef == nil {
+            // Electron apps (VS Code, Cursor) expose NO tree — not even a focused
+            // element — until the assistive flags are set, and unlike Pages-class
+            // apps they need the stronger AXEnhancedUserInterface. "The app claims
+            // nothing is focused at all" is precisely the case where escalating
+            // can't hurt and is the only thing that helps: unlock and re-read.
+            enableAssistiveTree(pid: frontApp.processIdentifier, enhanced: true)
+            AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef)
+        }
+        guard let focused = focusedRef else {
             return FocusedEditability(
                 isEditable: false,
                 summary: "focused=none app=\(frontApp.localizedName ?? "unknown")",

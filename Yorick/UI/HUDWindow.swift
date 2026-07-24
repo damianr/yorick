@@ -69,4 +69,15 @@ final class HUDWindow: NSPanel {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    /// Don't let AppKit drag the panel back on-screen. We position this oversized
+    /// transparent window precisely so the pill (pinned to one edge) lands at the
+    /// caret; when the caret is near the top or bottom of the screen the window's
+    /// far edge legitimately hangs past the screen. AppKit's default constraint
+    /// shoved the whole window — and the pill with it — back inside, which is what
+    /// made the pill sit "low" for first-line carets. The pill edge itself always
+    /// stays on-screen (it's at the on-screen caret), so this is safe.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
 }

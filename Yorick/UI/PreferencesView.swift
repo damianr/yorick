@@ -29,6 +29,7 @@ struct SettingsView: View {
     @State private var activeMicrophoneMode = SettingsView.currentMicrophoneModeName()
     @State private var whisperDownloading = false
     @AppStorage(AudioDebugSettings.keepAudioKey) private var keepDebugAudio = AudioDebugSettings.defaultKeepAudio
+    @AppStorage(SessionManager.showInsertionReceiptKey) private var showInsertionReceipt = false
 
     /// Never shown to users; enabled per-machine for the founder's builds.
     private var adminMode: Bool { UserDefaults.standard.bool(forKey: "adminMode") }
@@ -51,6 +52,17 @@ struct SettingsView: View {
                     Spacer(minLength: 16)
                     ShortcutRecorderView(name: .toggleSession, label: "")
                         .frame(maxWidth: 200)
+                }
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        rowLabel("Cleanup after dictation")
+                        caption("After your words land, a small pill offers Clean up (an on-device disfluency pass) and Undo for a few seconds. Off keeps dictation invisible — the words themselves are the receipt.")
+                    }
+                    Spacer(minLength: 16)
+                    Toggle("", isOn: $showInsertionReceipt)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .controlSize(.small)
                 }
 
                 sectionLabel("MICROPHONE")
