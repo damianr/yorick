@@ -98,15 +98,50 @@ xcrun stapler staple "$APP"
 rm -f "$ZIP"
 echo "✓ app notarized + stapled"
 
-# ── 4. DMG → notarize + staple ──────────────────────────────────────────────
+# ── 4. Styled DMG → notarize + staple ───────────────────────────────────────
 say "Building + notarizing DMG"
 DMG="$DIST/$APP_NAME-$VERSION.dmg"
+VOL="$APP_NAME"
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-rm -f "$DMG"
-hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+mkdir "$STAGE/.background"
+cp scripts/assets/dmg-background.png "$STAGE/.background/background.png"
+
+# Build a read-write DMG, dress the Finder window (background + icon layout),
+# then compress it read-only. The .DS_Store Finder writes carries the styling.
+RWDMG="$(mktemp -u).dmg"
+hdiutil detach "/Volumes/$VOL" >/dev/null 2>&1 || true
+hdiutil create -volname "$VOL" -srcfolder "$STAGE" -fs HFS+ -format UDRW -ov "$RWDMG" >/dev/null
 rm -rf "$STAGE"
+hdiutil attach "$RWDMG" -readwrite -noverify -noautoopen >/dev/null
+sleep 2
+osascript <<APPLESCRIPT
+tell application "Finder"
+  tell disk "$VOL"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set the bounds of container window to {300, 160, 960, 590}
+    set opts to the icon view options of container window
+    set arrangement of opts to not arranged
+    set icon size of opts to 104
+    set text size of opts to 12
+    set background picture of opts to file ".background:background.png"
+    set position of item "$APP_NAME.app" of container window to {180, 190}
+    set position of item "Applications" of container window to {480, 190}
+    update without registering applications
+    delay 1
+    close
+  end tell
+end tell
+APPLESCRIPT
+sync
+hdiutil detach "/Volumes/$VOL" >/dev/null
+rm -f "$DMG"
+hdiutil convert "$RWDMG" -format UDZO -imagekey zlib-level=9 -o "$DMG" >/dev/null
+rm -f "$RWDMG"
 codesign --force --timestamp -s "$SIGN_ID" "$DMG"
 xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$DMG"

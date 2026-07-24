@@ -21,10 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         let trusted = AXIsProcessTrusted()
         print("[AppDelegate] Accessibility trusted: \(trusted)")
-        if !trusted {
-            // Without AX trust every capture silently becomes an observation
-            // and dictation can't paste — surface the system prompt instead of
-            // degrading invisibly.
+        // Only surface the system prompt for RETURNING users who've somehow lost
+        // the grant. First-run users reach the Accessibility step in onboarding,
+        // which drives the prompt in context — firing it at launch jumped ahead
+        // of that flow and greeted brand-new users with a bare system dialog.
+        if !trusted, UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
             // Literal key: kAXTrustedCheckOptionPrompt is a global var and not
             // concurrency-safe under Swift 6 strict checking.
             let options = ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary
