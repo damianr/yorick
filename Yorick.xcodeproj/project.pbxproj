@@ -42,6 +42,7 @@
 		DA6EEAFAB95E78E24F215A7F /* MicrophoneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */; };
 		DEAE4E20CE687BB5866E6387 /* LocalIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 813E2EEDBADFF07063F688D3 /* LocalIntelligence.swift */; };
 		DEC06EE9DF9E9D1DFECDDAE5 /* StreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B9810D94D0CD31393F67AF /* StreamView.swift */; };
+		DFA546D3EDB08D812550DDBD /* LoginItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D3C0B62573CB6B00A999CE /* LoginItem.swift */; };
 		E0B38D029EDAB11BC8B787BC /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 724E7B825377EB041BA97910 /* MenuBarView.swift */; };
 		ECEE2A79F5E3F5EF787212BF /* StatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF32C5AD14E35C4090236750 /* StatusIndicator.swift */; };
 		EF12E5AC1C7B78D778526C1D /* ShortcutRecorderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */; };
@@ -78,6 +79,7 @@
 		7DC33F800989734476CB1D6D /* HUDWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDWindow.swift; sourceTree = "<group>"; };
 		80EBDC0501A791A7B91B11F8 /* CaptureRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRenderer.swift; sourceTree = "<group>"; };
 		813E2EEDBADFF07063F688D3 /* LocalIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalIntelligence.swift; sourceTree = "<group>"; };
+		86D3C0B62573CB6B00A999CE /* LoginItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItem.swift; sourceTree = "<group>"; };
 		8AD999AF3A2983F6D044382B /* HUDContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDContentView.swift; sourceTree = "<group>"; };
 		9BC530C070F06B8488BD526B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorderView.swift; sourceTree = "<group>"; };
@@ -228,6 +230,7 @@
 			children = (
 				9BC530C070F06B8488BD526B /* Constants.swift */,
 				1276438ACBDE805AE73A96D8 /* HotkeyManager.swift */,
+				86D3C0B62573CB6B00A999CE /* LoginItem.swift */,
 				2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */,
 			);
 			path = Config;
@@ -332,6 +335,7 @@
 				42E9810E3B801F3C6761BFE0 /* HotkeyManager.swift in Sources */,
 				DEAE4E20CE687BB5866E6387 /* LocalIntelligence.swift in Sources */,
 				05B2B5ED257533861EFF4CB7 /* LocalTranscriber.swift in Sources */,
+				DFA546D3EDB08D812550DDBD /* LoginItem.swift in Sources */,
 				E0B38D029EDAB11BC8B787BC /* MenuBarView.swift in Sources */,
 				DA6EEAFAB95E78E24F215A7F /* MicrophoneManager.swift in Sources */,
 				FBBC63DD1A56828A26A19364 /* NotificationManager.swift in Sources */,

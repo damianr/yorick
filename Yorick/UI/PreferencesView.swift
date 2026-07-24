@@ -30,6 +30,7 @@ struct SettingsView: View {
     @State private var whisperDownloading = false
     @AppStorage(AudioDebugSettings.keepAudioKey) private var keepDebugAudio = AudioDebugSettings.defaultKeepAudio
     @AppStorage(SessionManager.showInsertionReceiptKey) private var showInsertionReceipt = false
+    @State private var opensAtLogin = LoginItem.isEnabled
 
     /// Never shown to users; enabled per-machine for the founder's builds.
     private var adminMode: Bool { UserDefaults.standard.bool(forKey: "adminMode") }
@@ -106,6 +107,20 @@ struct SettingsView: View {
 
                 sectionLabel("PERMISSIONS & SYSTEM")
                 settingsRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        rowLabel("Open at login")
+                        caption("Yorick only hears the key while it's running.")
+                    }
+                    Spacer(minLength: 16)
+                    Toggle("", isOn: Binding(
+                        get: { opensAtLogin },
+                        set: { opensAtLogin = LoginItem.setEnabled($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .controlSize(.small)
+                }
+                settingsRow {
                     rowLabel("Microphone")
                     Spacer()
                     if microphoneAuthorized {
@@ -176,6 +191,7 @@ struct SettingsView: View {
             session.microphoneManager.refresh()
             refreshPermissionState()
             activeMicrophoneMode = Self.currentMicrophoneModeName()
+            opensAtLogin = LoginItem.isEnabled
         }
     }
 

@@ -12,6 +12,7 @@ struct OnboardingView: View {
         case welcome
         case microphone
         case accessibility
+        case autostart
         case tryIt
     }
 
@@ -19,6 +20,7 @@ struct OnboardingView: View {
     @State private var microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     @State private var accessibilityTrusted = AXIsProcessTrusted()
     @State private var practiceText = ""
+    @State private var loginItemEnabled = LoginItem.isEnabled
     @FocusState private var practiceFocused: Bool
 
     private let axPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -31,6 +33,7 @@ struct OnboardingView: View {
             case .welcome: welcome
             case .microphone: microphone
             case .accessibility: accessibility
+            case .autostart: autostart
             case .tryIt: tryIt
             }
 
@@ -110,15 +113,38 @@ struct OnboardingView: View {
         ) {
             if accessibilityTrusted {
                 grantedLabel("Accessibility enabled")
-                primaryButton("Continue") { step = .tryIt }
+                primaryButton("Continue") { step = .autostart }
             } else {
                 primaryButton("Open Accessibility Settings") {
                     let options = ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary
                     AXIsProcessTrustedWithOptions(options)
                 }
                 quietButton("Skip for now — dictation won't type until enabled") {
-                    step = .tryIt
+                    step = .autostart
                 }
+            }
+        }
+    }
+
+    private var autostart: some View {
+        stepLayout(
+            icon: { stepIcon("power", granted: loginItemEnabled) },
+            title: "Always ready",
+            lines: [
+                "Yorick only hears the key while it's running.",
+                "Open it at login so dictation is one hold away after every restart.",
+                "You can change this anytime in System Settings or Yorick's settings."
+            ]
+        ) {
+            if loginItemEnabled {
+                grantedLabel("Opens at login")
+                primaryButton("Continue") { step = .tryIt }
+            } else {
+                primaryButton("Open at Login") {
+                    loginItemEnabled = LoginItem.setEnabled(true)
+                    if loginItemEnabled { step = .tryIt }
+                }
+                quietButton("Not now") { step = .tryIt }
             }
         }
     }
