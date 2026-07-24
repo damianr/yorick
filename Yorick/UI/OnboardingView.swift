@@ -18,6 +18,8 @@ struct OnboardingView: View {
     @State private var step: Step = .welcome
     @State private var microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     @State private var accessibilityTrusted = AXIsProcessTrusted()
+    @State private var practiceText = ""
+    @FocusState private var practiceFocused: Bool
 
     private let axPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -124,16 +126,51 @@ struct OnboardingView: View {
     private var tryIt: some View {
         stepLayout(
             icon: { logo },
-            title: "Try it",
+            title: "Try it here",
             lines: [
-                "Click into any text field — Messages, an email, a doc.",
-                "Hold  ⌥`  , say a sentence, release.",
-                "A small pill appears next to the field while you talk.",
-                "Said something with no field focused? It's in this window, saved."
+                "Click the box, hold  ⌥`  , say a sentence, release."
             ]
         ) {
+            practiceField
+            if practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("It works the same in every app. No text field focused? Your words are saved to this window instead.")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.textTertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 400)
+            } else {
+                grantedLabel("That's it. That's the whole app.")
+            }
             primaryButton("Start using Yorick") { onDone() }
+            Text("Yorick lives in your menu bar. This window is your saved list.")
+                .font(Theme.mono(10))
+                .foregroundStyle(Theme.textTertiary)
         }
+    }
+
+    /// A real text field, so the first dictation happens right here in the
+    /// window: the pill appears, the words land, and the product is understood
+    /// without leaving onboarding.
+    private var practiceField: some View {
+        TextEditor(text: $practiceText)
+            .font(Theme.mono(12))
+            .foregroundStyle(Theme.textPrimary)
+            .scrollContentBackground(.hidden)
+            .padding(10)
+            .frame(width: 400, height: 84)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bgElevated))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(practiceFocused ? Theme.accentPurple.opacity(0.5) : Theme.borderSubtle, lineWidth: 1)
+            )
+            .focused($practiceFocused)
+            .onAppear {
+                // Give the step transition a beat before grabbing focus, so the
+                // caret (and the pill that anchors to it) lands in a settled view.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    practiceFocused = true
+                }
+            }
     }
 
     // MARK: - Pieces

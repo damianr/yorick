@@ -6,13 +6,20 @@ struct ContentView: View {
     @Environment(SessionManager.self) private var session
     @State private var showSettings = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    /// Preview escape hatch: `defaults write com.heyyorick.Yorick forceOnboarding
+    /// -bool true` replays the first-run flow on an install that has already
+    /// completed (or auto-skipped) it. Cleared when the flow finishes.
+    @AppStorage("forceOnboarding") private var forceOnboarding = false
 
     var body: some View {
         ZStack {
             Theme.bgPrimary.ignoresSafeArea()
 
-            if !hasCompletedOnboarding {
-                OnboardingView(onDone: { hasCompletedOnboarding = true })
+            if !hasCompletedOnboarding || forceOnboarding {
+                OnboardingView(onDone: {
+                    hasCompletedOnboarding = true
+                    forceOnboarding = false
+                })
             } else {
                 StreamView()
             }
