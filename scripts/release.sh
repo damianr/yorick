@@ -154,6 +154,14 @@ say "Signing update + generating appcast"
 cp "$DIST/appcast.xml" appcast.xml
 echo "✓ appcast.xml updated (enclosure → $DL_PREFIX$APP_NAME-$VERSION.dmg)"
 
+# Stable-named copy for the marketing site. Made AFTER generate_appcast, which
+# scans $DIST and would otherwise emit a second, bogus appcast entry for it.
+# Same notarized + stapled bytes, version-free name, so the site can link to
+# releases/latest/download/Yorick.dmg once and never touch it again.
+STABLE_DMG="$DIST/$APP_NAME.dmg"
+cp "$DMG" "$STABLE_DMG"
+echo "✓ stable-named copy at $STABLE_DMG"
+
 # ── Done ────────────────────────────────────────────────────────────────────
 say "Release v$VERSION ready"
 cat <<DONE
@@ -161,7 +169,9 @@ cat <<DONE
   Appcast:   appcast.xml   (EdDSA-signed, points at the v$VERSION release asset)
 
   Ship it:
-    1. gh release create v$VERSION "$DMG" --title "Yorick $VERSION" --notes "…"
+    1. gh release create v$VERSION "$DMG" "$STABLE_DMG" --title "Yorick $VERSION" --notes "…"
+       (the second asset keeps a version-free download URL for the marketing site:
+        github.com/$REPO/releases/latest/download/$APP_NAME.dmg)
     2. git add appcast.xml && git commit -m "release: v$VERSION" && git push
        (Sparkle reads appcast.xml from raw.githubusercontent.com/$REPO/main)
 DONE

@@ -2,7 +2,7 @@
 
 **Local-only macOS dictation with a safety net.**
 
-Hold a hotkey (⌥`) and talk. One rule:
+Hold a hotkey (⌥Space) and talk. One rule:
 
 - **In a text field** → your words are typed at the cursor.
 - **Anywhere else** → they're saved, visibly marked, waiting for you.

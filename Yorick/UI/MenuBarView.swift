@@ -1,8 +1,14 @@
 import SwiftUI
+import KeyboardShortcuts
 
 struct MenuBarView: View {
     @Environment(SessionManager.self) private var session
     @Environment(\.openWindow) private var openWindow
+
+    /// Read live: the shortcut is remappable, so a hardcoded label goes stale.
+    private var shortcutLabel: String {
+        KeyboardShortcuts.getShortcut(for: .toggleSession).map(String.init(describing:)) ?? "⌥Space"
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -20,7 +26,7 @@ struct MenuBarView: View {
     private var statusSection: some View {
         switch session.state {
         case .idle:
-            Label("Ready — hold ⌥` to capture", systemImage: "mic.circle")
+            Label("Ready — hold \(shortcutLabel) to capture", systemImage: "mic.circle")
                 .foregroundStyle(.secondary)
         case .transcribing:
             HStack(spacing: 6) {

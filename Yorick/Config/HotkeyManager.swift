@@ -2,8 +2,46 @@ import AppKit
 import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
-    // Option + ` (backtick): minimal interference with mouse/scroll during recording.
-    static let toggleSession = Self("toggleSession", default: .init(.backtick, modifiers: [.option]))
+    // Option + Space: the de facto default for local dictation tools (Handy,
+    // Superwhisper both ship it), so it's what users reach for first. Held, not
+    // tapped, so it doesn't collide with the OS input-source switcher.
+    static let toggleSession = Self("toggleSession", default: .init(.space, modifiers: [.option]))
+}
+
+/// How the trigger is written for humans. `symbols` is the compact glyph form
+/// ("⌥Space"); `spelled` names the modifiers in words ("Option and Space"),
+/// because ⌥ ⌘ ⌃ are jargon to plenty of people and onboarding shouldn't assume.
+@MainActor
+enum ShortcutLabel {
+    static var symbols: String {
+        KeyboardShortcuts.getShortcut(for: .toggleSession)
+            .map(String.init(describing:)) ?? "⌥Space"
+    }
+
+    static var spelled: String {
+        guard let shortcut = KeyboardShortcuts.getShortcut(for: .toggleSession) else {
+            return "Option and Space"
+        }
+        let mods = shortcut.modifiers
+        var words: [String] = []
+        if mods.contains(.control) { words.append("Control") }
+        if mods.contains(.option) { words.append("Option") }
+        if mods.contains(.shift) { words.append("Shift") }
+        if mods.contains(.command) { words.append("Command") }
+
+        // Strip the modifier glyphs off the description; what remains is the key
+        // name, which avoids maintaining a table of every key.
+        var key = String(describing: shortcut)
+        for glyph in ["⌃", "⌥", "⇧", "⌘"] { key = key.replacingOccurrences(of: glyph, with: "") }
+        key = key.trimmingCharacters(in: .whitespaces)
+        if !key.isEmpty { words.append(key) }
+
+        switch words.count {
+        case 0: return "Option and Space"
+        case 1: return words[0]
+        default: return words.dropLast().joined(separator: " and ") + " and " + words.last!
+        }
+    }
 }
 
 @MainActor
@@ -15,12 +53,14 @@ enum HotkeyManager {
     ) {
         KeyboardShortcuts.removeAllHandlers()
 
-        // Migrate from old shortcut: if the stored shortcut is the old ⌥⇧S,
-        // reset to the new default (⌥`)
+        // Migrate off superseded defaults (⌥⇧S, then ⌥`) so anyone who never
+        // picked their own shortcut lands on the current default. An explicitly
+        // chosen shortcut is anything else, and is left alone.
         if let current = KeyboardShortcuts.getShortcut(for: .toggleSession),
-           current.key == .s && current.modifiers == [.option, .shift] {
+           (current.key == .s && current.modifiers == [.option, .shift])
+            || (current.key == .backtick && current.modifiers == [.option]) {
             KeyboardShortcuts.reset(.toggleSession)
-            print("[HotkeyManager] Migrated from old ⌥⇧S to new default")
+            print("[HotkeyManager] Migrated superseded default to ⌥Space")
         }
 
         let shortcut = KeyboardShortcuts.getShortcut(for: .toggleSession)

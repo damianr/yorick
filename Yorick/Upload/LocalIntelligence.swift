@@ -46,9 +46,15 @@ enum LocalIntelligence {
                 identical words, meaning, tone, and length minus the \
                 disfluencies. Never summarize, rephrase, answer, or add commentary.
 
-                Example input: "so um i think we should, we should just ship it, you know? what do you think?"
-                Example output: "So I think we should just ship it. What do you think?"
+                Your output must contain only words that appeared in the input. If \
+                you are unsure, return the input unchanged rather than writing \
+                anything new.
                 """)
+            // Deliberately NO few-shot example here. An earlier version included
+            // one, and on imperative dictations ("refactor the session store…")
+            // the model emitted the EXAMPLE'S output verbatim instead of editing
+            // the input — silently replacing the user's words with unrelated
+            // text. Measured: 3/3 leaks with the example, 0/15 without it.
             let response = try await session.respond(to: transcript, generating: CleanedTranscript.self)
             let cleaned = response.content.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleaned.isEmpty else { throw LocalIntelligenceError.emptyResponse }

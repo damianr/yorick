@@ -1,6 +1,6 @@
 # Yorick
 
-Local-only macOS dictation with a safety net: hold ⌥` and talk — in a text field your
+Local-only macOS dictation with a safety net: hold ⌥Space and talk — in a text field your
 words are typed; anywhere else they're saved. Nothing leaves the Mac (no API keys, no
 cloud; the only model surface is Apple's on-device Foundation Models for Cleanup).
 

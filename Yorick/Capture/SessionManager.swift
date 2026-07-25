@@ -100,6 +100,11 @@ final class SessionManager {
     /// Geometry fallback for fields exposing no content info: a send snaps an
     /// autogrown composer back toward its single-line height.
     private var receiptBaselineFieldHeight: CGFloat?
+    /// The words as spoken, kept so auto-cleanup can be reverted.
+    private(set) var rawTranscriptForRevert: String?
+    /// Whether auto-cleanup actually changed the text — the receipt only has a
+    /// reason to exist (and offer Revert) when it did.
+    private(set) var cleanupApplied = false
     /// Caret position just after the paste, for content-blind fields (Mail's
     /// WebKit body): any later caret movement means the user typed or edited, so
     /// the receipt retires — ⌘Z/Cleanup no longer map cleanly to our insertion.
@@ -660,6 +665,8 @@ final class SessionManager {
         receiptContentSignature = nil
         receiptBaselineFieldHeight = nil
         receiptBaselineCaret = nil
+        rawTranscriptForRevert = nil
+        cleanupApplied = false
         // Move the pill from its recording spot to the receipt's gutter dock —
         // the anchor was set before the receipt existed, so re-place it now.
         if let anchor = hudAnchor {
@@ -669,6 +676,8 @@ final class SessionManager {
         // capture it right before pasting, just ahead of this call.
         Self.receiptLog.info("presented target=\(targetApp ?? "nil", privacy: .public) preInsert=\(self.receiptPreInsertSignature?.raw ?? "nil", privacy: .public)")
         scheduleReceiptAutoDismiss(receipt)
+        // The setting means "clean my dictation", not "show me a button".
+        autoCleanupLastInsertion()
     }
 
     /// Each VISIBLE stretch gets 10s before the receipt fades — the clock
@@ -728,64 +737,58 @@ final class SessionManager {
         return receipt.targetApp == nil || front == receipt.targetApp
     }
 
-    /// Undo the just-inserted dictation via ⌘Z (the paste is one undo group
-    /// in virtually every app).
-    func undoLastInsertion() {
+    /// Auto-cleanup: with the setting on, the transcript is cleaned the moment it
+    /// lands, with no button to press. Raw text is inserted first and only
+    /// replaced if cleanup succeeds, so every failure mode (Apple's guardrail
+    /// refuses — it reads our own word "pill" as drug content — model
+    /// unavailable, focus moved) simply leaves the words as spoken. The receipt's
+    /// only job afterwards is Revert.
+    func autoCleanupLastInsertion() {
         guard let receipt = insertionReceipt, !cleanupInProgress else { return }
-        guard insertionTargetStillFocused(receipt) else {
-            dismissInsertionReceipt()
-            transientNotice = TransientNotice(message: "Focus moved — undo skipped to avoid editing the wrong app")
-            return
-        }
-        Self.sendUndoKeystroke()
-        dismissInsertionReceipt()
-        transientNotice = TransientNotice(
-            message: "Insertion undone",
-            style: .receipt
-        )
-        print("[Session] Undo: removed insertion for \(receipt.captureID)")
-    }
-
-    /// Replace the inserted text with a disfluency-free version: fast Claude
-    /// pass, then ⌘Z + re-paste. Focus is re-verified after the round-trip.
-    func cleanupLastInsertion() {
-        guard let receipt = insertionReceipt, !cleanupInProgress else { return }
-        guard LocalIntelligence.isCleanupAvailable else {
-            transientNotice = TransientNotice(message: "Cleanup needs Apple Intelligence — not available on this Mac")
-            return
-        }
-        guard insertionTargetStillFocused(receipt) else {
-            dismissInsertionReceipt()
-            transientNotice = TransientNotice(message: "Focus moved — cleanup skipped to avoid editing the wrong app")
-            return
-        }
+        guard LocalIntelligence.isCleanupAvailable else { return }
+        guard insertionTargetStillFocused(receipt) else { return }
         cleanupInProgress = true
-        receiptDismissTask?.cancel()
         Task { [weak self] in
+            defer { Task { @MainActor in self?.cleanupInProgress = false } }
             do {
                 let cleaned = try await LocalIntelligence.cleanupTranscript(receipt.insertedText)
                 guard let self, self.insertionReceipt?.id == receipt.id else { return }
-                // Re-verify: the user may have clicked away during the API call.
-                guard self.insertionTargetStillFocused(receipt) else {
-                    self.dismissInsertionReceipt()
-                    self.transientNotice = TransientNotice(message: "Focus moved — cleanup cancelled, original text kept")
+                let original = receipt.insertedText.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Nothing to show if the model returned the text unchanged.
+                guard cleaned.trimmingCharacters(in: .whitespacesAndNewlines) != original else {
+                    Self.receiptLog.info("auto-cleanup: no change")
+                    self.dismissInsertionReceipt(reason: "auto-cleanup made no change")
                     return
                 }
+                guard self.insertionTargetStillFocused(receipt) else { return }
                 Self.sendUndoKeystroke()
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 Self.insertTextAtCursor(cleaned + " ")
-                self.dismissInsertionReceipt()
-                self.transientNotice = TransientNotice(
-                    message: "Cleaned up → \(receipt.targetApp ?? "field")",
-                    style: .receipt
-                )
-                print("[Session] Cleanup: replaced insertion for \(receipt.captureID)")
+                self.rawTranscriptForRevert = receipt.insertedText
+                self.cleanupApplied = true
+                Self.receiptLog.info("auto-cleanup applied")
             } catch {
+                // Silent by design: the user still has exactly what they said.
+                Self.receiptLog.info("auto-cleanup skipped: \(error.localizedDescription, privacy: .public)")
                 guard let self, self.insertionReceipt?.id == receipt.id else { return }
-                self.cleanupInProgress = false
-                self.transientNotice = TransientNotice(message: "Cleanup failed — original text kept (\(error.localizedDescription))")
-                print("[Session] Cleanup failed: \(error)")
+                self.dismissInsertionReceipt(reason: "auto-cleanup unavailable")
             }
+        }
+    }
+
+    /// Put back exactly what was said, undoing the cleanup edit.
+    func revertCleanup() {
+        guard let receipt = insertionReceipt, let raw = rawTranscriptForRevert else { return }
+        guard insertionTargetStillFocused(receipt) else {
+            dismissInsertionReceipt()
+            transientNotice = TransientNotice(message: "Focus moved — revert skipped")
+            return
+        }
+        Self.sendUndoKeystroke()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            Self.insertTextAtCursor(raw)
+            self.dismissInsertionReceipt(reason: "reverted to raw transcript")
         }
     }
 

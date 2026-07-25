@@ -1,12 +1,14 @@
 import SwiftUI
 import AVFoundation
 import ApplicationServices
+import KeyboardShortcuts
 
 /// First-run flow: what Yorick does, the two permissions it needs, and a
 /// ten-second first dictation. Zero configuration by design — no accounts,
 /// no keys, no downloads on the default path.
 struct OnboardingView: View {
     let onDone: () -> Void
+    @Environment(SessionManager.self) private var session
 
     private enum Step: Int, CaseIterable {
         case welcome
@@ -22,8 +24,37 @@ struct OnboardingView: View {
     @State private var practiceText = ""
     @State private var loginItemEnabled = LoginItem.isEnabled
     @FocusState private var practiceFocused: Bool
+    /// Whether the trigger has ever fired since we reached the practice step. If
+    /// it hasn't after a while, the likeliest cause is another app already owning
+    /// the shortcut (⌥Space is Raycast's default, and Handy's), which otherwise
+    /// looks exactly like "Yorick is broken".
+    @State private var hotkeyFired = false
+    @State private var showConflictHelp = false
 
     private let axPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    /// The live shortcut, so onboarding never tells the user to press a key that
+    /// isn't bound (it's remappable, and the default has changed before).
+    private var shortcut: String { ShortcutLabel.symbols }
+    /// Same trigger, named in words for anyone who doesn't read ⌥ as "Option".
+    private var shortcutSpelled: String { ShortcutLabel.spelled }
+
+    /// Dictation needs both permissions: the microphone to hear, Accessibility to
+    /// type. Missing either means the app cannot do its one job.
+    private var isReady: Bool { microphoneGranted && accessibilityTrusted }
+
+    private var missingPermissions: [String] {
+        var missing: [String] = []
+        if !microphoneGranted { missing.append("Microphone") }
+        if !accessibilityTrusted { missing.append("Accessibility") }
+        return missing
+    }
+
+    /// macOS prompts for the mic exactly once. After a denial the only route is
+    /// System Settings, so the button has to change or the step is a dead end.
+    private var microphoneDenied: Bool {
+        AVCaptureDevice.authorizationStatus(for: .audio) == .denied
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,6 +87,7 @@ struct OnboardingView: View {
             // step advances the moment the toggle flips, no relaunch needed.
             accessibilityTrusted = AXIsProcessTrusted()
             microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+            if session.state != .idle { hotkeyFired = true }
         }
     }
 
@@ -66,7 +98,8 @@ struct OnboardingView: View {
             icon: { logo },
             title: "Talk instead of type",
             lines: [
-                "Hold  ⌥`  and speak. Release to finish.",
+                "Hold  \(shortcut)  and speak. Release to finish.",
+                "(that's \(shortcutSpelled))",
                 "In a text field, your words are typed.",
                 "Anywhere else, they're saved for later.",
                 "Everything happens on your Mac. Nothing is uploaded, ever."
@@ -88,6 +121,14 @@ struct OnboardingView: View {
             if microphoneGranted {
                 grantedLabel("Microphone access granted")
                 primaryButton("Continue") { step = .accessibility }
+            } else if microphoneDenied {
+                // Already denied: macOS won't ask again, so send them to Settings.
+                primaryButton("Open Microphone Settings") {
+                    openPrivacyPane("Privacy_Microphone")
+                }
+                quietButton("Skip for now — Yorick can't hear you until this is on") {
+                    step = .accessibility
+                }
             } else {
                 primaryButton("Allow Microphone Access") {
                     AVCaptureDevice.requestAccess(for: .audio) { granted in
@@ -96,6 +137,9 @@ struct OnboardingView: View {
                             if granted { step = .accessibility }
                         }
                     }
+                }
+                quietButton("Skip for now — Yorick can't hear you until this is on") {
+                    step = .accessibility
                 }
             }
         }
@@ -149,21 +193,31 @@ struct OnboardingView: View {
         }
     }
 
+    @ViewBuilder
     private var tryIt: some View {
+        if isReady { tryItReady } else { tryItBlocked }
+    }
+
+    private var tryItReady: some View {
         stepLayout(
             icon: { logo },
             title: "Try it here",
             lines: [
-                "Click the box, hold  ⌥`  , say a sentence, release."
+                "Click the box, then hold  \(shortcut)  and say a sentence.",
+                "That's \(shortcutSpelled). Release when you're done."
             ]
         ) {
             practiceField
             if practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text("It works the same in every app. No text field focused? Your words are saved to this window instead.")
-                    .font(Theme.mono(10))
-                    .foregroundStyle(Theme.textTertiary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 400)
+                if showConflictHelp && !hotkeyFired {
+                    conflictHelp
+                } else {
+                    Text("It works the same in every app. No text field focused? Your words are saved to this window instead.")
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.textTertiary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 400)
+                }
             } else {
                 grantedLabel("That's it. That's the whole app.")
             }
@@ -172,6 +226,90 @@ struct OnboardingView: View {
                 .font(Theme.mono(10))
                 .foregroundStyle(Theme.textTertiary)
         }
+        .task(id: step) {
+            // Only arm the hint once we're actually asking them to press it.
+            guard step == .tryIt else { return }
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            if !hotkeyFired { showConflictHelp = true }
+        }
+    }
+
+    /// Shown when the trigger hasn't fired after a beat: the failure a user can't
+    /// diagnose alone. Rebinding is offered right here rather than in Settings,
+    /// because this is the moment they discover it.
+    private var conflictHelp: some View {
+        VStack(spacing: 8) {
+            Text("Nothing happening?")
+                .font(Theme.mono(11, weight: .semibold))
+                .foregroundStyle(Theme.accentAmber)
+            Text("Another app may already use \(shortcut). Launchers like Raycast and other dictation apps often claim it. Pick a different trigger:")
+                .font(Theme.mono(10))
+                .foregroundStyle(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 400)
+            ShortcutRecorderView(name: .toggleSession, label: "")
+                .frame(maxWidth: 220)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 10).fill(Theme.accentAmber.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10).stroke(Theme.accentAmber.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    /// Skipping a permission used to land here anyway, on a practice box that
+    /// could never work. Say plainly what's missing and offer the way to fix it
+    /// instead of pretending there's something to try.
+    private var tryItBlocked: some View {
+        stepLayout(
+            icon: {
+                ZStack {
+                    Circle().fill(Theme.accentAmber.opacity(0.12)).frame(width: 72, height: 72)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 26, weight: .medium))
+                        .foregroundStyle(Theme.accentAmber)
+                }
+            },
+            title: "Not ready yet",
+            lines: [
+                "Yorick needs \(missingPermissions.joined(separator: " and ")) to work.",
+                "Until then, holding \(shortcut) will do nothing at all."
+            ]
+        ) {
+            VStack(spacing: 8) {
+                if !microphoneGranted {
+                    primaryButton("Turn on Microphone") {
+                        if microphoneDenied {
+                            openPrivacyPane("Privacy_Microphone")
+                        } else {
+                            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                                DispatchQueue.main.async { microphoneGranted = granted }
+                            }
+                        }
+                    }
+                }
+                if !accessibilityTrusted {
+                    primaryButton("Turn on Accessibility") {
+                        let options = ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary
+                        AXIsProcessTrustedWithOptions(options)
+                    }
+                }
+            }
+            Text("This screen updates the moment you flip the switch.")
+                .font(Theme.mono(10))
+                .foregroundStyle(Theme.textTertiary)
+            quietButton("Finish anyway — you can turn these on later in Settings") {
+                onDone()
+            }
+        }
+    }
+
+    private func openPrivacyPane(_ anchor: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     /// A real text field, so the first dictation happens right here in the

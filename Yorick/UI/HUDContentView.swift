@@ -49,9 +49,11 @@ struct HUDContentView: View {
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
 
-                    // Post-insertion receipt: Cleanup / Undo, attached to its
-                    // field — hidden on blur, back on refocus.
-                    if let receipt = session.insertionReceipt, !session.receiptHidden {
+                    // Post-insertion receipt: exists only while auto-cleanup is
+                    // running or has actually rewritten something, and offers the
+                    // one thing the user can't do by hand — Revert.
+                    if let receipt = session.insertionReceipt, !session.receiptHidden,
+                       session.cleanupApplied || session.cleanupInProgress {
                         insertionReceiptPill(receipt)
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
@@ -100,18 +102,11 @@ struct HUDContentView: View {
             if session.cleanupInProgress {
                 cleaningPill
             } else if receiptHovering {
-                VStack(alignment: .leading, spacing: 5) {
-                    if LocalIntelligence.isCleanupAvailable {
-                        receiptOption("wand.and.stars", "Clean up") {
-                            session.cleanupLastInsertion()
-                        }
-                    }
-                    receiptOption("arrow.uturn.backward", "Undo") {
-                        session.undoLastInsertion()
-                    }
-                    receiptOption("xmark", "Dismiss", dim: true) {
-                        session.dismissInsertionReceipt()
-                    }
+                // One action. ⌘Z already undoes the insertion and the text is
+                // right there to edit, so the only thing the user can't do
+                // themselves is put back the words Cleanup rewrote.
+                receiptOption("arrow.uturn.backward", "Revert to what I said") {
+                    session.revertCleanup()
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottomLeading)))
             }
