@@ -49,22 +49,14 @@ struct HUDContentView: View {
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
 
-                    // Post-insertion receipt: appears only once auto-cleanup has
-                    // actually rewritten something, and offers the one thing the
-                    // user can't do by hand — Revert. While cleanup is still
-                    // running the transcribing pill stays up instead (below).
-                    if let receipt = session.insertionReceipt, !session.receiptHidden,
-                       session.cleanupApplied, !session.cleanupInProgress {
+                    // Post-insertion receipt: the skull sits in the gutter beside
+                    // the inserted text whenever Cleanup is enabled, offering it.
+                    if let receipt = session.insertionReceipt, !session.receiptHidden {
                         insertionReceiptPill(receipt)
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
 
-                    // Recording/transcribing pills. Cleanup keeps the transcribing
-                    // spinner up rather than introducing a second pill: it's the
-                    // same "still working" state from the user's side, and the old
-                    // sideways-expanding "Cleaning up…" pill covered the text it
-                    // had just inserted.
-                    if session.state == .transcribing || session.cleanupInProgress {
+                    if session.state == .transcribing {
                         transcribingPill
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     } else if session.state == .recording {
@@ -104,14 +96,20 @@ struct HUDContentView: View {
     private func insertionReceiptPill(_ receipt: InsertionReceipt) -> some View {
         HStack(alignment: .bottom, spacing: 6) {
             skullCircle
-            if receiptHovering {
-                // One action. ⌘Z already undoes the insertion and the text is
-                // right there to edit, so the only thing the user can't do
-                // themselves is put back the words Cleanup rewrote.
-                receiptOption("arrow.uturn.backward", "Revert to what I said") {
-                    session.revertCleanup()
+            // Exactly one action, whichever one applies: Clean up before, Revert
+            // after. Never both, and never while the pass is running.
+            if receiptHovering, !session.cleanupInProgress {
+                if session.cleanupApplied {
+                    receiptOption("arrow.uturn.backward", "Revert to what I said") {
+                        session.revertCleanup()
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottomLeading)))
+                } else {
+                    receiptOption("wand.and.stars", "Clean up") {
+                        session.cleanupLastInsertion()
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottomLeading)))
                 }
-                .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottomLeading)))
             }
         }
         .onHover { hovering in
@@ -119,18 +117,28 @@ struct HUDContentView: View {
             session.receiptHoverChanged(hovering)
         }
         .animation(.spring(response: 0.28, dampingFraction: 0.82), value: receiptHovering)
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: session.cleanupInProgress)
     }
 
-    /// The always-present skull marker — a glass circle that stays put across
-    /// resting, hovered, and cleanup states.
+    /// The skull marker, in the gutter beside the inserted text. While cleanup
+    /// runs it becomes a spinner IN PLACE — progress without the pill moving or
+    /// growing over the text, which is what made the earlier versions feel wrong.
     private var skullCircle: some View {
-        Image("MenuBarIcon")
-            .resizable()
-            .renderingMode(.template)
-            .frame(width: 14, height: 14)
-            .foregroundStyle(.white.opacity(0.9))
-            .frame(width: Self.receiptPillHeight, height: Self.receiptPillHeight)
-            .pillGlass()
+        ZStack {
+            if session.cleanupInProgress {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white)
+            } else {
+                Image("MenuBarIcon")
+                    .resizable()
+                    .renderingMode(.template)
+                    .frame(width: 14, height: 14)
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+        }
+        .frame(width: Self.receiptPillHeight, height: Self.receiptPillHeight)
+        .pillGlass()
     }
 
     /// One labeled action as its own pill. Fixed height so the bottom pill
@@ -315,7 +323,7 @@ struct HUDContentView: View {
         // button simply appends on the right, the pill grows rightward.
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
-        .pillGlass(radius: livePillRadius)
+        .pillGlass(corners: .pointer)
         .onHover { recordingHovering = $0 }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
         .animation(.easeOut(duration: 0.15), value: session.showSilenceWarning)
@@ -346,36 +354,58 @@ struct HUDContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .pillGlass(radius: livePillRadius)
+        .pillGlass(corners: .pointer)
     }
 }
 
 // MARK: - Pill Glass
 
-/// Capsule by default; pass a `radius` for a uniformly rounded rectangle instead.
-/// The live pills use the softer rounded-rect — a squared-off bottom-leading
-/// "pointer" corner was tried first and read as a mistake rather than as an arrow
-/// at the caret.
+/// The pill's silhouette.
+enum PillCorners {
+    /// Fully round ends at any height.
+    case capsule
+    /// Same radius on all four corners.
+    case uniform(CGFloat)
+    /// Round right end, gently rounded top-left, near-square bottom-left — the
+    /// corner seated at the caret, so the pill reads as marking the insertion
+    /// point. Radii are derived from the actual height: the first attempt passed
+    /// an oversized value and let SwiftUI clamp it, which handed the top-left
+    /// whatever space was left over and made the left edge look lopsided.
+    case pointer
+}
+
 private struct PillShape: InsettableShape {
-    /// nil = capsule (radii clamp to half the height at any pill size).
-    var radius: CGFloat?
+    var corners: PillCorners
     var inset: CGFloat = 0
 
     func path(in rect: CGRect) -> Path {
         let r = rect.insetBy(dx: inset, dy: inset)
-        return RoundedRectangle(cornerRadius: radius ?? 999, style: .continuous).path(in: r)
+        let full = r.height / 2          // a true capsule end at this height
+        let radii: RectangleCornerRadii
+        switch corners {
+        case .capsule:
+            radii = .init(topLeading: full, bottomLeading: full,
+                          bottomTrailing: full, topTrailing: full)
+        case .uniform(let v):
+            let c = min(v, full)
+            radii = .init(topLeading: c, bottomLeading: c, bottomTrailing: c, topTrailing: c)
+        case .pointer:
+            radii = .init(topLeading: min(12, full), bottomLeading: min(4, full),
+                          bottomTrailing: full, topTrailing: full)
+        }
+        return UnevenRoundedRectangle(cornerRadii: radii, style: .continuous).path(in: r)
     }
 
     func inset(by amount: CGFloat) -> PillShape {
-        PillShape(radius: radius, inset: inset + amount)
+        PillShape(corners: corners, inset: inset + amount)
     }
 }
 
 /// Dark capsule with a gradient rim light and a lifted shadow, so the pill
 /// separates from whatever busy UI it happens to float over.
 private struct PillGlass: ViewModifier {
-    var radius: CGFloat?
-    private var shape: PillShape { PillShape(radius: radius) }
+    var corners: PillCorners = .capsule
+    private var shape: PillShape { PillShape(corners: corners) }
 
     func body(content: Content) -> some View {
         glassed(content)
@@ -415,15 +445,10 @@ private struct PillGlass: ViewModifier {
 }
 
 private extension View {
-    /// Omit `radius` for a capsule; pass one for a uniformly rounded rectangle.
-    func pillGlass(radius: CGFloat? = nil) -> some View {
-        modifier(PillGlass(radius: radius))
+    func pillGlass(corners: PillCorners = .capsule) -> some View {
+        modifier(PillGlass(corners: corners))
     }
 }
-
-/// Corner rounding for the live recording/transcribing pills. 10 sits between the
-/// 8 and 12 that read well at this size; one number to change if it wants tuning.
-private let livePillRadius: CGFloat = 10
 
 // MARK: - Dot Equalizer
 

@@ -59,8 +59,8 @@ struct SettingsView: View {
                 }
                 settingsRow {
                     VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Cleanup after dictation")
-                        caption("After your words land, a small pill offers Clean up (an on-device disfluency pass) and Undo for a few seconds. Off keeps dictation invisible — the words themselves are the receipt.")
+                        rowLabel("Offer cleanup after dictation")
+                        caption("A small skull appears beside your inserted text for a few seconds. Hover it to clean up filler words and false starts, on this Mac. Nothing is rewritten unless you ask.")
                     }
                     Spacer(minLength: 16)
                     Toggle("", isOn: $showInsertionReceipt)

@@ -53,14 +53,21 @@ enum HotkeyManager {
     ) {
         KeyboardShortcuts.removeAllHandlers()
 
-        // Migrate off superseded defaults (⌥⇧S, then ⌥`) so anyone who never
-        // picked their own shortcut lands on the current default. An explicitly
-        // chosen shortcut is anything else, and is left alone.
-        if let current = KeyboardShortcuts.getShortcut(for: .toggleSession),
-           (current.key == .s && current.modifiers == [.option, .shift])
-            || (current.key == .backtick && current.modifiers == [.option]) {
-            KeyboardShortcuts.reset(.toggleSession)
-            print("[HotkeyManager] Migrated superseded default to ⌥Space")
+        // Move anyone still sitting on a superseded default (⌥⇧S, then ⌥`) onto
+        // the current one — ONCE, ever. This used to run on every launch, which
+        // silently re-stole the shortcut from anyone who had deliberately CHOSEN
+        // ⌥` : their pick is indistinguishable from a stale default, so it got
+        // reset on each update. The flag makes it a one-time migration; from then
+        // on the user's choice is the user's choice.
+        let migrationKey = "didMigrateShortcutDefaultToOptionSpace"
+        if !UserDefaults.standard.bool(forKey: migrationKey) {
+            UserDefaults.standard.set(true, forKey: migrationKey)
+            if let current = KeyboardShortcuts.getShortcut(for: .toggleSession),
+               (current.key == .s && current.modifiers == [.option, .shift])
+                || (current.key == .backtick && current.modifiers == [.option]) {
+                KeyboardShortcuts.reset(.toggleSession)
+                print("[HotkeyManager] One-time migration of superseded default to ⌥Space")
+            }
         }
 
         let shortcut = KeyboardShortcuts.getShortcut(for: .toggleSession)
