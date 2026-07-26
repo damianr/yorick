@@ -40,6 +40,13 @@ struct YorickApp: App {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             guard let window = NSApp.windows.first(where: { !($0 is NSPanel) && $0.canBecomeMain }) else { return }
 
+            // This runs from .onAppear, which fires for EVERY window in the group
+            // while always resolving to the first one — so a second window used to
+            // bolt another copy of the mic/gear accessory onto window one (three
+            // pairs after three opens) and get none of its own styling. Bail if
+            // this window is already dressed.
+            guard window.titlebarAccessoryViewControllers.isEmpty else { return }
+
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)

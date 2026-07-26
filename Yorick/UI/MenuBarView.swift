@@ -56,7 +56,15 @@ struct MenuBarView: View {
             HStack {
                 Button("Open Yorick") {
                     NSApp.activate(ignoringOtherApps: true)
-                    openWindow(id: "main")
+                    // Reuse the window if it exists. openWindow(id:) on a
+                    // WindowGroup spawns a NEW window every time, which stacked up
+                    // untitled duplicates. Same behaviour as clicking the Dock icon
+                    // (see AppDelegate.applicationShouldHandleReopen).
+                    if let existing = NSApp.windows.first(where: { !($0 is NSPanel) && $0.canBecomeMain }) {
+                        existing.makeKeyAndOrderFront(nil)
+                    } else {
+                        openWindow(id: "main")
+                    }
                 }
                 Spacer()
                 Button("Quit") {

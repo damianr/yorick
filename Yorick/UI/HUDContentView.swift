@@ -315,7 +315,7 @@ struct HUDContentView: View {
         // button simply appends on the right, the pill grows rightward.
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
-        .pillGlass(pointsAtCaret: true)
+        .pillGlass(radius: livePillRadius)
         .onHover { recordingHovering = $0 }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
         .animation(.easeOut(duration: 0.15), value: session.showSilenceWarning)
@@ -346,45 +346,36 @@ struct HUDContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .pillGlass(pointsAtCaret: true)
+        .pillGlass(radius: livePillRadius)
     }
 }
 
 // MARK: - Pill Glass
 
-/// A capsule, optionally with its bottom-leading corner squared off. That corner
-/// is the one seated at the caret, so cutting it to a near-point makes the pill
-/// read as marking the insertion spot rather than floating near it. Only the live
-/// recording/transcribing pills use it; the receipt and its actions stay capsules.
+/// Capsule by default; pass a `radius` for a uniformly rounded rectangle instead.
+/// The live pills use the softer rounded-rect — a squared-off bottom-leading
+/// "pointer" corner was tried first and read as a mistake rather than as an arrow
+/// at the caret.
 private struct PillShape: InsettableShape {
-    var pointsAtCaret: Bool
+    /// nil = capsule (radii clamp to half the height at any pill size).
+    var radius: CGFloat?
     var inset: CGFloat = 0
 
     func path(in rect: CGRect) -> Path {
         let r = rect.insetBy(dx: inset, dy: inset)
-        // Big radii get clamped to the available space, giving capsule ends at
-        // any pill height (the silence warning makes it taller).
-        return UnevenRoundedRectangle(
-            cornerRadii: .init(
-                topLeading: 999,
-                bottomLeading: pointsAtCaret ? 4 : 999,
-                bottomTrailing: 999,
-                topTrailing: 999
-            ),
-            style: .continuous
-        ).path(in: r)
+        return RoundedRectangle(cornerRadius: radius ?? 999, style: .continuous).path(in: r)
     }
 
     func inset(by amount: CGFloat) -> PillShape {
-        PillShape(pointsAtCaret: pointsAtCaret, inset: inset + amount)
+        PillShape(radius: radius, inset: inset + amount)
     }
 }
 
 /// Dark capsule with a gradient rim light and a lifted shadow, so the pill
 /// separates from whatever busy UI it happens to float over.
 private struct PillGlass: ViewModifier {
-    var pointsAtCaret = false
-    private var shape: PillShape { PillShape(pointsAtCaret: pointsAtCaret) }
+    var radius: CGFloat?
+    private var shape: PillShape { PillShape(radius: radius) }
 
     func body(content: Content) -> some View {
         glassed(content)
@@ -424,12 +415,15 @@ private struct PillGlass: ViewModifier {
 }
 
 private extension View {
-    /// `pointsAtCaret` squares the bottom-leading corner — use it for the pills
-    /// that sit at the insertion point while dictating.
-    func pillGlass(pointsAtCaret: Bool = false) -> some View {
-        modifier(PillGlass(pointsAtCaret: pointsAtCaret))
+    /// Omit `radius` for a capsule; pass one for a uniformly rounded rectangle.
+    func pillGlass(radius: CGFloat? = nil) -> some View {
+        modifier(PillGlass(radius: radius))
     }
 }
+
+/// Corner rounding for the live recording/transcribing pills. 10 sits between the
+/// 8 and 12 that read well at this size; one number to change if it wants tuning.
+private let livePillRadius: CGFloat = 10
 
 // MARK: - Dot Equalizer
 
