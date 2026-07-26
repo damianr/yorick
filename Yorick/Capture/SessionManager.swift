@@ -281,9 +281,10 @@ final class SessionManager {
 
         // The receipt has its own placement rule: the gutter dock (left margin of
         // the field), which by construction never covers the inserted text and is
-        // reflow-stable in bottom-anchored composers. Recording/transcribing keep
-        // the caret-anchored placement below.
-        if insertionReceipt != nil {
+        // reflow-stable in bottom-anchored composers. Only once the skull is
+        // actually on screen, though — while cleanup runs the transcribing pill is
+        // showing and belongs at the caret like every other live pill.
+        if insertionReceipt != nil, cleanupApplied, !cleanupInProgress {
             setReceiptGutterAnchor(target)
             return
         }
@@ -667,11 +668,10 @@ final class SessionManager {
         receiptBaselineCaret = nil
         rawTranscriptForRevert = nil
         cleanupApplied = false
-        // Move the pill from its recording spot to the receipt's gutter dock —
-        // the anchor was set before the receipt existed, so re-place it now.
-        if let anchor = hudAnchor {
-            setHUDAnchor(anchor)
-        }
+        // Deliberately no re-anchor here: the pill stays where dictation left it
+        // (at the caret) so the transcribing spinner can carry straight through
+        // cleanup. It moves to the gutter dock only once the skull replaces the
+        // spinner — see autoCleanupLastInsertion.
         // receiptPreInsertSignature is NOT reset here — the insert paths
         // capture it right before pasting, just ahead of this call.
         Self.receiptLog.info("presented target=\(targetApp ?? "nil", privacy: .public) preInsert=\(self.receiptPreInsertSignature?.raw ?? "nil", privacy: .public)")
@@ -745,8 +745,16 @@ final class SessionManager {
     /// only job afterwards is Revert.
     func autoCleanupLastInsertion() {
         guard let receipt = insertionReceipt, !cleanupInProgress else { return }
-        guard LocalIntelligence.isCleanupAvailable else { return }
-        guard insertionTargetStillFocused(receipt) else { return }
+        // Nothing to run and nothing to revert — retire the receipt rather than
+        // leave an invisible one parked in state.
+        guard LocalIntelligence.isCleanupAvailable else {
+            dismissInsertionReceipt(reason: "cleanup unavailable on this Mac")
+            return
+        }
+        guard insertionTargetStillFocused(receipt) else {
+            dismissInsertionReceipt(reason: "focus moved before cleanup")
+            return
+        }
         cleanupInProgress = true
         Task { [weak self] in
             defer { Task { @MainActor in self?.cleanupInProgress = false } }
@@ -766,6 +774,9 @@ final class SessionManager {
                 Self.insertTextAtCursor(cleaned + " ")
                 self.rawTranscriptForRevert = receipt.insertedText
                 self.cleanupApplied = true
+                // Spinner is done; the skull takes over, so move it out to the
+                // gutter where it can't sit on the text it just rewrote.
+                if let anchor = self.hudAnchor { self.setHUDAnchor(anchor) }
                 Self.receiptLog.info("auto-cleanup applied")
             } catch {
                 // Silent by design: the user still has exactly what they said.

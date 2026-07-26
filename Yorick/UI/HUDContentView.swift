@@ -49,17 +49,22 @@ struct HUDContentView: View {
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
 
-                    // Post-insertion receipt: exists only while auto-cleanup is
-                    // running or has actually rewritten something, and offers the
-                    // one thing the user can't do by hand — Revert.
+                    // Post-insertion receipt: appears only once auto-cleanup has
+                    // actually rewritten something, and offers the one thing the
+                    // user can't do by hand — Revert. While cleanup is still
+                    // running the transcribing pill stays up instead (below).
                     if let receipt = session.insertionReceipt, !session.receiptHidden,
-                       session.cleanupApplied || session.cleanupInProgress {
+                       session.cleanupApplied, !session.cleanupInProgress {
                         insertionReceiptPill(receipt)
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
 
-                    // Recording/transcribing pills
-                    if session.state == .transcribing {
+                    // Recording/transcribing pills. Cleanup keeps the transcribing
+                    // spinner up rather than introducing a second pill: it's the
+                    // same "still working" state from the user's side, and the old
+                    // sideways-expanding "Cleaning up…" pill covered the text it
+                    // had just inserted.
+                    if session.state == .transcribing || session.cleanupInProgress {
                         transcribingPill
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     } else if session.state == .recording {
@@ -99,9 +104,7 @@ struct HUDContentView: View {
     private func insertionReceiptPill(_ receipt: InsertionReceipt) -> some View {
         HStack(alignment: .bottom, spacing: 6) {
             skullCircle
-            if session.cleanupInProgress {
-                cleaningPill
-            } else if receiptHovering {
+            if receiptHovering {
                 // One action. ⌘Z already undoes the insertion and the text is
                 // right there to edit, so the only thing the user can't do
                 // themselves is put back the words Cleanup rewrote.
@@ -116,7 +119,6 @@ struct HUDContentView: View {
             session.receiptHoverChanged(hovering)
         }
         .animation(.spring(response: 0.28, dampingFraction: 0.82), value: receiptHovering)
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: session.cleanupInProgress)
     }
 
     /// The always-present skull marker — a glass circle that stays put across
@@ -155,21 +157,6 @@ struct HUDContentView: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .pillGlass()
-    }
-
-    private var cleaningPill: some View {
-        HStack(spacing: 7) {
-            ProgressView()
-                .controlSize(.mini)
-                .tint(.white)
-            Text("Cleaning up…")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.8))
-                .fixedSize()
-        }
-        .padding(.horizontal, 11)
-        .frame(height: Self.receiptPillHeight)
         .pillGlass()
     }
 
@@ -328,7 +315,7 @@ struct HUDContentView: View {
         // button simply appends on the right, the pill grows rightward.
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
-        .pillGlass()
+        .pillGlass(pointsAtCaret: true)
         .onHover { recordingHovering = $0 }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
         .animation(.easeOut(duration: 0.15), value: session.showSilenceWarning)
@@ -359,20 +346,50 @@ struct HUDContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .pillGlass()
+        .pillGlass(pointsAtCaret: true)
     }
 }
 
 // MARK: - Pill Glass
 
-/// Liquid Glass where the OS offers it, classic material capsule elsewhere —
-/// plus a gradient rim light and lifted shadow so the pill separates from
-/// whatever busy UI it happens to float over.
+/// A capsule, optionally with its bottom-leading corner squared off. That corner
+/// is the one seated at the caret, so cutting it to a near-point makes the pill
+/// read as marking the insertion spot rather than floating near it. Only the live
+/// recording/transcribing pills use it; the receipt and its actions stay capsules.
+private struct PillShape: InsettableShape {
+    var pointsAtCaret: Bool
+    var inset: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: inset, dy: inset)
+        // Big radii get clamped to the available space, giving capsule ends at
+        // any pill height (the silence warning makes it taller).
+        return UnevenRoundedRectangle(
+            cornerRadii: .init(
+                topLeading: 999,
+                bottomLeading: pointsAtCaret ? 4 : 999,
+                bottomTrailing: 999,
+                topTrailing: 999
+            ),
+            style: .continuous
+        ).path(in: r)
+    }
+
+    func inset(by amount: CGFloat) -> PillShape {
+        PillShape(pointsAtCaret: pointsAtCaret, inset: inset + amount)
+    }
+}
+
+/// Dark capsule with a gradient rim light and a lifted shadow, so the pill
+/// separates from whatever busy UI it happens to float over.
 private struct PillGlass: ViewModifier {
+    var pointsAtCaret = false
+    private var shape: PillShape { PillShape(pointsAtCaret: pointsAtCaret) }
+
     func body(content: Content) -> some View {
         glassed(content)
             .overlay(
-                Capsule().strokeBorder(
+                shape.strokeBorder(
                     LinearGradient(
                         colors: [.white.opacity(0.30), .white.opacity(0.06)],
                         startPoint: .top,
@@ -398,16 +415,20 @@ private struct PillGlass: ViewModifier {
         content
             .background {
                 ZStack {
-                    Capsule().fill(.ultraThinMaterial)
-                    Capsule().fill(Color.black.opacity(0.78))
+                    shape.fill(.ultraThinMaterial)
+                    shape.fill(Color.black.opacity(0.78))
                 }
             }
-            .clipShape(Capsule())
+            .clipShape(shape)
     }
 }
 
 private extension View {
-    func pillGlass() -> some View { modifier(PillGlass()) }
+    /// `pointsAtCaret` squares the bottom-leading corner — use it for the pills
+    /// that sit at the insertion point while dictating.
+    func pillGlass(pointsAtCaret: Bool = false) -> some View {
+        modifier(PillGlass(pointsAtCaret: pointsAtCaret))
+    }
 }
 
 // MARK: - Dot Equalizer

@@ -31,6 +31,9 @@ struct SettingsView: View {
     @AppStorage(AudioDebugSettings.keepAudioKey) private var keepDebugAudio = AudioDebugSettings.defaultKeepAudio
     @AppStorage(SessionManager.showInsertionReceiptKey) private var showInsertionReceipt = false
     @State private var opensAtLogin = LoginItem.isEnabled
+    /// Sparkle reads this key straight from UserDefaults, so binding to it is
+    /// enough to turn scheduled checks on and off.
+    @AppStorage("SUEnableAutomaticChecks") private var automaticUpdateChecks = true
 
     /// Never shown to users; enabled per-machine for the founder's builds.
     private var adminMode: Bool { UserDefaults.standard.bool(forKey: "adminMode") }
@@ -156,6 +159,29 @@ struct SettingsView: View {
                         }
                         activeMicrophoneMode = Self.currentMicrophoneModeName()
                     }
+                }
+
+                sectionLabel("UPDATES")
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        rowLabel("Version \(version)")
+                        caption("Update checks are the only routine network call Yorick makes, and every update is cryptographically signed. Nothing about what you say is ever sent.")
+                    }
+                    Spacer(minLength: 16)
+                    pillButton("Check Now") {
+                        NotificationCenter.default.post(name: .checkForUpdates, object: nil)
+                    }
+                }
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        rowLabel("Check automatically")
+                        caption("Looks once a day and asks before installing.")
+                    }
+                    Spacer(minLength: 16)
+                    Toggle("", isOn: $automaticUpdateChecks)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .controlSize(.small)
                 }
 
                 if adminMode {
