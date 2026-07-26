@@ -988,10 +988,18 @@ final class SessionManager {
         do {
             // 1. Transcribe locally via Whisper
             let result = try await TranscriptionService.transcribe(audioURL: audioURL)
-            let cleaned = result.transcript
+            let spoken = result.transcript
                 .replacingOccurrences(of: "\n", with: " ")
                 .replacingOccurrences(of: "  ", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Spoken-form normalization ("damian at gmail dot com" → an
+            // address) corrects transcription artifacts, so it applies to
+            // every utterance — typed and saved alike. `spoken` survives for
+            // the one field kind that must get the words untouched (secure).
+            let cleaned = SpokenFormNormalizer.normalize(spoken)
+            if cleaned != spoken {
+                print("[Session] Spoken-form normalization rewrote an address run")
+            }
 
             guard isLive() else { return }
 
@@ -1064,6 +1072,17 @@ final class SessionManager {
             if effectiveMode == .dictation {
                 guard isLive() else { return }
                 let targetApp = NSWorkspace.shared.frontmostApplication?.localizedName
+                // Stage-0 field shaping: the kind of field receiving the paste
+                // decides FORMATTING only (search: no trailing period or
+                // space; secure: exactly as spoken) — never whether the paste
+                // happens. Uncertain signals shape as .standard, i.e. today's
+                // behavior byte-for-byte.
+                let fieldProfile = AccessibilityCapture.focusedFieldShapingSignals()
+                    .map(FieldProfiler.profile) ?? .standard
+                let shaped = TranscriptShaper.shape(normalized: cleaned, raw: spoken, profile: fieldProfile)
+                if fieldProfile != .standard {
+                    print("[Session] Field profile=\(fieldProfile.rawValue) shaped the insertion")
+                }
                 if focusedEditableNow {
                     // Focus may have moved since record start — re-anchor the
                     // pill to the field actually receiving the paste.
@@ -1071,11 +1090,11 @@ final class SessionManager {
                     receiptPreInsertSignature = hudAnchor.flatMap {
                         AccessibilityCapture.fieldContentSignature($0.element)
                     }
-                    Self.insertTextAtCursor(cleaned + " ")
+                    Self.insertTextAtCursor(shaped.outbound)
                     effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
                     presentInsertionReceipt(
                         captureID: captureID,
-                        insertedText: cleaned + " ",
+                        insertedText: shaped.outbound,
                         targetApp: targetApp
                     )
                     print("[Session] Text inserted at cursor")
@@ -1085,11 +1104,11 @@ final class SessionManager {
                     // dictation and paste; the transcript is saved to the list
                     // regardless, so a rare misfire costs nothing.
                     setHUDAnchor(nil)
-                    Self.insertTextAtCursor(cleaned + " ")
+                    Self.insertTextAtCursor(shaped.outbound)
                     effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
                     presentInsertionReceipt(
                         captureID: captureID,
-                        insertedText: cleaned + " ",
+                        insertedText: shaped.outbound,
                         targetApp: targetApp
                     )
                     print("[Session] Text pasted into unclassified focused element")

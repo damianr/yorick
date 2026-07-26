@@ -45,3 +45,41 @@ targets:
         INFOPLIST_FILE: Yorick/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Yorick/Resources/Yorick.entitlements
         SWIFT_STRICT_CONCURRENCY: complete
+
+  # Logic tests only: compiles the pure Stage-0 sources directly instead of
+  # hosting the app, so tests need no signing entitlements, permissions, or
+  # app launch. Add pure files here as they grow test coverage.
+  YorickTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: YorickTests
+      - path: Yorick/Output/SpokenFormNormalizer.swift
+      - path: Yorick/Output/FieldProfiler.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.heyyorick.YorickTests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: JD2ZUW2N95
+        SWIFT_STRICT_CONCURRENCY: complete
+
+schemes:
+  Yorick:
+    build:
+      targets:
+        Yorick: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - YorickTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
