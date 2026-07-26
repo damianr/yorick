@@ -199,6 +199,9 @@ final class SessionManager {
         // the guess left the first pill stranded at bottom-center.
         setHUDAnchor(AccessibilityCapture.focusedEditableFieldTarget())
         startCapture()
+        // Spike instrumentation (admin-gated no-op otherwise): measures which
+        // AX context facts are readable in real daily apps. Fire-and-forget.
+        ContextProbe.sample(phase: "start")
         // Focus can lag the hotkey by well over a second (app still coming
         // forward, focus just moved in). If we didn't anchor, keep polling for
         // the whole recording so the pill lands on the field mid-utterance
@@ -229,6 +232,7 @@ final class SessionManager {
     /// Stop capture — transcribes and either types text or saves capture.
     func stopIfRecording() {
         guard case .recording = state else { return }
+        ContextProbe.sample(phase: "stop")
         stopCapture()
     }
 

@@ -10,6 +10,8 @@ struct HUDContentView: View {
     /// The recording pill reveals its stop button only on hover — the EQ already
     /// signals "recording," and push-to-talk means release is the usual stop.
     @State private var recordingHovering = false
+    /// The saved-capture card's fade clock, cancelled while hovered.
+    @State private var cardDismissTask: Task<Void, Never>?
 
     private var isVisible: Bool {
         session.state == .recording ||
@@ -218,70 +220,99 @@ struct HUDContentView: View {
         }
     }
 
-    // MARK: - Capture Saved Toast
+    // MARK: - Saved-Capture Card
+    //
+    // Card v1 of the enrichment plan: the saved toast grown into an exit
+    // ramp — the words worth reading, where they were spoken, and the exits.
+    // Offer, never demand: it fades on its own, hover holds it, a newer
+    // capture replaces it (no queue), and it never takes keyboard focus.
+    // Dismiss always means "it's in the list; later" — nothing is lost.
 
     private func captureSavedToast(_ capture: Capture) -> some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(.green)
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(capture.appName)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text(capture.transcriptPreview)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.7))
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 7, height: 7)
+                Text(contextLine(for: capture))
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
+                Spacer(minLength: 12)
             }
-            Spacer()
-            // Copy is the recovery path: a dictation that wasn't typed lands here,
-            // one obvious click from the clipboard — no hidden keystroke to learn.
-            Button(action: {
-                ClipboardOutput.copy(capture.transcript)
-                session.lastSavedCapture = nil
-            }) {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.8))
-                    .frame(width: 20, height: 20)
-                    .background(.white.opacity(0.12))
-                    .clipShape(Circle())
+            Text(capture.transcript)
+                .font(.system(size: 12))
+                .foregroundStyle(.white)
+                .lineLimit(4)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                // Copy is the recovery path: a dictation that wasn't typed
+                // lands here, one obvious click from the clipboard.
+                cardAction("doc.on.doc", "Copy") {
+                    ClipboardOutput.copy(capture.transcript)
+                    session.lastSavedCapture = nil
+                }
+                Spacer()
+                cardAction("xmark", "Dismiss") {
+                    session.lastSavedCapture = nil
+                }
             }
-            .buttonStyle(.plain)
-            .help("Copy transcript")
-            Button(action: {
-                session.lastSavedCapture = nil
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.4))
-                    .frame(width: 20, height: 20)
-                    .background(.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .pillGlass()
+        .padding(.vertical, 11)
+        .pillGlass(corners: .uniform(14))
         .frame(maxWidth: 400)
-        .contentShape(Capsule())
+        .contentShape(Rectangle())
         .onTapGesture {
-            // Click toast to open Yorick and show the capture
+            // Click anywhere else on the card to open Yorick at the list.
             session.lastSavedCapture = nil
             NSApp.activate(ignoringOtherApps: true)
         }
-        .onAppear {
-            // Auto-dismiss after 3 seconds
-            let captureId = capture.id
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                withAnimation {
-                    if session.lastSavedCapture?.id == captureId {
-                        session.lastSavedCapture = nil
-                    }
-                }
+        .onHover { hovering in
+            // Hover holds the card (the skull's pattern); leaving restarts a
+            // short clock so it never lingers after you've looked away.
+            if hovering {
+                cardDismissTask?.cancel()
+            } else {
+                scheduleCardDismiss(capture.id, after: 2.5)
             }
+        }
+        .onAppear {
+            scheduleCardDismiss(capture.id, after: 6)
+        }
+        // New identity per capture, so a replacing card restarts its own clock.
+        .id(capture.id)
+    }
+
+    private func contextLine(for capture: Capture) -> String {
+        capture.windowTitle.isEmpty
+            ? capture.appName
+            : "\(capture.appName) · \(capture.windowTitle)"
+    }
+
+    private func cardAction(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 10.5, weight: .semibold))
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4.5)
+            .background(.white.opacity(0.12))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func scheduleCardDismiss(_ captureId: UUID, after seconds: Double) {
+        cardDismissTask?.cancel()
+        cardDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled, session.lastSavedCapture?.id == captureId else { return }
+            withAnimation { session.lastSavedCapture = nil }
         }
     }
 
