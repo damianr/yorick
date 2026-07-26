@@ -524,11 +524,16 @@ enum AccessibilityCapture {
 
         // Toolkit-agnostic signal: a focused element that exposes a text caret
         // (AXSelectedTextRange — a CHARACTER range, distinct from a row/child
-        // selection) is a text editor, whatever its role or app. Keyboard focus
-        // plus a caret can't be a false positive the way a hovered generic
-        // container can, so this catches editors across AppKit, Electron, and web
-        // without any per-app allowlist — the widest net we can cast safely.
-        if hasTextCaret(focusedElement) {
+        // selection) is a text editor, whatever its role or app — across
+        // AppKit and Electron, without a per-app allowlist. ONE measured
+        // exception: browsers keep a document-level selection range on every
+        // page, editable or not, so a bare AXWebArea "has a caret" even on a
+        // read-only article (Chrome: focusedRole=AXWebArea subrole=none
+        // desc="HTML content" textCaret=true, typed instead of saved). Web
+        // areas fall through to the stricter checks below — a truly editable
+        // one (Mail's compose body) still passes via valueSettable, and web
+        // page editors focus a contenteditable or field, caught earlier.
+        if role != "AXWebArea", hasTextCaret(focusedElement) {
             return FocusedEditability(
                 isEditable: true,
                 summary: focusedSummary + " textCaret=true",
