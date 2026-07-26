@@ -201,6 +201,30 @@ enum AccessibilityCapture {
         return FieldTarget(frame: frame, element: element, pid: frontApp.processIdentifier, caret: caret)
     }
 
+    // MARK: - Field shaping signals
+
+    /// The strings FieldProfiler needs, read from the frontmost app's focused
+    /// element at insert time (focus may have moved since recording started).
+    /// Named attributes on one element only — never a tree walk. Nil when
+    /// nothing is focused, which shapes as `.standard`.
+    static func focusedFieldShapingSignals() -> FieldShapingSignals? {
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
+        let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+              let focused = focusedRef
+        else { return nil }
+        let element = focused as! AXUIElement
+        return FieldShapingSignals(
+            role: attribute(element, kAXRoleAttribute) as? String ?? "",
+            subrole: attribute(element, kAXSubroleAttribute) as? String ?? "",
+            roleDescription: attribute(element, kAXRoleDescriptionAttribute) as? String ?? "",
+            placeholder: attribute(element, kAXPlaceholderValueAttribute) as? String ?? "",
+            identifier: attribute(element, kAXIdentifierAttribute) as? String ?? "",
+            label: attribute(element, kAXDescriptionAttribute) as? String ?? ""
+        )
+    }
+
     // MARK: - Caret geometry (pill rides the cursor)
 
     /// Apps whose full accessibility tree we've unlocked so the caret becomes
