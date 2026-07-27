@@ -46,12 +46,22 @@ struct CaptureContext: Codable, Sendable, Equatable {
 }
 
 extension CaptureRenderer {
-    /// The paste-ready artifact for handing an utterance to an agent: the
-    /// words, then the evidence with provenance. Rendered on demand, never
-    /// stored — the stored bundle stays raw so this format can improve
-    /// without migrations.
+    /// The paste-ready artifact for handing an utterance to an agent: a
+    /// fixed framing line (a cold receiver can't otherwise know the quoted
+    /// block is verbatim speech whose "this/here" resolve against the
+    /// evidence), the words as a quote, then the evidence with provenance.
+    /// Rendered on demand, never stored — the stored bundle stays raw so
+    /// this format can improve without migrations.
     static func renderWithContext(_ capture: Capture) -> String {
-        var lines = [render(capture)]
+        let framing = "Voice note captured with on-screen context. The quoted words are "
+            + "verbatim speech; the evidence lines after it record what was on screen "
+            + "and pointed at while speaking. Resolve references like \"this\", "
+            + "\"here\", or \"these\" against that evidence."
+        let quoted = render(capture)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "> \($0)" }
+            .joined(separator: "\n")
+        var lines = [framing, "", quoted]
         var provenance = ["— spoken in \(capture.appName)"
             + (capture.windowTitle.isEmpty ? "" : " · \(capture.windowTitle)")]
         var pointed: [String] = []
