@@ -47,6 +47,17 @@ struct CaptureRow: View {
                     .font(Theme.mono(9))
                     .foregroundStyle(justCopied ? Theme.success : Theme.textTertiary)
                     .opacity(justCopied || (isHovered && !capture.needsTranscription) ? 1 : 0)
+                // The bundle exit, everywhere the transcript exit is: a
+                // dismissed card must lose nothing, including the action.
+                if isHovered, !justCopied, capture.context != nil, !capture.needsTranscription {
+                    Button(action: copyRowWithContext) {
+                        Text("· copy with context")
+                            .font(Theme.mono(9))
+                            .foregroundStyle(Theme.textTertiary)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
                 Spacer()
                 Text(timeLabel)
                     .font(Theme.mono(9))
@@ -171,6 +182,16 @@ struct CaptureRow: View {
     private func copyRow() {
         guard !capture.needsTranscription else { return }
         ClipboardOutput.copy(displayText)
+        flashCopied()
+    }
+
+    private func copyRowWithContext() {
+        guard !capture.needsTranscription else { return }
+        ClipboardOutput.copy(CaptureRenderer.renderWithContext(capture))
+        flashCopied()
+    }
+
+    private func flashCopied() {
         captureStore.markActive(capture)
         withAnimation { justCopied = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
