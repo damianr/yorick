@@ -405,18 +405,21 @@ struct HUDContentView: View {
     // on hover. No timer, no mode word, no mode color — the EQ says "recording"
     // and the pill's POSITION says dictation vs observation.
 
-    /// The skull mark. Prefers the full-color 3D-look asset (its dark eyes
-    /// need real color — as a template silhouette they'd fill solid); falls
-    /// back to the template glyph until the asset ships. Slightly larger
-    /// than the old 12pt glyph so the face actually reads at pill size.
+    /// The skull mark — the new logo as a template vector (single evenodd
+    /// path, so the eyes and nose are true cutouts and the face survives
+    /// tinting), white like every pill glyph, slightly larger than the old
+    /// 12pt mark so the face actually reads at pill size. Falls back to the
+    /// legacy glyph if the asset is ever missing. The full-color 3D version
+    /// takes over this slot when the look-around skull lands.
     @ViewBuilder
     private func skullMark(_ size: CGFloat, templateOpacity: Double = 0.75) -> some View {
-        if let skull = NSImage(named: "PillSkull") {
-            Image(nsImage: skull)
+        if NSImage(named: "PillSkull") != nil {
+            Image("PillSkull")
                 .resizable()
-                .interpolation(.high)
+                .renderingMode(.template)
                 .scaledToFit()
                 .frame(width: size, height: size)
+                .foregroundStyle(.white.opacity(templateOpacity))
         } else {
             Image("MenuBarIcon")
                 .resizable()
