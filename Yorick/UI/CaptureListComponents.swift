@@ -73,6 +73,21 @@ struct CaptureRow: View {
                 }
                 .buttonStyle(.plain)
             } else {
+                // The machine's reading as the scannable line — marked by
+                // the waveform + italics so it never impersonates the words.
+                // The transcript stays the artifact, right below.
+                if let readback = capture.readback {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Theme.textTertiary)
+                        Text(readback)
+                            .font(Theme.mono(11.5))
+                            .italic()
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(2)
+                    }
+                }
                 Text(displayText)
                     .font(Theme.mono(12.5))
                     .lineSpacing(6)

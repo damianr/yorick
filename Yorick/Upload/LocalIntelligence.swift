@@ -36,7 +36,7 @@ enum LocalIntelligence {
     /// guardrail refusal — measured on innocent text) simply means no line
     /// appears. Same discipline as Cleanup: guided generation, no few-shot
     /// examples (verbatim leakage was measured 3/3 with one).
-    static func readback(transcript: String, evidence: String) async throws -> String {
+    static func readback(transcript: String, evidence: String, factValues: [String]) async throws -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             // Prompt shaped by replaying a real miss: the first version let
@@ -62,21 +62,40 @@ enum LocalIntelligence {
                 never give advice.
 
                 Refer to the speaker only as "you" — never by name. Respond \
-                with ONE sentence, under 18 words.
+                with ONE sentence, under 16 words.
                 """)
             let prompt = "Note: \"\(transcript)\"\n\nEvidence:\n\(evidence)"
             let response = try await session.respond(to: prompt, generating: UtteranceReadback.self)
-            let text = response.content.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            // The model ignores the length budget on a visible fraction of
-            // runs (measured: one sample echoed the whole transcript back).
-            // Prompt asks; code enforces: first sentence only, and if that
-            // is still over budget, silence beats a wall of text.
-            let firstSentence = text.range(of: #"^.+?[.!?](?=\s|$)"#, options: .regularExpression)
-                .map { String(text[$0]) } ?? text
+            let raw = response.content.point.trimmingCharacters(in: .whitespacesAndNewlines)
+            // The model ignores length budgets on a visible fraction of runs
+            // (measured: one sample echoed the whole transcript back).
+            // Prompt asks; code enforces: first sentence only, capped, and
+            // over budget means silence.
+            let firstSentence = raw.range(of: #"^.+?[.!?](?=\s|$)"#, options: .regularExpression)
+                .map { String(raw[$0]) } ?? raw
             guard !firstSentence.isEmpty, firstSentence.count <= 140 else {
                 throw LocalIntelligenceError.emptyResponse
             }
-            return firstSentence.prefix(1).uppercased() + firstSentence.dropFirst()
+            // Evidence-leak guard: a "point" containing two or more verbatim
+            // fact values is the model summarizing the screen instead of the
+            // speaker (the failure that fabricated a clinical claim). We
+            // hold the fact list, so this is checkable deterministically.
+            let lowered = firstSentence.lowercased()
+            let leaked = factValues
+                .map { String($0.prefix(24)).lowercased() }
+                .filter { $0.count >= 6 && lowered.contains($0) }
+            guard leaked.count < 2 else { throw LocalIntelligenceError.emptyResponse }
+
+            let point = firstSentence.prefix(1).uppercased() + firstSentence.dropFirst()
+            // Project prefix only when the model's name actually appears in
+            // the evidence — a structural field plus a verbatim check, so a
+            // hallucinated or section-heading "project" can't surface.
+            let project = response.content.project.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !project.isEmpty, project.count <= 40,
+               evidence.lowercased().contains(project.lowercased()) {
+                return "\(project): \(point)"
+            }
+            return point
         }
         #endif
         throw LocalIntelligenceError.unavailable
@@ -119,13 +138,17 @@ enum LocalIntelligence {
 }
 
 #if canImport(FoundationModels)
-/// Structured result for readback — a single sentence-shaped field so the
-/// model can only describe the note, never converse.
+/// Structured result for readback. Two fields, composed in code — teaching
+/// the format in prose ("Name: point") collapsed the model back into
+/// evidence-dumping (measured 6/6); a structural field per job did not
+/// (project inference went 6/6 correct on the same input).
 @available(macOS 26.0, *)
 @Generable
 struct UtteranceReadback {
-    @Guide(description: "One sentence, under 18 words, stating the speaker's point with on-screen references named; the speaker is 'you'. Never a claim from the evidence, never an answer, no preamble, no quotes.")
-    var text: String
+    @Guide(description: "The product, app, or project the note concerns — ONLY a proper name that appears in the evidence's window title or page URL. Empty string if none is clearly named. Never a section heading, never a person's name, never a guess.")
+    var project: String
+    @Guide(description: "One sentence, under 16 words, stating the speaker's point with on-screen references named; the speaker is 'you'. Never a claim from the evidence, never an answer, no preamble, no quotes.")
+    var point: String
 }
 
 /// Structured result for Cleanup — a single field so the model can only return

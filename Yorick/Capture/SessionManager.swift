@@ -856,14 +856,23 @@ final class SessionManager {
             do {
                 let text = try await LocalIntelligence.readback(
                     transcript: capture.transcript,
-                    evidence: CaptureRenderer.evidenceBlock(for: capture)
+                    evidence: CaptureRenderer.evidenceBlock(for: capture),
+                    factValues: capture.context?.facts.map(\.value) ?? []
                 )
                 // Reviewable after the card fades — a wrong readback is eval
                 // corpus, and the corpus can't be built from vanished lines.
                 if admin {
                     Self.readbackLog.notice("id=\(capture.id.uuidString.prefix(8), privacy: .public) text=\(text, privacy: .public)")
                 }
-                guard let self, self.lastSavedCapture?.id == capture.id else { return }
+                guard let self else { return }
+                // Persist as the row's scannable summary line — the list
+                // renders it visibly machine-made, beside the words, never
+                // instead of them.
+                if var stored = self.captureStore.captures.first(where: { $0.id == capture.id }) {
+                    stored.readback = text
+                    self.captureStore.update(stored)
+                }
+                guard self.lastSavedCapture?.id == capture.id else { return }
                 self.cardReadback = CardReadback(captureID: capture.id, text: text)
             } catch {
                 if admin {
