@@ -133,11 +133,7 @@ struct HUDContentView: View {
                     .controlSize(.small)
                     .tint(.white)
             } else {
-                Image("MenuBarIcon")
-                    .resizable()
-                    .renderingMode(.template)
-                    .frame(width: 14, height: 14)
-                    .foregroundStyle(.white.opacity(0.9))
+                skullMark(16, templateOpacity: 0.9)
             }
         }
         .frame(width: Self.receiptPillHeight, height: Self.receiptPillHeight)
@@ -409,6 +405,27 @@ struct HUDContentView: View {
     // on hover. No timer, no mode word, no mode color — the EQ says "recording"
     // and the pill's POSITION says dictation vs observation.
 
+    /// The skull mark. Prefers the full-color 3D-look asset (its dark eyes
+    /// need real color — as a template silhouette they'd fill solid); falls
+    /// back to the template glyph until the asset ships. Slightly larger
+    /// than the old 12pt glyph so the face actually reads at pill size.
+    @ViewBuilder
+    private func skullMark(_ size: CGFloat, templateOpacity: Double = 0.75) -> some View {
+        if let skull = NSImage(named: "PillSkull") {
+            Image(nsImage: skull)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: size, height: size)
+        } else {
+            Image("MenuBarIcon")
+                .resizable()
+                .renderingMode(.template)
+                .frame(width: size * 0.8, height: size * 0.8)
+                .foregroundStyle(.white.opacity(templateOpacity))
+        }
+    }
+
     /// The squared corner means "seated at your insertion point," so only a
     /// field-anchored pill gets to wear it — with the seated corner facing
     /// the caret. Bottom-center (saving, or an opaque field) is a full
@@ -428,11 +445,7 @@ struct HUDContentView: View {
     private var recordingPill: some View {
         VStack(spacing: 4) {
             HStack(spacing: 9) {
-                Image("MenuBarIcon")
-                    .resizable()
-                    .renderingMode(.template)
-                    .frame(width: 12, height: 12)
-                    .foregroundStyle(.white.opacity(0.75))
+                skullMark(16)
                     .frame(height: 19) // seat at button height so hover adds no vertical jump
                 DotEqualizer(level: session.audioLevel)
                 if recordingHovering {
@@ -467,11 +480,7 @@ struct HUDContentView: View {
 
     private var transcribingPill: some View {
         HStack(spacing: 9) {
-            Image("MenuBarIcon")
-                .resizable()
-                .renderingMode(.template)
-                .frame(width: 12, height: 12)
-                .foregroundStyle(.white.opacity(0.75))
+            skullMark(16)
             ProgressView()
                 .controlSize(.mini)
                 .tint(.white)
@@ -488,7 +497,9 @@ struct HUDContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .pillGlass(corners: .pointer)
+        // Same corner grammar as the recording pill — transcribing at
+        // bottom-center must not wear the caret-claiming pointer corner.
+        .pillGlass(corners: recordingCorners)
     }
 }
 
