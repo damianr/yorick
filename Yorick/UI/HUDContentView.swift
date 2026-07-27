@@ -315,28 +315,37 @@ struct HUDContentView: View {
             : "\(capture.appName) · \(capture.windowTitle)"
     }
 
-    /// One compact line per fact kind, first occurrence wins (start phase
-    /// leads the merged bundle). URLs show as host + path; selection and
-    /// pointed-element values are already length-capped at collection.
+    /// One compact line per fact kind — except pointing, which is a SWEEP:
+    /// up to three pointed items show in order, plus a "+n" tail. URLs show
+    /// as host + path; values are already length-capped at collection.
     private func contextChips(for context: CaptureContext) -> [(icon: String, text: String)] {
         var chips: [(String, String)] = []
         var seen = Set<String>()
-        for fact in context.facts where !seen.contains(fact.kind) {
-            seen.insert(fact.kind)
+        var pointedShown = 0
+        let pointedTotal = context.facts.filter { $0.kind == "pointedElement" }.count
+        for fact in context.facts {
             switch fact.kind {
-            case "pageURL":
-                let display = URL(string: fact.value).map { ($0.host ?? "") + $0.path } ?? fact.value
-                chips.append(("link", display))
-            case "document":
-                chips.append(("doc.text", (fact.value as NSString).lastPathComponent))
-            case "selection":
-                chips.append(("text.quote", "“\(fact.value.prefix(80))”"))
             case "pointedElement":
+                guard pointedShown < 3 else { continue }
+                pointedShown += 1
                 let role = fact.detail.map { " (\($0))" } ?? ""
                 chips.append(("cursorarrow.rays", "\(fact.value.prefix(80))\(role)"))
+            case "pageURL" where !seen.contains(fact.kind):
+                seen.insert(fact.kind)
+                let display = URL(string: fact.value).map { ($0.host ?? "") + $0.path } ?? fact.value
+                chips.append(("link", display))
+            case "document" where !seen.contains(fact.kind):
+                seen.insert(fact.kind)
+                chips.append(("doc.text", (fact.value as NSString).lastPathComponent))
+            case "selection" where !seen.contains(fact.kind):
+                seen.insert(fact.kind)
+                chips.append(("text.quote", "“\(fact.value.prefix(80))”"))
             default:
-                chips.append(("circle", "\(fact.kind): \(fact.value.prefix(80))"))
+                continue
             }
+        }
+        if pointedTotal > pointedShown {
+            chips.append(("cursorarrow.rays", "+\(pointedTotal - pointedShown) more pointed at"))
         }
         return chips
     }

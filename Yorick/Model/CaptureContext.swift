@@ -54,6 +54,7 @@ extension CaptureRenderer {
         var lines = [render(capture)]
         var provenance = ["— spoken in \(capture.appName)"
             + (capture.windowTitle.isEmpty ? "" : " · \(capture.windowTitle)")]
+        var pointed: [String] = []
         for fact in capture.context?.facts ?? [] {
             switch fact.kind {
             case "pageURL":
@@ -64,10 +65,18 @@ extension CaptureRenderer {
                 provenance.append("— selected text: \"\(fact.value)\"")
             case "pointedElement":
                 let role = fact.detail.map { " (\($0))" } ?? ""
-                provenance.append("— pointing at: \(fact.value)\(role)")
+                pointed.append("\(fact.value)\(role)")
             default:
                 provenance.append("— \(fact.kind): \(fact.value)")
             }
+        }
+        // Pointing is a gesture: the sweep renders in order, so "this whole
+        // section" arrives as the section's rows, not one frozen word.
+        if pointed.count == 1 {
+            provenance.append("— pointed at: \(pointed[0])")
+        } else if pointed.count > 1 {
+            provenance.append("— pointed at while speaking, in order:")
+            provenance.append(contentsOf: pointed.map { "    • \($0)" })
         }
         lines.append("")
         lines.append(contentsOf: provenance)

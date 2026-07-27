@@ -130,6 +130,8 @@ final class SessionManager {
     /// only after transcription (seconds later), never on the hot path.
     private var startContextSnapshot: Task<[ContextFact], Never>?
     private var stopContextSnapshot: Task<[ContextFact], Never>?
+    /// Samples the pointer's sweep while recording — pointing is a gesture.
+    private var pointerTimeline: ContextCollector.PointerTimeline?
     private var audioFileURL: URL?
     private var startTask: Task<Void, Never>?
     private var processingTask: Task<Void, Never>?
@@ -203,11 +205,18 @@ final class SessionManager {
         // the guess left the first pill stranded at bottom-center.
         setHUDAnchor(AccessibilityCapture.focusedEditableFieldTarget())
         startCapture()
-        // Layer B: freeze the semantic target at trigger. The bundle is
-        // awaited only after transcription, seconds from now.
+        // Layer B: freeze the semantic target at trigger, then follow the
+        // pointer's sweep for the whole recording. The bundle is awaited
+        // only after transcription, seconds from now.
         stopContextSnapshot?.cancel()
         stopContextSnapshot = nil
         startContextSnapshot = ContextCollector.snapshot(phase: "start")
+        if let stale = pointerTimeline {
+            Task { await stale.stopSampling() }
+        }
+        let timeline = ContextCollector.PointerTimeline()
+        pointerTimeline = timeline
+        Task { await timeline.begin() }
         // Focus can lag the hotkey by well over a second (app still coming
         // forward, focus just moved in). If we didn't anchor, keep polling for
         // the whole recording so the pill lands on the field mid-utterance
@@ -239,8 +248,13 @@ final class SessionManager {
     func stopIfRecording() {
         guard case .recording = state else { return }
         // Second context snapshot: the pointer may have moved to its target
-        // WHILE talking; the stop-phase delta is itself evidence.
+        // WHILE talking; the stop-phase delta is itself evidence. Sampling
+        // ends with the recording — the pill leaving the screen is the
+        // watching ending.
         stopContextSnapshot = ContextCollector.snapshot(phase: "stop")
+        if let timeline = pointerTimeline {
+            Task { await timeline.stopSampling() }
+        }
         stopCapture()
     }
 
@@ -1178,9 +1192,10 @@ final class SessionManager {
             //    there is no background intelligence to wait for. The context
             //    bundle finished long ago (its AX reads are time-bounded);
             //    awaiting it here costs nothing.
+            let pointerFacts = await pointerTimeline?.finish(appName: primaryApp) ?? []
             let captureContext = CaptureContext.merged(
                 start: await startContextSnapshot?.value ?? [],
-                stop: await stopContextSnapshot?.value ?? []
+                stop: (await stopContextSnapshot?.value ?? []) + pointerFacts
             )
             let capture = Capture(
                 id: captureID,

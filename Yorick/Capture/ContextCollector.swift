@@ -96,41 +96,134 @@ enum ContextCollector {
         }
         logRung(phase, appName, "document", ok: facts.contains { $0.kind == "document" }, since: t, detail: "")
 
-        // What the pointer touched — only when the pointer was actually in
-        // use. Named attributes on the element itself; no radius walks.
-        t = ContinuousClock.now
-        var pointedOK = false
-        if !pointerParked {
-            let systemWide = AXUIElementCreateSystemWide()
-            AXUIElementSetMessagingTimeout(systemWide, 0.25)
-            var pointedRef: AXUIElement?
-            AXUIElementCopyElementAtPosition(systemWide, Float(cursor.x), Float(cursor.y), &pointedRef)
-            if let pointed = pointedRef {
-                let role = str(pointed, kAXRoleAttribute) ?? "unknown"
-                let title = str(pointed, kAXTitleAttribute) ?? ""
-                let value = str(pointed, kAXValueAttribute) ?? ""
-                let label = str(pointed, kAXDescriptionAttribute) ?? ""
-                let best = [title, label, value].first { !$0.isEmpty } ?? ""
-                if !best.isEmpty {
-                    let roleDesc = str(pointed, kAXRoleDescriptionAttribute) ?? role
-                    facts.append(ContextFact(
-                        kind: "pointedElement",
-                        value: String(best.prefix(pointedCap)),
-                        detail: roleDesc,
-                        phase: phase
-                    ))
-                    pointedOK = true
+        _ = (cursor, pointerParked) // pointer evidence comes from PointerTimeline
+        return facts
+    }
+
+    // MARK: - Pointed-element resolution (shared with PointerTimeline)
+
+    /// What the pointer is touching, resolved to a SEMANTIC unit, not the
+    /// deepest leaf: a bare word under the cursor climbs to its row/cell or
+    /// nearest titled container, whose visible text is the fact ("Record ·
+    /// Ocrevus · in progress", not "Ocrevus"). One bounded direct-children
+    /// text read for rows — never a subtree walk.
+    static func resolvePointed(at point: CGPoint) -> (value: String, detail: String)? {
+        let systemWide = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(systemWide, 0.25)
+        var pointedRef: AXUIElement?
+        AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &pointedRef)
+        guard let leaf = pointedRef else { return nil }
+
+        let leafText = bestText(of: leaf)
+        // Climb toward meaning: a row/cell wins outright; otherwise the first
+        // ancestor that carries its own title/description.
+        var node = leaf
+        for _ in 0..<6 {
+            var parentRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(node, kAXParentAttribute as CFString, &parentRef) == .success,
+                  let parent = parentRef else { break }
+            node = parent as! AXUIElement
+            let role = str(node, kAXRoleAttribute) ?? ""
+            if role == "AXRow" || role == "AXCell" {
+                let rowText = childrenText(of: node)
+                if !rowText.isEmpty {
+                    return (String(rowText.prefix(pointedCap)), str(node, kAXRoleDescriptionAttribute) ?? "row")
+                }
+                break
+            }
+            // Containers that merely wrap everything don't carry meaning.
+            if role == "AXWindow" || role == "AXWebArea" || role == "AXScrollArea" { break }
+            let title = str(node, kAXTitleAttribute) ?? str(node, kAXDescriptionAttribute) ?? ""
+            if !title.isEmpty, title != leafText {
+                let detail = str(node, kAXRoleDescriptionAttribute) ?? role
+                return (String(title.prefix(pointedCap)), detail)
+            }
+        }
+        guard let leafText, !leafText.isEmpty else { return nil }
+        let roleDesc = str(leaf, kAXRoleDescriptionAttribute) ?? (str(leaf, kAXRoleAttribute) ?? "element")
+        return (String(leafText.prefix(pointedCap)), roleDesc)
+    }
+
+    private static func bestText(of element: AXUIElement) -> String? {
+        let title = str(element, kAXTitleAttribute) ?? ""
+        let label = str(element, kAXDescriptionAttribute) ?? ""
+        let value = str(element, kAXValueAttribute) ?? ""
+        return [title, label, value].first { !$0.isEmpty }
+    }
+
+    /// Visible text of a row's DIRECT children, joined — bounded (first 8
+    /// children, 200 chars), one level only.
+    private static func childrenText(of element: AXUIElement) -> String {
+        var childrenRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+              let children = childrenRef as? [AXUIElement] else { return "" }
+        let parts = children.prefix(8).compactMap { bestText(of: $0) }.filter { !$0.isEmpty }
+        return String(parts.joined(separator: " · ").prefix(200))
+    }
+
+    // MARK: - Pointer timeline
+
+    /// Samples what the pointer touches WHILE the recording runs — pointing
+    /// is a gesture, not a moment, and "I mean this whole section" arrives as
+    /// a sweep across its rows. Sampling starts at hotkey-down and stops at
+    /// release: the recording pill is on screen the whole time, so the
+    /// watching is announced. Only fresh pointer positions are sampled (a
+    /// parked mouse contributes nothing), consecutive duplicates collapse,
+    /// and the ordered unique sweep (capped) becomes the evidence.
+    actor PointerTimeline {
+        private var items: [(value: String, detail: String)] = []
+        private var sampler: Task<Void, Never>?
+        private static let maxItems = 8
+
+        func begin() {
+            guard sampler == nil else { return }
+            let deadline = ContinuousClock.now + .seconds(600)
+            sampler = Task {
+                while !Task.isCancelled, items.count < Self.maxItems, ContinuousClock.now < deadline {
+                    sampleOnce()
+                    try? await Task.sleep(nanoseconds: 600_000_000)
                 }
             }
         }
-        logRung(phase, appName, "pointed", ok: pointedOK, since: t, detail: "parked=\(pointerParked)")
 
-        return facts
+        private func sampleOnce() {
+            // CGEvent's location is already top-left-origin global coords —
+            // matching AX — and both CG calls are thread-safe.
+            let idle = CGEventSource.secondsSinceLastEventType(
+                .combinedSessionState, eventType: .mouseMoved
+            )
+            guard idle < 2.0, let point = CGEvent(source: nil)?.location else { return }
+            guard let resolved = ContextCollector.resolvePointed(at: point) else { return }
+            if let last = items.last, last.value == resolved.value { return }
+            if items.contains(where: { $0.value == resolved.value }) { return }
+            items.append(resolved)
+        }
+
+        /// Stop sampling (hotkey release) — items are kept for `finish`.
+        func stopSampling() {
+            sampler?.cancel()
+            sampler = nil
+        }
+
+        /// The ordered sweep as facts. Also emits the coverage log line.
+        func finish(appName: String) -> [ContextFact] {
+            sampler?.cancel()
+            sampler = nil
+            ContextCollector.logTimeline(appName: appName, count: items.count)
+            return items.map {
+                ContextFact(kind: "pointedElement", value: $0.value, detail: $0.detail, phase: "timeline")
+            }
+        }
     }
 
     // MARK: - Coverage instrumentation
 
     private static var isLoggingEnabled: Bool { UserDefaults.standard.bool(forKey: "adminMode") }
+
+    static func logTimeline(appName: String, count: Int) {
+        guard isLoggingEnabled else { return }
+        log.notice("rung=pointerTimeline app=\(appName, privacy: .public) items=\(count)")
+    }
 
     private static func logRung(_ phase: String, _ app: String, _ rung: String, ok: Bool, since start: ContinuousClock.Instant, detail: String) {
         guard isLoggingEnabled else { return }

@@ -143,10 +143,12 @@ struct CaptureRow: View {
     }
 
     /// Compact one-liner of the evidence: "infuseflow.app/board · “Migrate
-    /// billing…” · pointing at: Overdue tasks". First fact per kind.
+    /// billing…” · pointed at: Overdue tasks +2". One entry per kind; the
+    /// pointer sweep shows its first item and a count.
     private func contextSummary(_ context: CaptureContext) -> String {
         var parts: [String] = []
         var seen = Set<String>()
+        let pointed = context.facts.filter { $0.kind == "pointedElement" }
         for fact in context.facts where !seen.contains(fact.kind) {
             seen.insert(fact.kind)
             switch fact.kind {
@@ -157,7 +159,8 @@ struct CaptureRow: View {
             case "selection":
                 parts.append("“\(fact.value.prefix(60))”")
             case "pointedElement":
-                parts.append("pointing at: \(fact.value.prefix(60))")
+                let tail = pointed.count > 1 ? " +\(pointed.count - 1)" : ""
+                parts.append("pointed at: \(fact.value.prefix(60))\(tail)")
             default:
                 break
             }
