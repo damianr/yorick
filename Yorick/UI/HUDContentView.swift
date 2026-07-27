@@ -415,6 +415,9 @@ struct HUDContentView: View {
     /// capsule: shape differentiates the two futures the same way position
     /// already does.
     private var recordingCorners: PillCorners {
+        // An approximate anchor (single-line leading edge) never wears the
+        // pointer corner — that corner claims the exact insertion point.
+        guard !session.hudAnchorApproximate else { return .capsule }
         switch session.hudPillPlacement {
         case .bottomCenter: return .capsule
         case .aboveField: return .pointer

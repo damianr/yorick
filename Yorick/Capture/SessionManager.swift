@@ -143,6 +143,10 @@ final class SessionManager {
     /// The on-device model's reading of the current card's capture — the
     /// confidence layer. Arrives late (or never), never blocks the card.
     var cardReadback: CardReadback?
+    /// True when the pill is seated at a field's leading edge rather than a
+    /// readable caret (single-line exception) — the pill must render as a
+    /// capsule there: the pointer corner claims an exact insertion point.
+    var hudAnchorApproximate = false
     private var audioFileURL: URL?
     private var startTask: Task<Void, Never>?
     private var processingTask: Task<Void, Never>?
@@ -326,16 +330,29 @@ final class SessionManager {
             return
         }
 
-        // Two-tier placement: the pill sits at the CARET when the app exposes it,
-        // otherwise honest bottom-center. There is no frame-anchored middle tier —
-        // a pill near-but-off the cursor reads as broken (it claims to know where
-        // you're typing and then misses), whereas bottom-center makes no such
-        // claim. The field is still tracked (for receipt dismiss) either way.
-        guard let caret = target.caret else {
+        // Placement tiers: the pill sits at the CARET when the app exposes it.
+        // When it doesn't, ONE narrow exception before honest bottom-center:
+        // a single-line field with a sane frame (Chrome's omnibox — measured:
+        // its Views toolkit answers every bounds-for-range query with a
+        // degenerate 0×0 rect) seats the pill at the field's leading edge —
+        // and the pill renders as a CAPSULE there, never the pointer corner,
+        // so it claims "typing into this field" without claiming the exact
+        // spot. Multi-line editors get no such middle tier: near-but-off the
+        // cursor reads as broken, and bottom-center makes no false claim.
+        let exactCaret = target.caret
+        let singleLineEdge: CGRect? = target.frame.height <= 44 && target.frame.width > 0
+            ? CGRect(x: target.frame.minX + 4, y: target.frame.minY, width: 0, height: target.frame.height)
+            : nil
+        guard let caret = exactCaret ?? singleLineEdge else {
             Self.placementLog.info("no caret → bottom-center (frame=\(NSStringFromRect(target.frame), privacy: .public))")
+            hudAnchorApproximate = false
             hudPillPlacement = .bottomCenter
             NotificationCenter.default.post(name: .hudReposition, object: nil)
             return
+        }
+        hudAnchorApproximate = (exactCaret == nil)
+        if hudAnchorApproximate {
+            Self.placementLog.info("no caret, single-line field → leading-edge capsule (frame=\(NSStringFromRect(target.frame), privacy: .public))")
         }
 
         // AX coordinates are global top-left; Cocoa windows are bottom-left,
