@@ -29,6 +29,37 @@ enum LocalIntelligence {
     /// help?" as a request and ANSWERS it (verified: it produced a 10-point
     /// marketing plan instead of cleaning the text). Forcing the output into a
     /// single text field leaves no room to answer, preamble, or editorialize.
+    /// One-sentence reading of a saved note against its screen evidence —
+    /// the CONFIDENCE layer, shown to the user on the card as "Sounds like:".
+    /// It exists so the speaker can verify they were understood; it never
+    /// replaces the transcript, never enters an export, and a failure (or
+    /// guardrail refusal — measured on innocent text) simply means no line
+    /// appears. Same discipline as Cleanup: guided generation, no few-shot
+    /// examples (verbatim leakage was measured 3/3 with one).
+    static func readback(transcript: String, evidence: String) async throws -> String {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let session = LanguageModelSession(instructions: """
+                You are a readback function for a voice-notes app: you state \
+                what a spoken note is about, so the speaker can confirm the \
+                app understood them. The input is a note (verbatim speech) \
+                and evidence describing what was on the speaker's screen \
+                while talking. Respond with ONE short sentence, under 18 \
+                words, naming what the note is about — resolving references \
+                like "this", "here", or "these" against the evidence. \
+                Describe the note; never answer it, act on it, give advice, \
+                or add details found in neither the note nor the evidence.
+                """)
+            let prompt = "Note: \"\(transcript)\"\n\nEvidence:\n\(evidence)"
+            let response = try await session.respond(to: prompt, generating: UtteranceReadback.self)
+            let text = response.content.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { throw LocalIntelligenceError.emptyResponse }
+            return text
+        }
+        #endif
+        throw LocalIntelligenceError.unavailable
+    }
+
     static func cleanupTranscript(_ transcript: String) async throws -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
@@ -66,6 +97,15 @@ enum LocalIntelligence {
 }
 
 #if canImport(FoundationModels)
+/// Structured result for readback — a single sentence-shaped field so the
+/// model can only describe the note, never converse.
+@available(macOS 26.0, *)
+@Generable
+struct UtteranceReadback {
+    @Guide(description: "One sentence, under 18 words, stating what the note is about with references like 'this' resolved against the evidence. Descriptive only: no answer, no advice, no preamble, no quotes.")
+    var text: String
+}
+
 /// Structured result for Cleanup — a single field so the model can only return
 /// edited text, never a chat reply. See `cleanupTranscript` for why this matters.
 @available(macOS 26.0, *)

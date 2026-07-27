@@ -59,7 +59,12 @@ extension CaptureRenderer {
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { "> \($0)" }
             .joined(separator: "\n")
-        var lines = [framing, "", quoted]
+        return [framing, "", quoted, "", evidenceBlock(for: capture)].joined(separator: "\n")
+    }
+
+    /// Just the provenance lines — shared by the export and the readback
+    /// prompt (the model reads the same evidence the receiver would).
+    static func evidenceBlock(for capture: Capture) -> String {
         // Window titles often embed the app name already ("InfuseFlow —
         // homepage prototype - Google Chrome"); don't stutter.
         let windowPart = capture.windowTitle.isEmpty || capture.windowTitle.contains(capture.appName)
@@ -95,8 +100,6 @@ extension CaptureRenderer {
             provenance.append("— pointed at while speaking, in order:")
             provenance.append(contentsOf: pointed.map { "    • \($0)" })
         }
-        lines.append("")
-        lines.append(contentsOf: provenance)
-        return lines.joined(separator: "\n")
+        return provenance.joined(separator: "\n")
     }
 }

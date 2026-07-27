@@ -12,6 +12,7 @@ struct HUDContentView: View {
     @State private var recordingHovering = false
     /// The saved-capture card's fade clock, cancelled while hovered.
     @State private var cardDismissTask: Task<Void, Never>?
+    @State private var cardHovering = false
 
     private var isVisible: Bool {
         session.state == .recording ||
@@ -245,6 +246,24 @@ struct HUDContentView: View {
                 .foregroundStyle(.white)
                 .lineLimit(4)
                 .fixedSize(horizontal: false, vertical: true)
+            // The machine's reading, clearly marked as such — the confidence
+            // layer. Fades in if the on-device model produces one; the card
+            // is complete without it and the export never includes it.
+            if let readback = session.cardReadback, readback.captureID == capture.id {
+                HStack(alignment: .top, spacing: 5) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .frame(width: 10)
+                        .padding(.top, 1.5)
+                    Text("Sounds like: \(readback.text)")
+                        .font(.system(size: 10.5))
+                        .italic()
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(2)
+                }
+                .transition(.opacity)
+            }
             // The evidence, shown as it was gathered — the card must preview
             // everything an export would carry. Verbatim facts, no inference.
             if let context = capture.context {
@@ -296,6 +315,7 @@ struct HUDContentView: View {
         .onHover { hovering in
             // Hover holds the card (the skull's pattern); leaving restarts a
             // short clock so it never lingers after you've looked away.
+            cardHovering = hovering
             if hovering {
                 cardDismissTask?.cancel()
             } else {
@@ -305,6 +325,13 @@ struct HUDContentView: View {
         .onAppear {
             scheduleCardDismiss(capture.id, after: 6)
         }
+        .onChange(of: session.cardReadback) { _, readback in
+            // A readback landing near the end of the clock deserves reading
+            // time — extend, unless the user is already holding the card.
+            guard readback?.captureID == capture.id, !cardHovering else { return }
+            scheduleCardDismiss(capture.id, after: 5)
+        }
+        .animation(.easeOut(duration: 0.25), value: session.cardReadback)
         // New identity per capture, so a replacing card restarts its own clock.
         .id(capture.id)
     }

@@ -37,6 +37,14 @@ struct TransientNotice: Equatable, Identifiable {
 
 /// A just-completed insertion, shown as an actionable pill next to the field:
 /// Cleanup re-inserts a disfluency-free version; Undo removes the paste.
+/// The on-device model's one-line reading of a saved capture, shown on the
+/// card as "Sounds like: …" so the speaker can confirm they were understood.
+/// Confidence layer only: never stored, never exported, fails to nothing.
+struct CardReadback: Equatable {
+    let captureID: UUID
+    let text: String
+}
+
 struct InsertionReceipt: Identifiable, Equatable {
     let id = UUID()
     /// The async ⌘V paste lands ~50–200ms after the receipt appears — the
@@ -132,6 +140,9 @@ final class SessionManager {
     private var stopContextSnapshot: Task<[ContextFact], Never>?
     /// Samples the pointer's sweep while recording — pointing is a gesture.
     private var pointerTimeline: ContextCollector.PointerTimeline?
+    /// The on-device model's reading of the current card's capture — the
+    /// confidence layer. Arrives late (or never), never blocks the card.
+    var cardReadback: CardReadback?
     private var audioFileURL: URL?
     private var startTask: Task<Void, Never>?
     private var processingTask: Task<Void, Never>?
@@ -815,6 +826,24 @@ final class SessionManager {
     }
 
     /// Put back exactly what was said, undoing the cleanup edit.
+    /// Fire-and-forget readback for the card. Only for captures that carry
+    /// evidence (with nothing to ground on, a readback is just paraphrase),
+    /// only when the model exists, and only if the same card is still up
+    /// when the sentence arrives. Every failure path is silence — the card
+    /// is complete without it.
+    private func requestReadback(for capture: Capture) {
+        cardReadback = nil
+        guard capture.context != nil, LocalIntelligence.isCleanupAvailable else { return }
+        Task { @MainActor [weak self] in
+            let text = try? await LocalIntelligence.readback(
+                transcript: capture.transcript,
+                evidence: CaptureRenderer.evidenceBlock(for: capture)
+            )
+            guard let self, let text, self.lastSavedCapture?.id == capture.id else { return }
+            self.cardReadback = CardReadback(captureID: capture.id, text: text)
+        }
+    }
+
     func revertCleanup() {
         guard let receipt = insertionReceipt, let raw = rawTranscriptForRevert else { return }
         guard insertionTargetStillFocused(receipt) else {
@@ -1232,6 +1261,7 @@ final class SessionManager {
 
             if effectiveMode == .contextual {
                 lastSavedCapture = capture
+                requestReadback(for: capture)
             }
         } catch {
             print("[Session] Failed: \(error)")
