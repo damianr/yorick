@@ -884,6 +884,20 @@ final class SessionManager {
 
     private static let readbackLog = Logger(subsystem: "com.heyyorick.Yorick", category: "readback")
 
+    /// First of (facts, 1.5s clock) wins; losing means saving without facts.
+    private static func awaitFacts(_ produce: @escaping @Sendable () async -> [ContextFact]) async -> [ContextFact] {
+        await withTaskGroup(of: [ContextFact]?.self) { group in
+            group.addTask { await produce() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? []
+        }
+    }
+
     func revertCleanup() {
         guard let receipt = insertionReceipt, let raw = rawTranscriptForRevert else { return }
         guard insertionTargetStillFocused(receipt) else {
@@ -1261,10 +1275,15 @@ final class SessionManager {
             //    there is no background intelligence to wait for. The context
             //    bundle finished long ago (its AX reads are time-bounded);
             //    awaiting it here costs nothing.
-            let pointerFacts = await pointerTimeline?.finish(appName: primaryApp) ?? []
+            // Race the context tasks against a wall clock: with no AX
+            // timeouts in the collector, a hung app could stall its task
+            // indefinitely — that must cost the facts, never the save.
+            let pointerFacts = await Self.awaitFacts({ await self.pointerTimeline?.finish(appName: primaryApp) ?? [] })
+            let startFacts = await Self.awaitFacts({ await self.startContextSnapshot?.value ?? [] })
+            let stopFacts = await Self.awaitFacts({ await self.stopContextSnapshot?.value ?? [] })
             let captureContext = CaptureContext.merged(
-                start: await startContextSnapshot?.value ?? [],
-                stop: (await stopContextSnapshot?.value ?? []) + pointerFacts
+                start: startFacts,
+                stop: stopFacts + pointerFacts
             )
             let capture = Capture(
                 id: captureID,

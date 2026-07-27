@@ -45,8 +45,14 @@ enum ContextCollector {
         phase: String, pid: pid_t, appName: String, cursor: CGPoint, pointerParked: Bool
     ) -> [ContextFact] {
         var facts: [ContextFact] = []
+        // NO AXUIElementSetMessagingTimeout, anywhere in this file. Its
+        // scoping proved broader than per-reference in practice: collector
+        // timeouts poisoned ROUTING's reads to the same app, and slow apps
+        // (a loaded Claude session) started reporting focused=none while
+        // fast ones kept working. Twice. The collector is bounded at the
+        // consumer instead: the save path races these tasks against a
+        // wall clock, so a hung app costs facts, never the capture.
         let appElement = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(appElement, 0.25)
 
         // Selection on the focused element — the most literal "pointing".
         var t = ContinuousClock.now
@@ -108,19 +114,11 @@ enum ContextCollector {
     /// Ocrevus · in progress", not "Ocrevus"). One bounded direct-children
     /// text read for rows — never a subtree walk.
     static func resolvePointed(at point: CGPoint) -> (value: String, detail: String)? {
-        // NEVER set a messaging timeout on the system-wide element: that is
-        // the documented way to change the timeout GLOBALLY for every AX
-        // message this process sends — it silently gave routing's
-        // focused-element reads a 0.25s budget and broke dictation in
-        // slower-answering apps (Messages, cold TextEdit: focused=none).
-        // Per-element timeouts (set on refs only this collector holds) are
-        // the correct containment; the hit-test itself runs at the system
-        // default on a utility thread where a stall costs one sample.
+        // No messaging timeouts here either — see collect() for the scars.
         let systemWide = AXUIElementCreateSystemWide()
         var pointedRef: AXUIElement?
         AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &pointedRef)
         guard let leaf = pointedRef else { return nil }
-        AXUIElementSetMessagingTimeout(leaf, 0.25)
 
         let leafText = bestText(of: leaf)
         // Climb toward meaning: a row/cell wins outright; otherwise the first

@@ -56,36 +56,12 @@ enum AccessibilityCapture {
         var element: AXUIElement? = nil
     }
 
-    private static let editableRoles: Set<String> = [
-        "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"
-    ]
-
-    /// Rich editors whose focused canvas is AX-opaque: it exposes no editable
-    /// role, no settable value, and no text attributes we can read (verified via
-    /// AX probe — Pages focuses a bare AXScrollArea, Word/Keynote similar). A ⌘V
-    /// paste still lands, so we trust app identity: if one of these is frontmost
-    /// and a plausible text container is focused, treat it as a dictation target.
-    private static let richEditorBundleIDs: Set<String> = [
-        "com.apple.iWork.Pages",
-        "com.apple.iWork.Keynote",
-        "com.apple.iWork.Numbers",
-        "com.apple.mail",              // also caught by settable-value, listed for clarity
-        "com.microsoft.Word",
-        "com.microsoft.Powerpoint",
-        "com.microsoft.Excel",
-        "com.microsoft.Outlook",
-        "com.literatureandlatte.scrivener3",
-        "com.coteditor.CotEditor",
-        "com.apple.TextEdit"
-    ]
-
-    /// Roles that can plausibly hold a text cursor in a rich editor. Guards the
-    /// bundle-ID trust path so a focused button/slider/menu in Pages is never
-    /// mistaken for the document canvas.
-    private static let textContainerRoles: Set<String> = [
-        "AXScrollArea", "AXTextArea", "AXTextField", "AXWebArea",
-        "AXGroup", "AXLayoutArea", "AXUnknown"
-    ]
+    // Role sets live with the pure ladder they parameterize — see
+    // FocusClassifier, whose fixture suite is the regression net for all of
+    // this. These aliases keep existing call sites reading naturally.
+    private static let editableRoles = FocusClassifier.editableRoles
+    private static let richEditorBundleIDs = FocusClassifier.richEditorBundleIDs
+    private static let textContainerRoles = FocusClassifier.textContainerRoles
 
     /// The cursor location in AX hit-test coordinates (global, top-left origin).
     /// The flip must use the PRIMARY screen (`screens[0]`) — `NSScreen.main` is
@@ -499,93 +475,36 @@ enum AccessibilityCapture {
         let roleDescription = attribute(focusedElement, kAXRoleDescriptionAttribute) as? String ?? ""
         let focusedSummary = "focusedRole=\(role.isEmpty ? "none" : role) subrole=\(subrole.isEmpty ? "none" : subrole) desc=\(roleDescription.isEmpty ? "none" : roleDescription) app=\(frontApp.localizedName ?? "unknown")"
 
-        // Never route dictation into a password field — the transcript would be
-        // pasted into it and briefly sit on the clipboard.
-        if subrole == "AXSecureTextField" {
-            return FocusedEditability(isEditable: false, summary: focusedSummary + " secureField=true", frame: nil)
-        }
-
-        // Disabled/read-only fields swallow the paste and the transcript is lost.
-        if let enabled = attribute(focusedElement, kAXEnabledAttribute) as? Bool, !enabled {
-            return FocusedEditability(isEditable: false, summary: focusedSummary + " enabled=false", frame: nil)
-        }
-
         let frame = elementFrame(focusedElement)
 
-        // Direct role match on focused element
-        if editableRoles.contains(role) {
-            return FocusedEditability(isEditable: true, summary: focusedSummary, frame: frame, element: focusedElement)
-        }
-
-        // Web/Electron editors: check subrole and text-editing affordances.
-        if subrole == "AXContentEditable" || subrole == "AXPlainText" {
-            return FocusedEditability(isEditable: true, summary: focusedSummary, frame: frame, element: focusedElement)
-        }
-
-        // Toolkit-agnostic signal: a focused element that exposes a text caret
-        // (AXSelectedTextRange — a CHARACTER range, distinct from a row/child
-        // selection) is a text editor, whatever its role or app — across
-        // AppKit and Electron, without a per-app allowlist. ONE measured
-        // exception: browsers keep a document-level selection range on every
-        // page, editable or not, so a bare AXWebArea "has a caret" even on a
-        // read-only article (Chrome: focusedRole=AXWebArea subrole=none
-        // desc="HTML content" textCaret=true, typed instead of saved). Web
-        // areas fall through to the stricter checks below — a truly editable
-        // one (Mail's compose body) still passes via valueSettable, and web
-        // page editors focus a contenteditable or field, caught earlier.
-        // Bare AXGroups are excluded for the same measured reason: Electron
-        // content panes (the Claude app's preview: focusedRole=AXGroup
-        // desc=group textCaret=true) expose a document selection range on
-        // non-editable views, and real Electron editors focus a text
-        // role/contenteditable, never a naked group. The asymmetry decides
-        // close calls: wrongly saving costs one Copy click, wrongly typing
-        // swallows the paste invisibly.
-        if role != "AXWebArea", role != "AXGroup", hasTextCaret(focusedElement) {
+        // The ladder itself is pure and fixture-tested (FocusClassifier) —
+        // this function's job is only to FEED it. Expensive signals are
+        // closures so the short-circuit latency of the original is kept:
+        // a direct role match still costs zero extra AX round-trips.
+        let signals = FocusClassifier.Signals(
+            role: role,
+            subrole: subrole,
+            isEnabled: (attribute(focusedElement, kAXEnabledAttribute) as? Bool) ?? true,
+            isRichEditorApp: frontApp.bundleIdentifier.map { richEditorBundleIDs.contains($0) } ?? false,
+            richEditorBundleID: frontApp.bundleIdentifier,
+            hasTextCaret: { hasTextCaret(focusedElement) },
+            isLikelyEditableText: { isLikelyEditableTextElement(focusedElement, role: role, subrole: subrole) },
+            valueSettable: {
+                var settable: DarwinBoolean = false
+                return AXUIElementIsAttributeSettable(focusedElement, kAXValueAttribute as CFString, &settable) == .success
+                    && settable.boolValue
+            }
+        )
+        if let verdict = FocusClassifier.classify(signals) {
             return FocusedEditability(
-                isEditable: true,
-                summary: focusedSummary + " textCaret=true",
-                frame: frame,
-                element: focusedElement
+                isEditable: verdict.editable,
+                summary: focusedSummary + verdict.tag,
+                frame: verdict.editable ? frame : nil,
+                element: verdict.editable ? focusedElement : nil
             )
         }
 
-        if isLikelyEditableTextElement(focusedElement, role: role, subrole: subrole) {
-            return FocusedEditability(isEditable: true, summary: focusedSummary, frame: frame, element: focusedElement)
-        }
-
-        // A focused element with a SETTABLE value is a text sink even when it
-        // advertises nothing else — Mail's compose body focuses an AXWebArea
-        // ("HTML content") whose only editable tell is valueSettable=true. This
-        // check is safe here because we only reach it via keyboard focus (the
-        // ambiguous mouse-hover path resolves earlier); a focused, settable,
-        // non-secure, enabled element accepts pasted text.
-        var valueSettable: DarwinBoolean = false
-        if textContainerRoles.contains(role),
-           AXUIElementIsAttributeSettable(focusedElement, kAXValueAttribute as CFString, &valueSettable) == .success,
-           valueSettable.boolValue {
-            return FocusedEditability(
-                isEditable: true,
-                summary: focusedSummary + " valueSettable=true",
-                frame: frame,
-                element: focusedElement
-            )
-        }
-
-        // AX-opaque rich editors (Pages et al.) expose no signal at all on their
-        // focused canvas. Recognize them by app identity, but only when a
-        // plausible text container holds focus — never a button/inspector.
-        if let bundleID = frontApp.bundleIdentifier,
-           richEditorBundleIDs.contains(bundleID),
-           textContainerRoles.contains(role) {
-            return FocusedEditability(
-                isEditable: true,
-                summary: focusedSummary + " richEditorApp=\(bundleID)",
-                frame: frame,
-                element: focusedElement
-            )
-        }
-
-        // Check 3: walk up from focused element looking for editable containers
+        // Final rung, undecided by the ladder: walk up looking for editable containers
         var current = focusedElement
         var parentRoles: [String] = []
         for _ in 0..<3 {
