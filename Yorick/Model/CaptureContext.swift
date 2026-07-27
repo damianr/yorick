@@ -53,24 +53,31 @@ extension CaptureRenderer {
     /// Rendered on demand, never stored — the stored bundle stays raw so
     /// this format can improve without migrations.
     static func renderWithContext(_ capture: Capture) -> String {
-        let framing = "Voice note captured with on-screen context. The quoted words are "
-            + "verbatim speech; the evidence lines after it record what was on screen "
-            + "and pointed at while speaking. Resolve references like \"this\", "
-            + "\"here\", or \"these\" against that evidence."
+        let framing = "Voice note with screen context — the quoted words are verbatim "
+            + "speech; resolve \"this/here/these\" against the evidence below it."
         let quoted = render(capture)
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { "> \($0)" }
             .joined(separator: "\n")
         var lines = [framing, "", quoted]
-        var provenance = ["— spoken in \(capture.appName)"
-            + (capture.windowTitle.isEmpty ? "" : " · \(capture.windowTitle)")]
+        // Window titles often embed the app name already ("InfuseFlow —
+        // homepage prototype - Google Chrome"); don't stutter.
+        let windowPart = capture.windowTitle.isEmpty || capture.windowTitle.contains(capture.appName)
+            ? capture.windowTitle
+            : "\(capture.appName) · \(capture.windowTitle)"
+        var provenance = ["— spoken in \(windowPart.isEmpty ? capture.appName : windowPart)"]
         var pointed: [String] = []
-        for fact in capture.context?.facts ?? [] {
+        let facts = capture.context?.facts ?? []
+        for fact in facts {
             switch fact.kind {
             case "pageURL":
                 provenance.append("— page: \(fact.value)")
             case "document":
-                provenance.append("— document: \(fact.value)")
+                // Chrome reports AXDocument = the page URL; a duplicate line
+                // is noise for the receiver.
+                if !facts.contains(where: { $0.kind == "pageURL" && $0.value == fact.value }) {
+                    provenance.append("— document: \(fact.value)")
+                }
             case "selection":
                 provenance.append("— selected text: \"\(fact.value)\"")
             case "pointedElement":
