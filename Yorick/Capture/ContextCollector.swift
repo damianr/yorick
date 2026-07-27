@@ -108,11 +108,19 @@ enum ContextCollector {
     /// Ocrevus · in progress", not "Ocrevus"). One bounded direct-children
     /// text read for rows — never a subtree walk.
     static func resolvePointed(at point: CGPoint) -> (value: String, detail: String)? {
+        // NEVER set a messaging timeout on the system-wide element: that is
+        // the documented way to change the timeout GLOBALLY for every AX
+        // message this process sends — it silently gave routing's
+        // focused-element reads a 0.25s budget and broke dictation in
+        // slower-answering apps (Messages, cold TextEdit: focused=none).
+        // Per-element timeouts (set on refs only this collector holds) are
+        // the correct containment; the hit-test itself runs at the system
+        // default on a utility thread where a stall costs one sample.
         let systemWide = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(systemWide, 0.25)
         var pointedRef: AXUIElement?
         AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &pointedRef)
         guard let leaf = pointedRef else { return nil }
+        AXUIElementSetMessagingTimeout(leaf, 0.25)
 
         let leafText = bestText(of: leaf)
         // Climb toward meaning: a row/cell wins outright; otherwise the first
