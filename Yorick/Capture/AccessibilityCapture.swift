@@ -533,7 +533,14 @@ enum AccessibilityCapture {
         // areas fall through to the stricter checks below — a truly editable
         // one (Mail's compose body) still passes via valueSettable, and web
         // page editors focus a contenteditable or field, caught earlier.
-        if role != "AXWebArea", hasTextCaret(focusedElement) {
+        // Bare AXGroups are excluded for the same measured reason: Electron
+        // content panes (the Claude app's preview: focusedRole=AXGroup
+        // desc=group textCaret=true) expose a document selection range on
+        // non-editable views, and real Electron editors focus a text
+        // role/contenteditable, never a naked group. The asymmetry decides
+        // close calls: wrongly saving costs one Copy click, wrongly typing
+        // swallows the paste invisibly.
+        if role != "AXWebArea", role != "AXGroup", hasTextCaret(focusedElement) {
             return FocusedEditability(
                 isEditable: true,
                 summary: focusedSummary + " textCaret=true",

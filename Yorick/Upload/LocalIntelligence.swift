@@ -39,22 +39,44 @@ enum LocalIntelligence {
     static func readback(transcript: String, evidence: String) async throws -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
+            // Prompt shaped by replaying a real miss: the first version let
+            // the model treat evidence CONTENT as the topic — a UI-design
+            // note about a "needs attention" section came back as "Joan
+            // Whitfield needs to be prioritized," a fabricated clinical
+            // claim about a name from a pointed-at row (reproduced 3/3).
+            // The evidence is for resolving references, never for stating.
             let session = LanguageModelSession(instructions: """
-                You are a readback function for a voice-notes app: you state \
-                what a spoken note is about, so the speaker can confirm the \
-                app understood them. The input is a note (verbatim speech) \
-                and evidence describing what was on the speaker's screen \
-                while talking. Respond with ONE short sentence, under 18 \
-                words, naming what the note is about — resolving references \
-                like "this", "here", or "these" against the evidence. \
-                Describe the note; never answer it, act on it, give advice, \
-                or add details found in neither the note nor the evidence.
+                You are a readback function for a voice-notes app: you repeat \
+                back what the speaker's note is about, so they can confirm \
+                the app understood them. The input is a note (verbatim \
+                speech) plus evidence describing what was on the speaker's \
+                screen while they talked.
+
+                Your sentence must describe what the SPEAKER is saying — \
+                their point, in their own words where possible. Use the \
+                evidence ONLY to name the on-screen thing that references \
+                like "this", "here", or "these items" point to. The \
+                evidence's content is not the topic: never restate evidence \
+                text as fact, never make claims about people, items, or \
+                statuses that appear in the evidence, never answer the note, \
+                never give advice.
+
+                Refer to the speaker only as "you" — never by name. Respond \
+                with ONE sentence, under 18 words.
                 """)
             let prompt = "Note: \"\(transcript)\"\n\nEvidence:\n\(evidence)"
             let response = try await session.respond(to: prompt, generating: UtteranceReadback.self)
             let text = response.content.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { throw LocalIntelligenceError.emptyResponse }
-            return text
+            // The model ignores the length budget on a visible fraction of
+            // runs (measured: one sample echoed the whole transcript back).
+            // Prompt asks; code enforces: first sentence only, and if that
+            // is still over budget, silence beats a wall of text.
+            let firstSentence = text.range(of: #"^.+?[.!?](?=\s|$)"#, options: .regularExpression)
+                .map { String(text[$0]) } ?? text
+            guard !firstSentence.isEmpty, firstSentence.count <= 140 else {
+                throw LocalIntelligenceError.emptyResponse
+            }
+            return firstSentence.prefix(1).uppercased() + firstSentence.dropFirst()
         }
         #endif
         throw LocalIntelligenceError.unavailable
@@ -102,7 +124,7 @@ enum LocalIntelligence {
 @available(macOS 26.0, *)
 @Generable
 struct UtteranceReadback {
-    @Guide(description: "One sentence, under 18 words, stating what the note is about with references like 'this' resolved against the evidence. Descriptive only: no answer, no advice, no preamble, no quotes.")
+    @Guide(description: "One sentence, under 18 words, stating the speaker's point with on-screen references named; the speaker is 'you'. Never a claim from the evidence, never an answer, no preamble, no quotes.")
     var text: String
 }
 

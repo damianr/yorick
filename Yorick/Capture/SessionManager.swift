@@ -852,14 +852,28 @@ final class SessionManager {
         cardReadback = nil
         guard capture.context != nil, LocalIntelligence.isCleanupAvailable else { return }
         Task { @MainActor [weak self] in
-            let text = try? await LocalIntelligence.readback(
-                transcript: capture.transcript,
-                evidence: CaptureRenderer.evidenceBlock(for: capture)
-            )
-            guard let self, let text, self.lastSavedCapture?.id == capture.id else { return }
-            self.cardReadback = CardReadback(captureID: capture.id, text: text)
+            let admin = UserDefaults.standard.bool(forKey: "adminMode")
+            do {
+                let text = try await LocalIntelligence.readback(
+                    transcript: capture.transcript,
+                    evidence: CaptureRenderer.evidenceBlock(for: capture)
+                )
+                // Reviewable after the card fades — a wrong readback is eval
+                // corpus, and the corpus can't be built from vanished lines.
+                if admin {
+                    Self.readbackLog.notice("id=\(capture.id.uuidString.prefix(8), privacy: .public) text=\(text, privacy: .public)")
+                }
+                guard let self, self.lastSavedCapture?.id == capture.id else { return }
+                self.cardReadback = CardReadback(captureID: capture.id, text: text)
+            } catch {
+                if admin {
+                    Self.readbackLog.notice("id=\(capture.id.uuidString.prefix(8), privacy: .public) failed=\(error.localizedDescription, privacy: .public)")
+                }
+            }
         }
     }
+
+    private static let readbackLog = Logger(subsystem: "com.heyyorick.Yorick", category: "readback")
 
     func revertCleanup() {
         guard let receipt = insertionReceipt, let raw = rawTranscriptForRevert else { return }
