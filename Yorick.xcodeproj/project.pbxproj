@@ -26,6 +26,7 @@
 		5C6C55EBB6222F84BC08017E /* WhisperServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E650E2D930F26266A7838BE /* WhisperServer.swift */; };
 		6007E64A5E39615DD61BF4AD /* HUDWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC33F800989734476CB1D6D /* HUDWindow.swift */; };
 		672E6E5DA3E9F0B483635D80 /* CaptureListComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */; };
+		6789C2C88452C6B01E220DF7 /* SkullGazeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38DBA2E98DB5DAC38F5DFCE /* SkullGazeView.swift */; };
 		6AA227E198DF170BDA250AF4 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1644B703BCDFB773ED233BB4 /* AppPaths.swift */; };
 		73013C371F644AF34DF1ABAA /* Whisper in Resources */ = {isa = PBXBuildFile; fileRef = 5D8981771E06E68A6EC7DE29 /* Whisper */; };
 		7C2BCF917315DD41058EF6C5 /* CaptureContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D2C98258B20C69D61D91180 /* CaptureContext.swift */; };
@@ -96,6 +97,7 @@
 		8AD999AF3A2983F6D044382B /* HUDContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDContentView.swift; sourceTree = "<group>"; };
 		9BC530C070F06B8488BD526B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorderView.swift; sourceTree = "<group>"; };
+		A38DBA2E98DB5DAC38F5DFCE /* SkullGazeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkullGazeView.swift; sourceTree = "<group>"; };
 		ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenFormNormalizerTests.swift; sourceTree = "<group>"; };
 		BA1FC90D1A3F584F7F795AAC /* ToolbarBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarBackdrop.swift; sourceTree = "<group>"; };
 		BF4F07F81C3F7136AFA6E0E7 /* AppleSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeech.swift; sourceTree = "<group>"; };
@@ -191,6 +193,7 @@
 				D28302C5A969B4E66966DBB8 /* OnboardingView.swift */,
 				7A47ABE579672A11EBF68F05 /* PreferencesView.swift */,
 				9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */,
+				A38DBA2E98DB5DAC38F5DFCE /* SkullGazeView.swift */,
 				EF32C5AD14E35C4090236750 /* StatusIndicator.swift */,
 				E1B9810D94D0CD31393F67AF /* StreamView.swift */,
 				BFDADD63A711A33CB1DAFC49 /* Theme.swift */,
@@ -410,6 +413,7 @@
 				35E56C0FD55F736227AA6C86 /* SessionManager.swift in Sources */,
 				007FEC1B6F73F8F3A223852B /* SessionUploader.swift in Sources */,
 				EF12E5AC1C7B78D778526C1D /* ShortcutRecorderView.swift in Sources */,
+				6789C2C88452C6B01E220DF7 /* SkullGazeView.swift in Sources */,
 				E1C160A45632D6D84926A30C /* SpokenFormNormalizer.swift in Sources */,
 				ECEE2A79F5E3F5EF787212BF /* StatusIndicator.swift in Sources */,
 				DEC06EE9DF9E9D1DFECDDAE5 /* StreamView.swift in Sources */,

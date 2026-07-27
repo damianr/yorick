@@ -448,8 +448,16 @@ struct HUDContentView: View {
     private var recordingPill: some View {
         VStack(spacing: 4) {
             HStack(spacing: 9) {
-                skullMark(16)
-                    .frame(height: 19) // seat at button height so hover adds no vertical jump
+                // Contextual recording (bottom-center, no field): the 3D
+                // skull watches the cursor — the honest tell that pointer
+                // context is being read. Everywhere else: the flat mark.
+                if session.hudPillPlacement == .bottomCenter, SkullGazeView.isAvailable {
+                    SkullGazeView()
+                        .frame(width: 26, height: 26)
+                } else {
+                    skullMark(16)
+                        .frame(height: 19) // seat at button height so hover adds no vertical jump
+                }
                 DotEqualizer(level: session.audioLevel)
                 if recordingHovering {
                     Button(action: { session.stopIfRecording() }) {
