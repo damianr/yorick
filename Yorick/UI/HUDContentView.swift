@@ -322,6 +322,19 @@ struct HUDContentView: View {
     // on hover. No timer, no mode word, no mode color — the EQ says "recording"
     // and the pill's POSITION says dictation vs observation.
 
+    /// The squared corner means "seated at your insertion point," so only a
+    /// field-anchored pill gets to wear it — with the seated corner facing
+    /// the caret. Bottom-center (saving, or an opaque field) is a full
+    /// capsule: shape differentiates the two futures the same way position
+    /// already does.
+    private var recordingCorners: PillCorners {
+        switch session.hudPillPlacement {
+        case .bottomCenter: return .capsule
+        case .aboveField: return .pointer
+        case .belowField: return .pointerBelow
+        }
+    }
+
     private var recordingPill: some View {
         VStack(spacing: 4) {
             HStack(spacing: 9) {
@@ -354,7 +367,7 @@ struct HUDContentView: View {
         // button simply appends on the right, the pill grows rightward.
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
-        .pillGlass(corners: .pointer)
+        .pillGlass(corners: recordingCorners)
         .onHover { recordingHovering = $0 }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
         .animation(.easeOut(duration: 0.15), value: session.showSilenceWarning)
@@ -403,6 +416,9 @@ enum PillCorners {
     /// an oversized value and let SwiftUI clamp it, which handed the top-left
     /// whatever space was left over and made the left edge look lopsided.
     case pointer
+    /// Mirror of `pointer` for a pill sitting BELOW its field: the seated
+    /// (near-square) corner is the top-left, pointing up at the caret.
+    case pointerBelow
 }
 
 private struct PillShape: InsettableShape {
@@ -422,6 +438,9 @@ private struct PillShape: InsettableShape {
             radii = .init(topLeading: c, bottomLeading: c, bottomTrailing: c, topTrailing: c)
         case .pointer:
             radii = .init(topLeading: min(12, full), bottomLeading: min(4, full),
+                          bottomTrailing: full, topTrailing: full)
+        case .pointerBelow:
+            radii = .init(topLeading: min(4, full), bottomLeading: min(12, full),
                           bottomTrailing: full, topTrailing: full)
         }
         return UnevenRoundedRectangle(cornerRadii: radii, style: .continuous).path(in: r)
