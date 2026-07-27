@@ -72,6 +72,14 @@ struct CaptureRow: View {
                     // recognizer restores click-to-copy while a DRAG still
                     // selects (a tap won't fire across pointer movement).
                     .simultaneousGesture(TapGesture().onEnded { copyRow() })
+                // The evidence bundle, one muted line — the list stays plain,
+                // but a capture's context should be visible where it lives.
+                if let context = capture.context {
+                    Text(contextSummary(context))
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(2)
+                }
             }
         }
         .padding(.horizontal, 12)
@@ -88,6 +96,12 @@ struct CaptureRow: View {
         .contextMenu {
             if !capture.needsTranscription {
                 Button("Copy") { copyRow() }
+                if capture.context != nil {
+                    Button("Copy with Context") {
+                        ClipboardOutput.copy(CaptureRenderer.renderWithContext(capture))
+                        captureStore.markActive(capture)
+                    }
+                }
             }
             Button("Delete", role: .destructive) { captureStore.delete(capture) }
         }
@@ -126,6 +140,29 @@ struct CaptureRow: View {
                 .tracking(0.7)
         }
         .foregroundStyle(color)
+    }
+
+    /// Compact one-liner of the evidence: "infuseflow.app/board · “Migrate
+    /// billing…” · pointing at: Overdue tasks". First fact per kind.
+    private func contextSummary(_ context: CaptureContext) -> String {
+        var parts: [String] = []
+        var seen = Set<String>()
+        for fact in context.facts where !seen.contains(fact.kind) {
+            seen.insert(fact.kind)
+            switch fact.kind {
+            case "pageURL":
+                parts.append(URL(string: fact.value).map { ($0.host ?? "") + $0.path } ?? fact.value)
+            case "document":
+                parts.append((fact.value as NSString).lastPathComponent)
+            case "selection":
+                parts.append("“\(fact.value.prefix(60))”")
+            case "pointedElement":
+                parts.append("pointing at: \(fact.value.prefix(60))")
+            default:
+                break
+            }
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func copyRow() {

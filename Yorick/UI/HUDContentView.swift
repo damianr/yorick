@@ -245,12 +245,37 @@ struct HUDContentView: View {
                 .foregroundStyle(.white)
                 .lineLimit(4)
                 .fixedSize(horizontal: false, vertical: true)
+            // The evidence, shown as it was gathered — the card must preview
+            // everything an export would carry. Verbatim facts, no inference.
+            if let context = capture.context {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(contextChips(for: context).enumerated()), id: \.offset) { _, chip in
+                        HStack(spacing: 5) {
+                            Image(systemName: chip.icon)
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.45))
+                                .frame(width: 10)
+                            Text(chip.text)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
             HStack(spacing: 8) {
                 // Copy is the recovery path: a dictation that wasn't typed
                 // lands here, one obvious click from the clipboard.
                 cardAction("doc.on.doc", "Copy") {
                     ClipboardOutput.copy(capture.transcript)
                     session.lastSavedCapture = nil
+                }
+                // The agent-handoff artifact: words + evidence, paste-ready.
+                if capture.context != nil {
+                    cardAction("doc.on.doc.fill", "Copy with context") {
+                        ClipboardOutput.copy(CaptureRenderer.renderWithContext(capture))
+                        session.lastSavedCapture = nil
+                    }
                 }
                 Spacer()
                 cardAction("xmark", "Dismiss") {
@@ -288,6 +313,32 @@ struct HUDContentView: View {
         capture.windowTitle.isEmpty
             ? capture.appName
             : "\(capture.appName) · \(capture.windowTitle)"
+    }
+
+    /// One compact line per fact kind, first occurrence wins (start phase
+    /// leads the merged bundle). URLs show as host + path; selection and
+    /// pointed-element values are already length-capped at collection.
+    private func contextChips(for context: CaptureContext) -> [(icon: String, text: String)] {
+        var chips: [(String, String)] = []
+        var seen = Set<String>()
+        for fact in context.facts where !seen.contains(fact.kind) {
+            seen.insert(fact.kind)
+            switch fact.kind {
+            case "pageURL":
+                let display = URL(string: fact.value).map { ($0.host ?? "") + $0.path } ?? fact.value
+                chips.append(("link", display))
+            case "document":
+                chips.append(("doc.text", (fact.value as NSString).lastPathComponent))
+            case "selection":
+                chips.append(("text.quote", "“\(fact.value.prefix(80))”"))
+            case "pointedElement":
+                let role = fact.detail.map { " (\($0))" } ?? ""
+                chips.append(("cursorarrow.rays", "\(fact.value.prefix(80))\(role)"))
+            default:
+                chips.append(("circle", "\(fact.kind): \(fact.value.prefix(80))"))
+            }
+        }
+        return chips
     }
 
     private func cardAction(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {

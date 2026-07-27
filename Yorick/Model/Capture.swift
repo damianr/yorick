@@ -219,6 +219,11 @@ struct Capture: Identifiable, Codable {
     var needsTranscription: Bool
     /// Evidence/debug payload for auditing context inference.
     let diagnostics: CaptureDiagnostics?
+    /// The evidence bundle gathered around the utterance (selection, page,
+    /// document, pointed element) — verbatim facts with provenance, nil when
+    /// collection found nothing beyond app + window title. Fades with the
+    /// capture: context is never a reason to keep things longer.
+    let context: CaptureContext?
 
     init(
         id: UUID,
@@ -241,7 +246,8 @@ struct Capture: Identifiable, Codable {
         actionHint: String? = nil,
         effects: [CaptureEffect] = [],
         needsTranscription: Bool = false,
-        diagnostics: CaptureDiagnostics? = nil
+        diagnostics: CaptureDiagnostics? = nil,
+        context: CaptureContext? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -264,6 +270,7 @@ struct Capture: Identifiable, Codable {
         self.effects = effects
         self.needsTranscription = needsTranscription
         self.diagnostics = diagnostics
+        self.context = context
     }
 
     // MARK: - Codable (backward-compatible decode)
@@ -275,6 +282,7 @@ struct Capture: Identifiable, Codable {
         case kind, title, content, appliedTags, suggestedTags, actionHint
         case effects, needsTranscription
         case diagnostics
+        case context
     }
 
     init(from decoder: Decoder) throws {
@@ -326,6 +334,7 @@ struct Capture: Identifiable, Codable {
         }
         self.needsTranscription = try c.decodeIfPresent(Bool.self, forKey: .needsTranscription) ?? false
         self.diagnostics = try c.decodeIfPresent(CaptureDiagnostics.self, forKey: .diagnostics)
+        self.context = try c.decodeIfPresent(CaptureContext.self, forKey: .context)
     }
 
     // MARK: - Derived

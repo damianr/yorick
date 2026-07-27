@@ -126,6 +126,10 @@ final class SessionManager {
 
     let microphoneManager = MicrophoneManager()
     private let audioCapture = AudioCapture()
+    /// Layer B context snapshots, taken at hotkey-down and release. Awaited
+    /// only after transcription (seconds later), never on the hot path.
+    private var startContextSnapshot: Task<[ContextFact], Never>?
+    private var stopContextSnapshot: Task<[ContextFact], Never>?
     private var audioFileURL: URL?
     private var startTask: Task<Void, Never>?
     private var processingTask: Task<Void, Never>?
@@ -199,9 +203,11 @@ final class SessionManager {
         // the guess left the first pill stranded at bottom-center.
         setHUDAnchor(AccessibilityCapture.focusedEditableFieldTarget())
         startCapture()
-        // Spike instrumentation (admin-gated no-op otherwise): measures which
-        // AX context facts are readable in real daily apps. Fire-and-forget.
-        ContextProbe.sample(phase: "start")
+        // Layer B: freeze the semantic target at trigger. The bundle is
+        // awaited only after transcription, seconds from now.
+        stopContextSnapshot?.cancel()
+        stopContextSnapshot = nil
+        startContextSnapshot = ContextCollector.snapshot(phase: "start")
         // Focus can lag the hotkey by well over a second (app still coming
         // forward, focus just moved in). If we didn't anchor, keep polling for
         // the whole recording so the pill lands on the field mid-utterance
@@ -232,7 +238,9 @@ final class SessionManager {
     /// Stop capture — transcribes and either types text or saves capture.
     func stopIfRecording() {
         guard case .recording = state else { return }
-        ContextProbe.sample(phase: "stop")
+        // Second context snapshot: the pointer may have moved to its target
+        // WHILE talking; the stop-phase delta is itself evidence.
+        stopContextSnapshot = ContextCollector.snapshot(phase: "stop")
         stopCapture()
     }
 
@@ -1167,7 +1175,13 @@ final class SessionManager {
             )
 
             // 5. Save. The capture is complete the moment transcription ends —
-            //    there is no background intelligence to wait for.
+            //    there is no background intelligence to wait for. The context
+            //    bundle finished long ago (its AX reads are time-bounded);
+            //    awaiting it here costs nothing.
+            let captureContext = CaptureContext.merged(
+                start: await startContextSnapshot?.value ?? [],
+                stop: await stopContextSnapshot?.value ?? []
+            )
             let capture = Capture(
                 id: captureID,
                 timestamp: sessionStartedAt,
@@ -1187,7 +1201,8 @@ final class SessionManager {
                 suggestedTags: [],
                 actionHint: nil,
                 effects: effects,
-                diagnostics: diagnostics
+                diagnostics: diagnostics,
+                context: captureContext
             )
 
             guard isLive() else { return }
