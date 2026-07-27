@@ -116,8 +116,11 @@ enum ContextProbe {
         let ms = Double(elapsed.seconds) * 1000 + Double(elapsed.attoseconds) / 1e15
         // .public throughout: os.Logger redacts interpolated strings by
         // default, which would turn the whole spike into "<private>". This
-        // channel is admin-opt-in and truncated by design.
-        log.info("phase=\(phase, privacy: .public) app=\(app, privacy: .public) rung=\(rung, privacy: .public) ok=\(ok ? 1 : 0) ms=\(String(format: "%.1f", ms), privacy: .public) \(detail, privacy: .public)")
+        // channel is admin-opt-in and truncated by design. .notice, not
+        // .info: info-level messages live in memory only and never reach the
+        // persisted store that `log show` reads (measured: zero probe lines
+        // after real captures with adminMode on).
+        log.notice("phase=\(phase, privacy: .public) app=\(app, privacy: .public) rung=\(rung, privacy: .public) ok=\(ok ? 1 : 0) ms=\(String(format: "%.1f", ms), privacy: .public) \(detail, privacy: .public)")
     }
 
     private static func str(_ element: AXUIElement, _ attr: String) -> String? {
