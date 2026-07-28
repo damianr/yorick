@@ -109,7 +109,7 @@ struct OnboardingView: View {
             icon: { logo },
             title: "Talk instead of type",
             lines: [
-                "Hold one key and speak. Let go, and it's typed.",
+                "Hold the hotkey and speak. Let go, and it's typed.",
                 "Not in a text field? It's saved. Nothing is lost."
             ]
         ) {
@@ -131,11 +131,10 @@ struct OnboardingView: View {
                 primaryButton("Continue") { step = .accessibility }
             } else if microphoneDenied {
                 // Already denied: macOS won't ask again, so send them to Settings.
+                // No skip — without the microphone there is no product to
+                // meet, and the poll advances the moment access is granted.
                 primaryButton("Open Microphone Settings") {
                     openPrivacyPane("Privacy_Microphone")
-                }
-                quietButton("Skip for now — Yorick can't hear you until this is on") {
-                    step = .accessibility
                 }
             } else {
                 primaryButton("Allow Microphone Access") {
@@ -145,9 +144,6 @@ struct OnboardingView: View {
                             if granted { step = .accessibility }
                         }
                     }
-                }
-                quietButton("Skip for now — Yorick can't hear you until this is on") {
-                    step = .accessibility
                 }
             }
         }
@@ -167,12 +163,12 @@ struct OnboardingView: View {
                 grantedLabel("Accessibility enabled")
                 primaryButton("Continue") { step = .autostart }
             } else {
+                // No skip — without Accessibility nothing can be typed, and
+                // a skipper meets a voice-notes app instead of the product.
+                // The poll auto-advances the moment the toggle flips.
                 primaryButton("Open Accessibility Settings") {
                     let options = ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary
                     AXIsProcessTrustedWithOptions(options)
-                }
-                quietButton("Skip for now — dictation won't type until enabled") {
-                    step = .autostart
                 }
             }
         }
