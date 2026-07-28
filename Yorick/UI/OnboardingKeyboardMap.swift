@@ -7,6 +7,11 @@ import SwiftUI
 /// at a glance and "am I doing it?" in real time.
 struct KeyboardMapView: View {
     let targetKeyCodes: Set<UInt16>
+    /// True while the session is recording — proof the WHOLE combo is held.
+    /// Needed because the global hotkey consumes the final key's event
+    /// before the local monitor sees it (modifiers still arrive as flag
+    /// changes, so option lit while space never did).
+    var comboActive: Bool = false
 
     @State private var pressedKeys: Set<UInt16> = []
     @State private var pressedModifierCodes: Set<UInt16> = []
@@ -45,9 +50,9 @@ struct KeyboardMapView: View {
          Key(code: 62, label: "⌃", width: 1.3)],
     ]
 
-    private let unit: CGFloat = 25
-    private let keyHeight: CGFloat = 20
-    private let gap: CGFloat = 3
+    private let unit: CGFloat = 21
+    private let keyHeight: CGFloat = 16
+    private let gap: CGFloat = 2.5
 
     var body: some View {
         VStack(spacing: gap) {
@@ -63,11 +68,14 @@ struct KeyboardMapView: View {
         .onDisappear(perform: removeMonitor)
         .animation(.easeOut(duration: 0.1), value: pressedKeys)
         .animation(.easeOut(duration: 0.1), value: pressedModifierCodes)
+        .animation(.easeOut(duration: 0.1), value: comboActive)
     }
 
     private func keycap(_ key: Key) -> some View {
         let isTarget = targetKeyCodes.contains(key.code)
-        let isPressed = pressedKeys.contains(key.code) || pressedModifierCodes.contains(key.code)
+        let isPressed = pressedKeys.contains(key.code)
+            || pressedModifierCodes.contains(key.code)
+            || (comboActive && isTarget)
         return RoundedRectangle(cornerRadius: 4, style: .continuous)
             .fill(fillColor(target: isTarget, pressed: isPressed))
             .overlay(
@@ -79,7 +87,7 @@ struct KeyboardMapView: View {
             )
             .overlay(
                 Text(key.label)
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 7.5, weight: .medium))
                     .foregroundStyle(labelColor(target: isTarget, pressed: isPressed))
             )
             .frame(width: unit * key.width + gap * (key.width - 1), height: keyHeight)

@@ -29,6 +29,9 @@ struct OnboardingView: View {
     /// the shortcut (⌥Space is Raycast's default, and Handy's), which otherwise
     /// looks exactly like "Yorick is broken".
     @State private var showShortcutRecorder = false
+    /// Bumped when the shortcut is rebound — recording a new combo changes
+    /// no SwiftUI state, so chips and keyboard highlights went stale.
+    @State private var shortcutGeneration = 0
 
     private let axPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -97,6 +100,13 @@ struct OnboardingView: View {
             // step advances the moment the toggle flips, no relaunch needed.
             accessibilityTrusted = AXIsProcessTrusted()
             microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        }
+        // KeyboardShortcuts' change notification (raw name; the library
+        // doesn't export a constant) — chips and map re-render on rebind.
+        .onReceive(NotificationCenter.default.publisher(
+            for: Notification.Name("KeyboardShortcuts_shortcutByNameDidChange")
+        )) { _ in
+            shortcutGeneration += 1
         }
     }
 
@@ -220,8 +230,14 @@ struct OnboardingView: View {
             }
             // The keyboard shows which keys — and lights up as they hold
             // them: right keys purple, wrong keys red. Hands, not prose.
-            KeyboardMapView(targetKeyCodes: ShortcutLabel.targetKeyCodes)
-                .id(shortcut) // re-highlight when the shortcut is rebound
+            // `comboActive`: recording in progress means the full combo is
+            // down (the hotkey machinery eats the final key's event, so the
+            // monitor alone can never see the whole chord).
+            KeyboardMapView(
+                targetKeyCodes: ShortcutLabel.targetKeyCodes,
+                comboActive: session.state == .recording
+            )
+            .id(shortcutGeneration) // re-highlight when the shortcut is rebound
             Button {
                 withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder.toggle() }
             } label: {
