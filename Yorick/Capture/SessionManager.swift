@@ -211,14 +211,16 @@ final class SessionManager {
         // back-to-back.
         dismissInsertionReceipt(reason: "superseded by new utterance")
 
-        // The pill anchors to a focused editable field whenever one exists, and
-        // sits bottom-center only when none does — a field-adjacent pill means
-        // "will type here," bottom-center means "will save." This is driven by
-        // focus, NOT the start-mode guess: after switching into an app (Electron
-        // especially) the guess is often .contextual on the first capture because
-        // the cursor probe hasn't settled, yet a field IS focused — so gating on
-        // the guess left the first pill stranded at bottom-center.
-        setHUDAnchor(AccessibilityCapture.focusedEditableFieldTarget())
+        // The pill anchors where routing actually intends to type — a
+        // field-adjacent pill means "will type here," bottom-center means
+        // "will save." It follows the corroborated DECISION, not bare focus:
+        // web apps and Electron keep some field focused at all times, so a
+        // focus-driven anchor flew to an input while the user deliberately
+        // pointed elsewhere to observe, promising a paste that routing
+        // wouldn't (and shouldn't) deliver. The Electron first-capture case
+        // (probe unsettled at start, field genuinely focused) is rescued by
+        // the retry below, which re-evaluates the decision as things settle.
+        setHUDAnchor(isEditable ? AccessibilityCapture.focusedEditableFieldTarget() : nil)
         startCapture()
         // Layer B: freeze the semantic target at trigger, then follow the
         // pointer's sweep for the whole recording. The bundle is awaited
@@ -251,7 +253,11 @@ final class SessionManager {
             for _ in 0..<50 { // ~5s cap at 100ms; recording usually ends first
                 try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
                 guard state == .recording, hudAnchor == nil else { return }
-                if let target = AccessibilityCapture.focusedEditableFieldTarget() {
+                // Same corroborated decision as everywhere else — a focused
+                // field only anchors once the evidence says "typing," so a
+                // deliberate point-away keeps the pill honestly bottom-center.
+                if AccessibilityCapture.editabilityDecisionAtCursor().isEditable,
+                   let target = AccessibilityCapture.focusedEditableFieldTarget() {
                     setHUDAnchor(target)
                     return
                 }
@@ -1142,7 +1148,18 @@ final class SessionManager {
             // but the pointer disagreed) the words themselves — plus where
             // keyboard focus is NOW — pick the disposition. The recording was
             // identical either way, so this choice costs nothing to flip later.
-            let focusedEditableNow = AXIsProcessTrusted() && AccessibilityCapture.hasFocusedEditableElement()
+            // The stop check uses the SAME corroborated decision as the
+            // start: bare "any editor focused" promoted observations to
+            // dictations in every web/Electron app (they keep a field
+            // focused at all times), trampling start-time evidence that the
+            // pointer was deliberately elsewhere. Symmetry restores the
+            // grey-zone contract: only corroborated typing intent inserts,
+            // and a misread costs one Copy click, never a swallowed paste.
+            let stopDecision = AXIsProcessTrusted() ? AccessibilityCapture.editabilityDecisionAtCursor() : nil
+            let focusedEditableNow = stopDecision?.isEditable ?? false
+            if let stopDecision {
+                modeDecisionSummary += ", stopDecision=[\(stopDecision.summary)]"
+            }
             let effectiveMode: CaptureMode
             if modeWasForced || startConfidence == .high {
                 // A note-register opener is the one signal strong enough to
