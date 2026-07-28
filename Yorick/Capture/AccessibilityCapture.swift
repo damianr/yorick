@@ -418,7 +418,12 @@ enum AccessibilityCapture {
             let focused = focusedEditability(editableRoles: editableRoles)
             let cursorNearFocused = focused.frame
                 .map { $0.insetBy(dx: -16, dy: -16).contains(axCursorPoint()) } ?? false
-            let pointerParked = pointerIdleSeconds() > 3.0
+            // 1.5s, down from 3.0: a user about to dictate stops moving the
+            // mouse, and the old threshold made the pill take seconds to fly
+            // to a focused field (measured in ChatGPT). Deliberate
+            // gesticulation is CONTINUOUS movement, so the observation guard
+            // still never false-parks mid-sweep.
+            let pointerParked = pointerIdleSeconds() > 1.5
             let isEditable = focused.isEditable && (cursorNearFocused || pointerParked)
             // No editor focused anywhere → solidly contextual. An editor IS
             // focused → every verdict here is a guess (this exact spot produced
