@@ -21,10 +21,17 @@ final class MenuBarPanelController {
 
     private static let panelSize = NSSize(width: 420, height: 560)
 
+    private var showObserver: NSObjectProtocol?
+
     init(session: SessionManager) {
         self.session = session
         installStatusItem()
         watchState()
+        showObserver = NotificationCenter.default.addObserver(
+            forName: .showMenuBarPanel, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.show() }
+        }
     }
 
     // MARK: - Status item
@@ -53,16 +60,35 @@ final class MenuBarPanelController {
         return sized
     }()
 
-    /// Tint follows session state — same colors the old StatusIndicator used.
+    /// Pre-rendered colored variants — contentTintColor on the template SVG
+    /// rendered as EMPTY during recording (field report), so state colors
+    /// are baked into non-template images and swapped whole.
+    private static let recordingImage = tinted(.systemRed)
+    private static let transcribingImage = tinted(.systemOrange)
+    private static let errorImage = tinted(.systemYellow)
+
+    private static func tinted(_ color: NSColor) -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            statusImage.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    /// Image follows session state — same colors the old StatusIndicator used.
     private func watchState() {
         stateWatcher = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                guard let self else { return }
+                guard let self, let button = self.statusItem?.button else { return }
                 switch self.session.state {
-                case .idle: self.statusItem?.button?.contentTintColor = nil
-                case .recording: self.statusItem?.button?.contentTintColor = .systemRed
-                case .transcribing: self.statusItem?.button?.contentTintColor = .systemOrange
-                case .error: self.statusItem?.button?.contentTintColor = .systemYellow
+                case .idle: button.image = Self.statusImage
+                case .recording: button.image = Self.recordingImage
+                case .transcribing: button.image = Self.transcribingImage
+                case .error: button.image = Self.errorImage
                 }
                 try? await Task.sleep(nanoseconds: 300_000_000)
             }

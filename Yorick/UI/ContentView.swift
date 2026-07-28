@@ -19,6 +19,15 @@ struct ContentView: View {
                 OnboardingView(onDone: {
                     hasCompletedOnboarding = true
                     forceOnboarding = false
+                    // The conduit handoff: the window's job ends with
+                    // onboarding. Close it, then open the menu bar panel so
+                    // "Yorick lives up here now" is shown, not described.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        NSApp.windows.first(where: { !($0 is NSPanel) && $0.canBecomeMain })?.close()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            NotificationCenter.default.post(name: .showMenuBarPanel, object: nil)
+                        }
+                    }
                 })
             } else {
                 StreamView()

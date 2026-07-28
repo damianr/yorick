@@ -101,15 +101,17 @@ struct OnboardingView: View {
 
     // MARK: - Steps
 
+    // No key combo here — the welcome step sells the idea, and the try-it
+    // step teaches the keys with your hands already on them. Mechanics
+    // before motivation read as homework.
     private var welcome: some View {
         stepLayout(
             icon: { logo },
             title: "Talk instead of type",
             lines: [
-                "Hold  \(shortcut)  and speak. Release to finish.",
-                "(that's \(shortcutSpelled))",
-                "In a text field, your words are typed.",
-                "Anywhere else, they're saved for later.",
+                "Hold one key and speak. Let go, and it's typed.",
+                "In a text field, your words land at the cursor.",
+                "Anywhere else, they're saved so nothing is lost.",
                 "Everything happens on your Mac. Nothing is uploaded, ever."
             ]
         ) {
