@@ -110,9 +110,7 @@ struct OnboardingView: View {
             title: "Talk instead of type",
             lines: [
                 "Hold one key and speak. Let go, and it's typed.",
-                "In a text field, your words land at the cursor.",
-                "Anywhere else, they're saved so nothing is lost.",
-                "Everything happens on your Mac. Nothing is uploaded, ever."
+                "Not in a text field? It's saved. Nothing is lost."
             ]
         ) {
             primaryButton("Continue") { step = .microphone }
