@@ -30,6 +30,7 @@ struct SettingsView: View {
     @State private var whisperDownloading = false
     @AppStorage(AudioDebugSettings.keepAudioKey) private var keepDebugAudio = AudioDebugSettings.defaultKeepAudio
     @AppStorage(SessionManager.showInsertionReceiptKey) private var showInsertionReceipt = false
+    @AppStorage(HUDPlacement.unanchoredAtTopKey) private var unanchoredPillAtTop = true
     @State private var opensAtLogin = LoginItem.isEnabled
     /// Sparkle reads this key straight from UserDefaults, so binding to it is
     /// enough to turn scheduled checks on and off.
@@ -67,6 +68,23 @@ struct SettingsView: View {
                         .toggleStyle(.switch)
                         .labelsHidden()
                         .controlSize(.small)
+                }
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        rowLabel("Saved-note position")
+                        caption("Where the recording pill and saved-note card appear when you're not in a text field. Dictation into a field always shows the pill at the field.")
+                    }
+                    Spacer(minLength: 16)
+                    Picker("", selection: $unanchoredPillAtTop) {
+                        Text("Top center").tag(true)
+                        Text("Bottom center").tag(false)
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 140)
+                    .onChange(of: unanchoredPillAtTop) {
+                        // Move the live HUD immediately — no relaunch to see it.
+                        NotificationCenter.default.post(name: .hudReposition, object: nil)
+                    }
                 }
 
                 sectionLabel("MICROPHONE")

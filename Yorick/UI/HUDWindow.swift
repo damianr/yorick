@@ -1,13 +1,13 @@
 import AppKit
 
-/// EXPERIMENT: where the unanchored (observation) pill and card live.
-/// Top-center is under trial; flip back without a rebuild:
-///   defaults write com.heyyorick.Yorick unanchoredPillAtTop -bool false
+/// Where the unanchored (observation) pill and card live — a user setting
+/// (Preferences → "Saved-note position"), top-center by default.
 enum HUDPlacement {
+    static let unanchoredAtTopKey = "unanchoredPillAtTop"
     static var unanchoredAtTop: Bool {
-        UserDefaults.standard.object(forKey: "unanchoredPillAtTop") == nil
+        UserDefaults.standard.object(forKey: unanchoredAtTopKey) == nil
             ? true
-            : UserDefaults.standard.bool(forKey: "unanchoredPillAtTop")
+            : UserDefaults.standard.bool(forKey: unanchoredAtTopKey)
     }
 }
 import SwiftUI
