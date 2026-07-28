@@ -408,9 +408,6 @@ struct HUDContentView: View {
                         }
                 }
                 if unanchored {
-                    Circle()
-                        .fill(transcribing ? Theme.success : Theme.siteAmber)
-                        .frame(width: 7, height: 7)
                     Text(transcribing
                          ? "Summarizing…"
                          : session.observingApp.map { "Observing \($0)" } ?? "Observing…")
@@ -457,9 +454,18 @@ struct HUDContentView: View {
         // append on the right, the pill grows rightward.
         .padding(.horizontal, unanchored ? 14 : 11)
         .padding(.vertical, unanchored ? 8 : 5)
-        // The amber rim + halo only where the pill has no caret announcing
-        // it — the field pill sits where you're already looking.
-        .pillGlass(corners: recordingCorners, accent: unanchored ? Theme.siteAmber : nil)
+        // Bone rim + halo — the skull's own color glowing like moonlight
+        // (amber read as a warning). On the unanchored pill always (nothing
+        // else announces it on a dark backdrop), on any pill while
+        // summarizing; while recording, the halo BREATHES with the voice —
+        // same signal as the equalizer, so meter and glow move together.
+        // The field-anchored recording pill stays plain: it sits at your
+        // caret, where you're already looking.
+        .pillGlass(
+            corners: recordingCorners,
+            accent: (unanchored || transcribing) ? Theme.bone : nil,
+            accentIntensity: transcribing ? 0.5 : Double(min(max(session.audioLevel, 0), 1))
+        )
         .onHover { recordingHovering = $0 }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
         .animation(.spring(duration: 0.3), value: transcribing)
@@ -525,6 +531,9 @@ private struct PillShape: InsettableShape {
 private struct PillGlass: ViewModifier {
     var corners: PillCorners = .capsule
     var accent: Color?
+    /// 0…1 — scales the halo with the live audio level so the glow
+    /// breathes with the voice. Constant while summarizing.
+    var accentIntensity: Double = 1
     private var shape: PillShape { PillShape(corners: corners) }
 
     func body(content: Content) -> some View {
@@ -532,7 +541,7 @@ private struct PillGlass: ViewModifier {
             .overlay(
                 shape.strokeBorder(
                     LinearGradient(
-                        colors: accent.map { [$0.opacity(0.55), $0.opacity(0.10)] }
+                        colors: accent.map { [$0.opacity(0.45), $0.opacity(0.08)] }
                             ?? [.white.opacity(0.30), .white.opacity(0.06)],
                         startPoint: .top,
                         endPoint: .bottom
@@ -546,7 +555,10 @@ private struct PillGlass: ViewModifier {
             // lift plus a crisp contact edge that reads on any backdrop.
             .shadow(color: .black.opacity(0.26), radius: 5, y: 2)
             .shadow(color: .black.opacity(0.14), radius: 1, y: 0.5)
-            .shadow(color: (accent ?? .clear).opacity(accent == nil ? 0 : 0.30), radius: 10)
+            .shadow(
+                color: (accent ?? .clear).opacity(accent == nil ? 0 : 0.12 + 0.28 * min(max(accentIntensity, 0), 1)),
+                radius: 8 + 6 * min(max(accentIntensity, 0), 1)
+            )
     }
 
     /// A DARK capsule, not light glass — and explicitly NOT Liquid Glass, whose
@@ -567,8 +579,8 @@ private struct PillGlass: ViewModifier {
 }
 
 private extension View {
-    func pillGlass(corners: PillCorners = .capsule, accent: Color? = nil) -> some View {
-        modifier(PillGlass(corners: corners, accent: accent))
+    func pillGlass(corners: PillCorners = .capsule, accent: Color? = nil, accentIntensity: Double = 1) -> some View {
+        modifier(PillGlass(corners: corners, accent: accent, accentIntensity: accentIntensity))
     }
 }
 
@@ -579,6 +591,9 @@ private extension View {
 /// dance independently, so it reads as an equalizer rather than a meter.
 private struct DotEqualizer: View {
     let level: Float
+    /// Bone to match the pill's glow — the voice meter and the halo speak
+    /// the same color.
+    var tint: Color = Theme.bone
     private let rows = 4
     private let cols = 8
     private let dot: CGFloat = 2.5
@@ -591,7 +606,7 @@ private struct DotEqualizer: View {
                 VStack(spacing: gap) {
                     ForEach(0..<rows, id: \.self) { row in
                         Circle()
-                            .fill(.white)
+                            .fill(tint)
                             .opacity(dotOpacity(col: col, row: row))
                             .frame(width: dot, height: dot)
                     }
