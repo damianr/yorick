@@ -857,6 +857,9 @@ final class SessionManager {
     private func requestReadback(for capture: Capture) {
         cardReadback = nil
         guard capture.context != nil, LocalIntelligence.isCleanupAvailable else { return }
+        // A readback of a trivial utterance is noise ("Claude: Okay") — the
+        // words ARE the summary below ~5 words.
+        guard capture.transcript.split(separator: " ").count >= 5 else { return }
         Task { @MainActor [weak self] in
             let admin = UserDefaults.standard.bool(forKey: "adminMode")
             do {

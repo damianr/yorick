@@ -27,6 +27,11 @@ enum ContextCollector {
             return Task { [] }
         }
         let pid = frontApp.processIdentifier
+        // Yorick never cites itself. Pointing at the saved list while
+        // speaking captured OLD transcripts as "screen context," and the
+        // readback then narrated the previous capture instead of the words
+        // (field-measured). Self-evidence is pollution in exports, too.
+        guard pid != ProcessInfo.processInfo.processIdentifier else { return Task { [] } }
         let appName = frontApp.localizedName ?? "unknown"
         let cursor = AccessibilityCapture.axCursorPoint()
         // The same primitive routing trusts: a parked pointer is wherever it
@@ -119,6 +124,11 @@ enum ContextCollector {
         var pointedRef: AXUIElement?
         AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &pointedRef)
         guard let leaf = pointedRef else { return nil }
+        // Yorick never cites itself (see snapshot) — pointing at the pill,
+        // card, or saved list is not evidence about the world.
+        var ownerPID: pid_t = 0
+        AXUIElementGetPid(leaf, &ownerPID)
+        guard ownerPID != ProcessInfo.processInfo.processIdentifier else { return nil }
 
         let leafText = bestText(of: leaf)
         // Climb toward meaning: a row/cell wins outright; otherwise the first
