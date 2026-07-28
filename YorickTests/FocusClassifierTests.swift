@@ -10,8 +10,7 @@ final class FocusClassifierTests: XCTestCase {
         role: String = "",
         subrole: String = "",
         enabled: Bool = true,
-        caret: Bool = false,
-        likelyText: Bool = false,
+        explicitIdentity: Bool = false,
         settable: Bool = false,
         richEditor: String? = nil
     ) -> (editable: Bool, tag: String)? {
@@ -21,8 +20,7 @@ final class FocusClassifierTests: XCTestCase {
             isEnabled: enabled,
             isRichEditorApp: richEditor != nil,
             richEditorBundleID: richEditor,
-            hasTextCaret: { caret },
-            isLikelyEditableText: { likelyText },
+            hasExplicitEditableIdentity: { explicitIdentity },
             valueSettable: { settable }
         ))
     }
@@ -45,25 +43,27 @@ final class FocusClassifierTests: XCTestCase {
         XCTAssertEqual(classify(role: "AXWebArea", subrole: "AXPlainText")?.editable, true)
     }
 
-    func testCaretOnNeutralRoleIsEditable() {
-        // The toolkit-agnostic net: an unknown role exposing a real
-        // character-range caret is an editor.
-        XCTAssertEqual(classify(role: "AXUnknown", caret: true)?.tag, " textCaret=true")
+    func testExplicitIdentityIsEditable() {
+        // A custom role whose AX metadata SAYS "text field"/"editable" —
+        // identity claims are the only heuristic net left, by design.
+        XCTAssertEqual(classify(role: "AXUnknown", explicitIdentity: true)?.tag, " explicitTextIdentity=true")
     }
 
-    // MARK: - The document-selection masquerade (both measured in the field)
+    // MARK: - The selection-range masquerade (all three measured in the
+    // field; the caret rung they exploited is DELETED — these fixtures now
+    // pin that selection ranges are never evidence of editability)
 
     func testChromeReadOnlyPageIsUndecided() {
         // Field diagnosis: "focusedRole=AXWebArea subrole=none desc=HTML
         // content textCaret=true" on a read-only page — typed into nothing.
         // Browsers keep a document-level selection range on EVERY page.
-        XCTAssertNil(classify(role: "AXWebArea", caret: true))
+        XCTAssertNil(classify(role: "AXWebArea"))
     }
 
     func testClaudePreviewPaneIsUndecided() {
         // Field diagnosis: "focusedRole=AXGroup desc=group textCaret=true"
         // — the Claude app's Electron preview swallowed the paste.
-        XCTAssertNil(classify(role: "AXGroup", caret: true))
+        XCTAssertNil(classify(role: "AXGroup"))
     }
 
     func testSelectableStaticTextIsUndecided() {
@@ -71,13 +71,21 @@ final class FocusClassifierTests: XCTestCase {
         // textCaret=true" — SwiftUI selectable text in Yorick's own list
         // routed dictation into itself. Static text is read-only by
         // contract, whatever selection range it carries.
-        XCTAssertNil(classify(role: "AXStaticText", caret: true))
+        XCTAssertNil(classify(role: "AXStaticText"))
+    }
+
+    func testSelectStyleComboBoxIsUndecided() {
+        // Field diagnosis: clicking a dropdown mid-recording anchored the
+        // pill and pasted the transcript into its type-to-search. Combos
+        // take keystrokes but not free text; genuinely editable combos
+        // focus their inner AXTextField, which still matches directly.
+        XCTAssertNil(classify(role: "AXComboBox"))
     }
 
     func testMailComposeStillTypes() {
         // Mail's compose body: an AXWebArea whose ONLY editable tell is the
-        // settable value. The web-area caret exclusion must not kill it.
-        XCTAssertEqual(classify(role: "AXWebArea", caret: true, settable: true)?.tag, " valueSettable=true")
+        // settable value.
+        XCTAssertEqual(classify(role: "AXWebArea", settable: true)?.tag, " valueSettable=true")
     }
 
     // MARK: - Hard vetoes
@@ -85,7 +93,7 @@ final class FocusClassifierTests: XCTestCase {
     func testSecureFieldNeverTypes() {
         // Password fields: transcript on the clipboard is the harm; wins
         // over every editable signal.
-        let v = classify(role: "AXTextField", subrole: "AXSecureTextField", caret: true, settable: true)
+        let v = classify(role: "AXTextField", subrole: "AXSecureTextField", explicitIdentity: true, settable: true)
         XCTAssertEqual(v?.editable, false)
         XCTAssertEqual(v?.tag, " secureField=true")
     }

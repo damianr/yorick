@@ -487,8 +487,7 @@ enum AccessibilityCapture {
             isEnabled: (attribute(focusedElement, kAXEnabledAttribute) as? Bool) ?? true,
             isRichEditorApp: frontApp.bundleIdentifier.map { richEditorBundleIDs.contains($0) } ?? false,
             richEditorBundleID: frontApp.bundleIdentifier,
-            hasTextCaret: { hasTextCaret(focusedElement) },
-            isLikelyEditableText: { isLikelyEditableTextElement(focusedElement, role: role, subrole: subrole) },
+            hasExplicitEditableIdentity: { hasExplicitEditableIdentity(focusedElement, subrole: subrole) },
             valueSettable: {
                 var settable: DarwinBoolean = false
                 return AXUIElementIsAttributeSettable(focusedElement, kAXValueAttribute as CFString, &settable) == .success
@@ -545,61 +544,21 @@ enum AccessibilityCapture {
         return CGRect(origin: point, size: dimensions)
     }
 
-    private static func isLikelyEditableTextElement(
+    /// The element explicitly CLAIMS to be a text editor — an "editable"
+    /// subrole variant or a role description saying so. Identity claims
+    /// only: the old version also accepted any "text"-ish role that merely
+    /// carried selection-range attributes, which is the same masquerade that
+    /// burned the caret rung three times (selection ranges exist on plenty
+    /// of read-only content). Rigid contract: doubtful surfaces save.
+    private static func hasExplicitEditableIdentity(
         _ element: AXUIElement,
-        role: String,
         subrole: String
     ) -> Bool {
         let roleDescription = (attribute(element, kAXRoleDescriptionAttribute) as? String ?? "").lowercased()
-        let roleText = role.lowercased()
-        let subroleText = subrole.lowercased()
-
-        let hasExplicitEditableIdentity =
-            subrole == "AXContentEditable" ||
-            subrole == "AXPlainText" ||
-            subroleText.contains("editable") ||
-            roleDescription.contains("text field") ||
-            roleDescription.contains("text area") ||
-            roleDescription.contains("editable text")
-
-        let hasTextIdentity = hasExplicitEditableIdentity ||
-                              roleText.contains("text") ||
-                              subroleText.contains("text") ||
-                              roleDescription.contains("text") ||
-                              roleDescription.contains("edit")
-
-        let textEditingAttributes = [
-            kAXSelectedTextAttribute,
-            kAXSelectedTextRangeAttribute,
-            kAXInsertionPointLineNumberAttribute,
-            "AXNumberOfCharacters"
-        ]
-        var hasTextEditingAttribute = false
-        for attr in textEditingAttributes {
-            var value: CFTypeRef?
-            if AXUIElementCopyAttributeValue(element, attr as CFString, &value) == .success {
-                hasTextEditingAttribute = true
-                break
-            }
-        }
-
-        var isSettable: DarwinBoolean = false
-        let valueIsSettable =
-            AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &isSettable) == .success &&
-            isSettable.boolValue
-
-        // Many web/Electron apps expose generic AXGroup/AXWebArea elements with
-        // selection-like attributes. Treat those as editable only when the AX
-        // metadata explicitly says the element is text/editable; otherwise
-        // contextual captures get misclassified as dictation.
-        let genericContainerRoles: Set<String> = [
-            "AXGroup", "AXWebArea", "AXScrollArea", "AXWindow", "AXApplication"
-        ]
-        if genericContainerRoles.contains(role) {
-            return hasExplicitEditableIdentity && (hasTextEditingAttribute || valueIsSettable)
-        }
-
-        return hasTextIdentity && (hasTextEditingAttribute || valueIsSettable)
+        return subrole.lowercased().contains("editable")
+            || roleDescription.contains("text field")
+            || roleDescription.contains("text area")
+            || roleDescription.contains("editable text")
     }
 
     /// Capture element info at the current cursor position.
@@ -682,16 +641,4 @@ enum AccessibilityCapture {
     /// Whether the element exposes a text insertion point — a character-range
     /// selection or an insertion-point line. Both are text-only attributes, so
     /// their presence marks the element as a real text editor.
-    private static func hasTextCaret(_ element: AXUIElement) -> Bool {
-        var value: CFTypeRef?
-        if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
-           let value, CFGetTypeID(value) == AXValueGetTypeID() {
-            return true
-        }
-        if AXUIElementCopyAttributeValue(element, kAXInsertionPointLineNumberAttribute as CFString, &value) == .success,
-           value != nil {
-            return true
-        }
-        return false
-    }
 }

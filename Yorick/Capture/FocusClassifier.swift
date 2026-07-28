@@ -12,9 +12,13 @@ import Foundation
 /// silently re-breaking another. Change a rung, add its fixture.
 enum FocusClassifier {
 
-    /// Roles that ARE text editors, full stop.
+    /// Roles that accept FREE TEXT, full stop. AXComboBox was removed
+    /// (founder-directed rigidity): select-style combos took type-to-search
+    /// keystrokes, so a mid-recording click on a dropdown anchored the pill
+    /// and pasted a transcript into it. Genuinely editable combos focus
+    /// their inner AXTextField while editing, which still matches.
     static let editableRoles: Set<String> = [
-        "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"
+        "AXTextField", "AXTextArea", "AXSearchField"
     ]
 
     /// Rich editors whose focused canvas is AX-opaque: no editable role, no
@@ -53,8 +57,7 @@ enum FocusClassifier {
         var isEnabled = true
         var isRichEditorApp = false
         var richEditorBundleID: String?
-        var hasTextCaret: () -> Bool = { false }
-        var isLikelyEditableText: () -> Bool = { false }
+        var hasExplicitEditableIdentity: () -> Bool = { false }
         var valueSettable: () -> Bool = { false }
     }
 
@@ -76,24 +79,22 @@ enum FocusClassifier {
         // Web/Electron editors advertising editability by subrole.
         if s.subrole == "AXContentEditable" || s.subrole == "AXPlainText" { return (true, "") }
 
-        // Toolkit-agnostic caret signal (AXSelectedTextRange — a CHARACTER
-        // range). THREE measured exceptions where a selection range
-        // masquerades as a caret on read-only content: bare AXWebArea
-        // (Chrome pages typed into nothing), bare AXGroup (the Claude app's
-        // Electron preview pane), and AXStaticText (selectable SwiftUI text
-        // — Yorick's own saved list routed dictation into itself). Static
-        // text is non-editable by contract; real editors focus a text role
-        // or contenteditable, caught above; truly editable web areas (Mail
-        // compose) pass via settable below. The asymmetry decides close
-        // calls: wrongly saving costs one Copy click, wrongly typing
-        // swallows the paste invisibly. NOTE: every field hit of this rung
-        // so far has been a false positive — if a fourth masquerade
-        // appears, delete the rung rather than extend this list.
-        if s.role != "AXWebArea", s.role != "AXGroup", s.role != "AXStaticText",
-           s.hasTextCaret() { return (true, " textCaret=true") }
+        // NO caret rung, deliberately. It existed as a toolkit-agnostic net
+        // ("a focused element with AXSelectedTextRange is an editor") and
+        // went 0-for-3 in the field — every actual hit was a selection
+        // range masquerading on read-only content: Chrome pages, the Claude
+        // app's Electron preview pane, and SwiftUI selectable text in
+        // Yorick's own list. Selection-range attributes are NEVER evidence
+        // of editability again; the ladder's contract is rigid — only
+        // surfaces that accept free text type, everything doubtful saves,
+        // and a wrong save costs one Copy click while a wrong type swallows
+        // the paste invisibly.
 
-        // Text-editing affordances short of a caret.
-        if s.isLikelyEditableText() { return (true, " likelyText=true") }
+        // Explicit editable identity: the element SAYS it's a text editor
+        // (an "editable" subrole variant, or a role description of "text
+        // field"/"text area"/"editable text"). Identity claims only — no
+        // attribute sniffing.
+        if s.hasExplicitEditableIdentity() { return (true, " explicitTextIdentity=true") }
 
         // A focused text container with a SETTABLE value is a text sink even
         // when it advertises nothing else — Mail's compose body is exactly
