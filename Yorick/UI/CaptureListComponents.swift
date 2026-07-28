@@ -43,21 +43,10 @@ struct CaptureRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 indicator
-                Text(justCopied ? "✓ copied" : "click to copy")
+                Text("✓ copied")
                     .font(Theme.mono(9))
-                    .foregroundStyle(justCopied ? Theme.success : Theme.textTertiary)
-                    .opacity(justCopied || (isHovered && !capture.needsTranscription) ? 1 : 0)
-                // The bundle exit, everywhere the transcript exit is: a
-                // dismissed card must lose nothing, including the action.
-                if isHovered, !justCopied, capture.context != nil, !capture.needsTranscription {
-                    Button(action: copyRowWithContext) {
-                        Text("· copy with context")
-                            .font(Theme.mono(9))
-                            .foregroundStyle(Theme.textTertiary)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+                    .foregroundStyle(Theme.success)
+                    .opacity(justCopied ? 1 : 0)
                 Spacer()
                 Text(timeLabel)
                     .font(Theme.mono(9))
@@ -82,6 +71,18 @@ struct CaptureRow: View {
                     transcriptLineLimit: nil,
                     onTranscriptTap: { copyRow() }
                 )
+                // The card's actions, as the card shows them — buttons, not
+                // hover-revealed text links. Delete stays in the context
+                // menu; there's no Dismiss here because the list IS where
+                // dismissed cards live.
+                HStack(spacing: 8) {
+                    CardActionButton(icon: "doc.on.doc", label: "Copy") { copyRow() }
+                    if capture.context != nil {
+                        CardActionButton(icon: "doc.on.doc.fill", label: "Copy with context") { copyRowWithContext() }
+                    }
+                    Spacer()
+                }
+                .padding(.top, 2)
             }
         }
         .padding(.horizontal, 12)
@@ -116,6 +117,9 @@ struct CaptureRow: View {
 
     // MARK: - Indicator (where did this land?)
 
+    // Quiet by request: the disposition tags shouted over the content
+    // (bold amber/cyan). Only a capture that needs ACTION keeps its color;
+    // the routine tags are tertiary furniture.
     @ViewBuilder
     private var indicator: some View {
         if capture.needsTranscription {
@@ -125,10 +129,10 @@ struct CaptureRow: View {
             label(
                 (target ?? "typed").uppercased(),
                 systemImage: "arrow.right.to.line",
-                color: .cyan
+                color: Theme.textTertiary
             )
         } else {
-            label("SAVED", systemImage: "bookmark", color: Theme.accentAmber)
+            label("SAVED", systemImage: "bookmark", color: Theme.textTertiary)
         }
     }
 

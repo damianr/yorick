@@ -25,15 +25,20 @@ struct HUDContentView: View {
         (session.insertionReceipt != nil && !session.receiptHidden)
     }
 
-    /// Growth direction: below a field the pill hugs the window's top edge and
-    /// grows downward, away from the field; otherwise it grows upward.
-    private var pillEdge: Edge { session.hudPillPlacement == .belowField ? .top : .bottom }
+    /// Growth direction: content hugs its anchored edge and grows away from it.
+    private var pillEdge: Edge {
+        switch session.hudPillPlacement {
+        case .belowField: return .top
+        case .bottomCenter: return HUDPlacement.unanchoredAtTop ? .top : .bottom
+        case .aboveField: return .bottom
+        }
+    }
 
     /// Anchored placements are leading-aligned — the pill sits at the field's
-    /// top-left corner; bottom-center stays centered.
+    /// top-left corner; the unanchored pill centers on its trial edge.
     private var pillAlignment: Alignment {
         switch session.hudPillPlacement {
-        case .bottomCenter: return .bottom
+        case .bottomCenter: return HUDPlacement.unanchoredAtTop ? .top : .bottom
         case .aboveField: return .bottomLeading
         case .belowField: return .topLeading
         }
@@ -257,19 +262,19 @@ struct HUDContentView: View {
             HStack(spacing: 8) {
                 // Copy is the recovery path: a dictation that wasn't typed
                 // lands here, one obvious click from the clipboard.
-                cardAction("doc.on.doc", "Copy") {
+                CardActionButton(icon: "doc.on.doc", label: "Copy") {
                     ClipboardOutput.copy(capture.transcript)
                     session.lastSavedCapture = nil
                 }
                 // The agent-handoff artifact: words + evidence, paste-ready.
                 if capture.context != nil {
-                    cardAction("doc.on.doc.fill", "Copy with context") {
+                    CardActionButton(icon: "doc.on.doc.fill", label: "Copy with context") {
                         ClipboardOutput.copy(CaptureRenderer.renderWithContext(capture))
                         session.lastSavedCapture = nil
                     }
                 }
                 Spacer()
-                cardAction("xmark", "Dismiss") {
+                CardActionButton(icon: "xmark", label: "Dismiss") {
                     session.lastSavedCapture = nil
                 }
             }
@@ -310,22 +315,6 @@ struct HUDContentView: View {
 
 
 
-    private func cardAction(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 9, weight: .semibold))
-                Text(label)
-                    .font(.system(size: 10.5, weight: .semibold))
-            }
-            .foregroundStyle(.white.opacity(0.85))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4.5)
-            .background(.white.opacity(0.12))
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
 
     private func scheduleCardDismiss(_ captureId: UUID, after seconds: Double) {
         cardDismissTask?.cancel()

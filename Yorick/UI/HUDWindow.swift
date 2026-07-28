@@ -1,4 +1,15 @@
 import AppKit
+
+/// EXPERIMENT: where the unanchored (observation) pill and card live.
+/// Top-center is under trial; flip back without a rebuild:
+///   defaults write com.heyyorick.Yorick unanchoredPillAtTop -bool false
+enum HUDPlacement {
+    static var unanchoredAtTop: Bool {
+        UserDefaults.standard.object(forKey: "unanchoredPillAtTop") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "unanchoredPillAtTop")
+    }
+}
 import SwiftUI
 
 final class HUDWindow: NSPanel {
@@ -27,7 +38,7 @@ final class HUDWindow: NSPanel {
         hostingView.autoresizingMask = [.width, .height]
         contentView?.addSubview(hostingView)
 
-        positionAtBottomCenter()
+        positionUnanchored()
 
         NotificationCenter.default.addObserver(
             self,
@@ -50,21 +61,22 @@ final class HUDWindow: NSPanel {
         if let value = note.userInfo?["origin"] as? NSValue {
             setFrameOrigin(value.pointValue)
         } else {
-            positionAtBottomCenter()
+            positionUnanchored()
         }
     }
 
-    func positionAtBottomCenter() {
+    func positionUnanchored() {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
-        let windowWidth = frame.width
-        let x = screenFrame.midX - (windowWidth / 2)
-        let y = screenFrame.minY + 40
+        let x = screenFrame.midX - (frame.width / 2)
+        let y = HUDPlacement.unanchoredAtTop
+            ? screenFrame.maxY - frame.height - 40
+            : screenFrame.minY + 40
         setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     @objc private func screenDidChange() {
-        positionAtBottomCenter()
+        positionUnanchored()
     }
 
     override var canBecomeKey: Bool { false }

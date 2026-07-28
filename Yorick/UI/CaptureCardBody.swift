@@ -1,5 +1,30 @@
 import SwiftUI
 
+/// One capture action, capsule-styled — the same button on the HUD card and
+/// the in-app list rows.
+struct CardActionButton: View {
+    let icon: String
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 10.5, weight: .semibold))
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4.5)
+            .background(.white.opacity(0.12))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// The one capture presentation, shared by the HUD card and the saved list:
 /// the machine's reading (marked by waveform + italics), the raw words, and
 /// the evidence COLLAPSED behind a click — simplest first, enrichment on
