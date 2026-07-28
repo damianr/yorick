@@ -70,11 +70,13 @@ struct OnboardingView: View {
 
             Spacer()
 
-            // Progress dots — clickable, for iterating on the flow (and a
-            // harmless affordance for users who want to peek ahead or back).
+            // Progress dots — clickable BACKWARD only. Revisiting a passed
+            // step is harmless; jumping ahead would hop the permission
+            // gates and finish onboarding into a broken install.
             HStack(spacing: 6) {
                 ForEach(Step.allCases, id: \.rawValue) { s in
                     Button {
+                        guard s.rawValue < step.rawValue else { return }
                         withAnimation(.easeOut(duration: 0.2)) { step = s }
                     } label: {
                         Circle()
@@ -84,6 +86,7 @@ struct OnboardingView: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .allowsHitTesting(s.rawValue < step.rawValue)
                 }
             }
             .padding(.bottom, 20)
