@@ -107,6 +107,9 @@ struct OnboardingView: View {
             for: Notification.Name("KeyboardShortcuts_shortcutByNameDidChange")
         )) { _ in
             shortcutGeneration += 1
+            // A new combo landed — the form's job is done; chips and the
+            // keyboard's fresh highlights carry the confirmation.
+            withAnimation(.easeOut(duration: 0.2)) { showShortcutRecorder = false }
         }
     }
 
@@ -248,8 +251,30 @@ struct OnboardingView: View {
             }
             .buttonStyle(.plain)
             if showShortcutRecorder {
-                ShortcutRecorderView(name: .toggleSession, label: "")
-                    .frame(maxWidth: 220)
+                // The recorder, dressed as one of ours: pill container,
+                // explicit dismiss. It also auto-hides the moment a new
+                // combo lands — the chips and keyboard re-highlighting ARE
+                // the confirmation.
+                HStack(spacing: 8) {
+                    ShortcutRecorderView(name: .toggleSession, label: "")
+                        .frame(width: 150)
+                    Button {
+                        withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder = false }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(Theme.textTertiary)
+                            .frame(width: 18, height: 18)
+                            .background(Circle().fill(Color.white.opacity(0.08)))
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(Theme.bgElevated))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.75))
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
             practiceField
             if !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
