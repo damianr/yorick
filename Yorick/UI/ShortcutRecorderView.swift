@@ -10,12 +10,54 @@ import Carbon.HIToolbox
 struct ShortcutRecorderView: View {
     let name: KeyboardShortcuts.Name
     var label = "Hotkey"
+    /// Onboarding style: instruction + Record only. No current-keys readout
+    /// (the chips and keyboard highlights are the confirmation) and no
+    /// Clear (onboarding must never leave the app hotkey-less).
+    var compact = false
 
     @State private var isRecording = false
     @State private var currentShortcut: KeyboardShortcuts.Shortcut?
     @State private var monitor: Any?
 
     var body: some View {
+        if compact {
+            compactBody
+        } else {
+            fullBody
+        }
+    }
+
+    private var compactBody: some View {
+        HStack(spacing: 10) {
+            if isRecording {
+                Text("Press your key combination…")
+                    .font(Theme.mono(10))
+                    .italic()
+                    .foregroundStyle(Theme.bone)
+                Button("Cancel") { stopRecording() }
+                    .buttonStyle(.plain)
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.textTertiary)
+            } else {
+                Text("Click record, then press your keys.")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.textTertiary)
+                Button { startRecording() } label: {
+                    Text("Record")
+                        .font(Theme.mono(10, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3.5)
+                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .onAppear { currentShortcut = KeyboardShortcuts.getShortcut(for: name) }
+        .onDisappear { stopRecording() }
+    }
+
+    private var fullBody: some View {
         LabeledContent(label) {
             HStack(spacing: 8) {
                 if isRecording {

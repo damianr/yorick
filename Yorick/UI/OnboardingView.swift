@@ -256,8 +256,7 @@ struct OnboardingView: View {
                 // combo lands — the chips and keyboard re-highlighting ARE
                 // the confirmation.
                 HStack(spacing: 8) {
-                    ShortcutRecorderView(name: .toggleSession, label: "")
-                        .frame(width: 150)
+                    ShortcutRecorderView(name: .toggleSession, label: "", compact: true)
                     Button {
                         withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder = false }
                     } label: {
