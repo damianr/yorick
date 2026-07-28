@@ -12,6 +12,7 @@
 		16D8C2E4F65531ED0E8FC8A6 /* ToolbarBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1FC90D1A3F584F7F795AAC /* ToolbarBackdrop.swift */; };
 		25F2794237167E2B86E76872 /* ClipboardOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83B4AFCF23F7B482C5B7689 /* ClipboardOutput.swift */; };
 		2E2AFAFEEFD172F632EA9E32 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFDADD63A711A33CB1DAFC49 /* Theme.swift */; };
+		341CCEF224DBB126D2ACE707 /* CaptureCardBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF0F174F400DAA6E1AA0200E /* CaptureCardBody.swift */; };
 		34B9653B840BA7EA04FC6914 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC530C070F06B8488BD526B /* Constants.swift */; };
 		35E56C0FD55F736227AA6C86 /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DC34EBB54A844C9F08A9B1C /* SessionManager.swift */; };
 		41E54384A29FECBA90F55D04 /* FieldProfiler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F87DAB8FBCF6EC788ABBBC /* FieldProfiler.swift */; };
@@ -115,6 +116,7 @@
 		F5F87DAB8FBCF6EC788ABBBC /* FieldProfiler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldProfiler.swift; sourceTree = "<group>"; };
 		FB8F71B3FB8F2A899FA8638B /* YorickApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YorickApp.swift; sourceTree = "<group>"; };
 		FDBF384BCCFCABF4918D0DB7 /* FocusClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusClassifierTests.swift; sourceTree = "<group>"; };
+		FF0F174F400DAA6E1AA0200E /* CaptureCardBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCardBody.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -191,6 +193,7 @@
 		60D6E97F50A096A1DCF6C8FC /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				FF0F174F400DAA6E1AA0200E /* CaptureCardBody.swift */,
 				0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */,
 				E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */,
 				8AD999AF3A2983F6D044382B /* HUDContentView.swift */,
@@ -399,6 +402,7 @@
 				F0147302ABE80C3A690F93A3 /* AudioCapture.swift in Sources */,
 				F8E173F6B8DB89FC15E4CB18 /* AudioDiagnosticsAnalyzer.swift in Sources */,
 				A8CD261A3FDF0619338D5566 /* Capture.swift in Sources */,
+				341CCEF224DBB126D2ACE707 /* CaptureCardBody.swift in Sources */,
 				7C2BCF917315DD41058EF6C5 /* CaptureContext.swift in Sources */,
 				672E6E5DA3E9F0B483635D80 /* CaptureListComponents.swift in Sources */,
 				B833C5C6C805A5F435041A40 /* CaptureRenderer.swift in Sources */,

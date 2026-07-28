@@ -73,49 +73,27 @@ struct CaptureRow: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                // The machine's reading as the scannable line — marked by
-                // the waveform + italics so it never impersonates the words.
-                // The transcript stays the artifact, right below.
-                if let readback = capture.readback {
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(Theme.textTertiary)
-                        Text(readback)
-                            .font(Theme.mono(11.5))
-                            .italic()
-                            .foregroundStyle(Theme.textSecondary)
-                            .lineLimit(2)
-                    }
-                }
-                Text(displayText)
-                    .font(Theme.mono(12.5))
-                    .lineSpacing(6)
-                    .foregroundStyle(Theme.textPrimary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    // Selectable text swallows plain clicks — the simultaneous
-                    // recognizer restores click-to-copy while a DRAG still
-                    // selects (a tap won't fire across pointer movement).
-                    .simultaneousGesture(TapGesture().onEnded { copyRow() })
-                // The evidence bundle, one muted line — the list stays plain,
-                // but a capture's context should be visible where it lives.
-                if let context = capture.context {
-                    Text(contextSummary(context))
-                        .font(Theme.mono(10))
-                        .foregroundStyle(Theme.textTertiary)
-                        .lineLimit(2)
-                }
+                // Same presentation as the HUD card (CaptureCardBody):
+                // readback + raw words, evidence behind "context · n".
+                CaptureCardBody(
+                    transcript: displayText,
+                    readback: capture.readback,
+                    context: capture.context,
+                    transcriptLineLimit: nil,
+                    onTranscriptTap: { copyRow() }
+                )
             }
         }
         .padding(.horizontal, 12)
         .padding(.top, 11)
         .padding(.bottom, 13)
         .background(
+            // Rows read as cards now — a standing background, stronger on
+            // hover, matching the HUD card's design language.
             RoundedRectangle(cornerRadius: 10)
                 .fill(justCopied
                       ? Theme.success.opacity(0.07)
-                      : (isHovered ? Theme.bgHover : Color.clear))
+                      : (isHovered ? Theme.bgHover : Color.white.opacity(0.03)))
         )
         .contentShape(Rectangle())
         .onTapGesture { copyRow() }
@@ -166,32 +144,6 @@ struct CaptureRow: View {
                 .tracking(0.7)
         }
         .foregroundStyle(color)
-    }
-
-    /// Compact one-liner of the evidence: "infuseflow.app/board · “Migrate
-    /// billing…” · pointed at: Overdue tasks +2". One entry per kind; the
-    /// pointer sweep shows its first item and a count.
-    private func contextSummary(_ context: CaptureContext) -> String {
-        var parts: [String] = []
-        var seen = Set<String>()
-        let pointed = context.facts.filter { $0.kind == "pointedElement" }
-        for fact in context.facts where !seen.contains(fact.kind) {
-            seen.insert(fact.kind)
-            switch fact.kind {
-            case "pageURL":
-                parts.append(URL(string: fact.value).map { ($0.host ?? "") + $0.path } ?? fact.value)
-            case "document":
-                parts.append((fact.value as NSString).lastPathComponent)
-            case "selection":
-                parts.append("“\(fact.value.prefix(60))”")
-            case "pointedElement":
-                let tail = pointed.count > 1 ? " +\(pointed.count - 1)" : ""
-                parts.append("pointed at: \(fact.value.prefix(60))\(tail)")
-            default:
-                break
-            }
-        }
-        return parts.joined(separator: " · ")
     }
 
     private func copyRow() {

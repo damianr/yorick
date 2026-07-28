@@ -244,47 +244,16 @@ struct HUDContentView: View {
                     .lineLimit(1)
                 Spacer(minLength: 12)
             }
-            Text(capture.transcript)
-                .font(.system(size: 12))
-                .foregroundStyle(.white)
-                .lineLimit(4)
-                .fixedSize(horizontal: false, vertical: true)
-            // The machine's reading, clearly marked as such — the confidence
-            // layer. Fades in if the on-device model produces one; the card
-            // is complete without it and the export never includes it.
-            if let readback = session.cardReadback, readback.captureID == capture.id {
-                HStack(alignment: .top, spacing: 5) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.4))
-                        .frame(width: 10)
-                        .padding(.top, 1.5)
-                    Text("Sounds like: \(readback.text)")
-                        .font(.system(size: 10.5))
-                        .italic()
-                        .foregroundStyle(.white.opacity(0.55))
-                        .lineLimit(2)
-                }
-                .transition(.opacity)
-            }
-            // The evidence, shown as it was gathered — the card must preview
-            // everything an export would carry. Verbatim facts, no inference.
-            if let context = capture.context {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(Array(contextChips(for: context).enumerated()), id: \.offset) { _, chip in
-                        HStack(spacing: 5) {
-                            Image(systemName: chip.icon)
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.45))
-                                .frame(width: 10)
-                            Text(chip.text)
-                                .font(.system(size: 10))
-                                .foregroundStyle(.white.opacity(0.6))
-                                .lineLimit(1)
-                        }
-                    }
-                }
-            }
+            // Shared presentation with the saved list: readback + raw words,
+            // evidence collapsed behind "context · n" — simplest first. The
+            // readback fades in when the model produces one; the card is
+            // complete without it and the export never includes it.
+            CaptureCardBody(
+                transcript: capture.transcript,
+                readback: session.cardReadback?.captureID == capture.id ? session.cardReadback?.text : nil,
+                context: capture.context,
+                transcriptLineLimit: 4
+            )
             HStack(spacing: 8) {
                 // Copy is the recovery path: a dictation that wasn't typed
                 // lands here, one obvious click from the clipboard.
@@ -345,40 +314,6 @@ struct HUDContentView: View {
             : "\(capture.appName) · \(capture.windowTitle)"
     }
 
-    /// One compact line per fact kind — except pointing, which is a SWEEP:
-    /// up to three pointed items show in order, plus a "+n" tail. URLs show
-    /// as host + path; values are already length-capped at collection.
-    private func contextChips(for context: CaptureContext) -> [(icon: String, text: String)] {
-        var chips: [(String, String)] = []
-        var seen = Set<String>()
-        var pointedShown = 0
-        let pointedTotal = context.facts.filter { $0.kind == "pointedElement" }.count
-        for fact in context.facts {
-            switch fact.kind {
-            case "pointedElement":
-                guard pointedShown < 3 else { continue }
-                pointedShown += 1
-                let role = fact.detail.map { " (\($0))" } ?? ""
-                chips.append(("cursorarrow.rays", "\(fact.value.prefix(80))\(role)"))
-            case "pageURL" where !seen.contains(fact.kind):
-                seen.insert(fact.kind)
-                let display = URL(string: fact.value).map { ($0.host ?? "") + $0.path } ?? fact.value
-                chips.append(("link", display))
-            case "document" where !seen.contains(fact.kind):
-                seen.insert(fact.kind)
-                chips.append(("doc.text", (fact.value as NSString).lastPathComponent))
-            case "selection" where !seen.contains(fact.kind):
-                seen.insert(fact.kind)
-                chips.append(("text.quote", "“\(fact.value.prefix(80))”"))
-            default:
-                continue
-            }
-        }
-        if pointedTotal > pointedShown {
-            chips.append(("cursorarrow.rays", "+\(pointedTotal - pointedShown) more pointed at"))
-        }
-        return chips
-    }
 
     private func cardAction(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
