@@ -13,16 +13,18 @@ import SwiftUI
 struct SkullGazeView: NSViewRepresentable {
     static let modelURL = AppPaths.root.appendingPathComponent("skull.usdz")
 
-    /// The pill must appear at hotkey speed, and parsing a 32MB sculpt is
-    /// hundreds of main-thread milliseconds — so the scene is built ONCE,
-    /// off-main, at app launch, and the pill only ever attaches the cached
-    /// result. If the first recording beats the preload, the flat mark
-    /// shows instead; the skull joins from the next recording on.
-    @MainActor private static var cachedScene: SCNScene?
+    /// The pill must appear at hotkey speed, and EVERY cost here is paid at
+    /// launch, never at pill time: the 32MB parse happens off-main, then one
+    /// persistent SCNView is created and GPU-warmed (geometry upload +
+    /// shader compile, via SceneKit's prepare API). `isReady` turns true
+    /// only after ALL of that — the pill mounts a fully warm view or shows
+    /// the flat mark, and never blocks on either.
+    @MainActor private static var sharedView: SCNView?
+    @MainActor private static var warm = false
     @MainActor private static var preloadStarted = false
 
     /// True only when the skull can appear with ZERO pill-time cost.
-    @MainActor static var isReady: Bool { cachedScene != nil }
+    @MainActor static var isReady: Bool { warm && sharedView != nil }
 
     @MainActor
     static func preload() {
@@ -30,19 +32,29 @@ struct SkullGazeView: NSViewRepresentable {
         preloadStarted = true
         guard FileManager.default.fileExists(atPath: modelURL.path) else { return }
         Task.detached(priority: .utility) {
-            let scene = makeScene() // SceneKit supports background loading
-            await MainActor.run { cachedScene = scene }
+            guard let scene = makeScene() else { return } // background parse
+            await MainActor.run {
+                let view = SCNView()
+                view.backgroundColor = .clear
+                view.antialiasingMode = .multisampling4X
+                view.scene = scene
+                view.pointOfView = scene.rootNode.childNode(withName: "camera", recursively: false)
+                sharedView = view
+                // Upload geometry and compile shaders NOW, off the render
+                // path — first mount must not pay for 487k triangles.
+                view.prepare([scene.rootNode]) { _ in
+                    Task { @MainActor in warm = true }
+                }
+            }
         }
     }
 
     func makeNSView(context: Context) -> SCNView {
-        let view = SCNView()
-        view.backgroundColor = .clear
-        view.antialiasingMode = .multisampling4X
-        if let scene = Self.cachedScene {
-            view.scene = scene
-            view.pointOfView = scene.rootNode.childNode(withName: "camera", recursively: false)
-        }
+        // The one warm view, reused across every mount — SwiftUI reparents
+        // it; creating a fresh SCNView per mount would re-pay the Metal
+        // setup at pill time. (isReady gates mounting, so the fallback
+        // empty view exists only for type-safety.)
+        let view = Self.sharedView ?? SCNView()
         context.coordinator.attach(view)
         return view
     }

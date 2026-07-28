@@ -13,6 +13,9 @@ struct HUDContentView: View {
     /// The saved-capture card's fade clock, cancelled while hovered.
     @State private var cardDismissTask: Task<Void, Never>?
     @State private var cardHovering = false
+    /// Whether the 3D gaze skull has been upgraded INTO the recording pill.
+    /// Reset per recording: the pill always starts flat and instant.
+    @State private var gazeMounted = false
 
     private var isVisible: Bool {
         session.state == .recording ||
@@ -70,6 +73,10 @@ struct HUDContentView: View {
             }
         }
         .animation(.spring(duration: 0.3), value: session.state)
+        .onChange(of: session.state) { _, state in
+            // Every recording starts flat; the 3D upgrade re-earns its slot.
+            if state != .recording { gazeMounted = false }
+        }
         .animation(.spring(duration: 0.3), value: session.lastSavedCapture?.id)
         .animation(.spring(duration: 0.3), value: session.transientNotice?.id)
         .animation(.spring(duration: 0.3), value: session.insertionReceipt?.id)
@@ -450,13 +457,28 @@ struct HUDContentView: View {
             HStack(spacing: 9) {
                 // Contextual recording (bottom-center, no field): the 3D
                 // skull watches the cursor — the honest tell that pointer
-                // context is being read. Everywhere else: the flat mark.
-                if session.hudPillPlacement == .bottomCenter, SkullGazeView.isReady {
+                // context is being read. BULLETPROOF ORDERING: the pill
+                // always launches with the flat mark (instant, depends on
+                // nothing); the 3D guy is an UPGRADE that fades in a beat
+                // later, and only when his view is fully GPU-warm. If he
+                // can't, the flat mark simply stays — the pill never waits.
+                if session.hudPillPlacement == .bottomCenter, SkullGazeView.isReady, gazeMounted {
                     SkullGazeView()
                         .frame(width: 26, height: 26)
+                        .transition(.opacity)
                 } else {
                     skullMark(16)
                         .frame(height: 19) // seat at button height so hover adds no vertical jump
+                        .onAppear {
+                            guard session.hudPillPlacement == .bottomCenter else { return }
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 300_000_000)
+                                guard session.state == .recording,
+                                      session.hudPillPlacement == .bottomCenter,
+                                      SkullGazeView.isReady else { return }
+                                withAnimation(.easeIn(duration: 0.2)) { gazeMounted = true }
+                            }
+                        }
                 }
                 DotEqualizer(level: session.audioLevel)
                 if recordingHovering {
