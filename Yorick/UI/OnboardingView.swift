@@ -70,15 +70,23 @@ struct OnboardingView: View {
 
             Spacer()
 
-            // Progress dots
+            // Progress dots — clickable, for iterating on the flow (and a
+            // harmless affordance for users who want to peek ahead or back).
             HStack(spacing: 6) {
                 ForEach(Step.allCases, id: \.rawValue) { s in
-                    Circle()
-                        .fill(s == step ? Theme.accentPurple : Theme.bgElevated)
-                        .frame(width: 6, height: 6)
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) { step = s }
+                    } label: {
+                        Circle()
+                            .fill(s == step ? Theme.accentPurple : Theme.bgElevated)
+                            .frame(width: 6, height: 6)
+                            .padding(4) // comfortable hit target
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bgPrimary)
@@ -222,7 +230,7 @@ struct OnboardingView: View {
                 grantedLabel("That's it. That's the whole app.")
             }
             primaryButton("Start using Yorick") { onDone() }
-            Text("Yorick lives in your menu bar. This window is your saved list.")
+            Text("Yorick lives in your menu bar — click the skull to see everything you've saved.")
                 .font(Theme.mono(10))
                 .foregroundStyle(Theme.textTertiary)
         }
