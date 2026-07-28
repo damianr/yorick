@@ -474,6 +474,22 @@ enum AccessibilityCapture {
         return (focused as! AXUIElement)
     }
 
+    /// The DICTATION FAST PATH: one focused-element fetch and a direct role
+    /// match — no cursor probes, no corroboration, no heuristics. Dictation
+    /// is the product, so unambiguous field evidence must win instantly;
+    /// anything short of unambiguous returns nil and the full ladder
+    /// decides. Warm apps answer in single-digit milliseconds.
+    static func fastFieldProbe() -> FieldTarget? {
+        guard AXIsProcessTrusted(),
+              let frontApp = NSWorkspace.shared.frontmostApplication,
+              let element = frontmostFocusedElement(of: frontApp) else { return nil }
+        let role = attribute(element, kAXRoleAttribute) as? String ?? ""
+        let subrole = attribute(element, kAXSubroleAttribute) as? String ?? ""
+        guard FocusClassifier.editableRoles.contains(role),
+              subrole != "AXSecureTextField" else { return nil }
+        return focusedEditableFieldTarget()
+    }
+
     private static func focusedEditability(editableRoles: Set<String>) -> FocusedEditability {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else {
             return FocusedEditability(isEditable: false, summary: "focused=none app=none", frame: nil)

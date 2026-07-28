@@ -137,6 +137,14 @@ final class SessionManager {
     var observingApp: String?
     /// Guards the async start resolution against superseding sessions.
     private var startResolveGeneration = 0
+    /// The dictation fast path anchored this session — the full resolution
+    /// may refine confidence and diagnostics but never demotes the mode:
+    /// immediate field evidence wins, period.
+    private var startFastPathHit = false
+    /// False for the first ≤80ms of a session while the fast probe races
+    /// the clock — the pill waits imperceptibly and then appears at the
+    /// RIGHT place, instead of flashing at top before flying to a field.
+    var hudReady = true
     /// True when the pill is seated at a field's leading edge rather than a
     /// readable caret (single-line exception) — the pill must render as a
     /// capsule there: the pointer corner claims an exact insertion point.
@@ -195,8 +203,43 @@ final class SessionManager {
         // RECORDING pill at the field's left edge when dictations came
         // back-to-back.
         dismissInsertionReceipt(reason: "superseded by new utterance")
-        setHUDAnchor(nil)
         startCapture()
+
+        // DICTATION LEADS. Before the pill's first paint, a fast field
+        // probe (direct role match, no heuristics) races an 80ms clock:
+        // unambiguous field evidence puts the pill AT the field from its
+        // very first frame, mode already dictation — no top-flash, no
+        // flight. Anything else shows the unanchored pill within ~5 frames
+        // and lets the full resolution decide.
+        hudReady = false
+        startFastPathHit = false
+        let fastTask = Task.detached(priority: .userInitiated) {
+            AccessibilityCapture.fastFieldProbe()
+        }
+        Task { @MainActor [weak self] in
+            let fast: AccessibilityCapture.FieldTarget? = await withTaskGroup(
+                of: AccessibilityCapture.FieldTarget?.self
+            ) { group in
+                group.addTask { await fastTask.value }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 80_000_000)
+                    return nil
+                }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+            guard let self, self.state == .recording else { self?.hudReady = true; return }
+            if let fast, forcedMode == nil {
+                self.startFastPathHit = true
+                self.captureMode = .dictation
+                self.modeDecisionSummary += ", fastPath=field"
+                self.setHUDAnchor(fast)
+            } else {
+                self.setHUDAnchor(nil)
+            }
+            self.hudReady = true
+        }
         // Layer B: freeze the semantic target at trigger, then follow the
         // pointer's sweep for the whole recording. The bundle is awaited
         // only after transcription, seconds from now.
@@ -234,15 +277,17 @@ final class SessionManager {
                 : nil
             guard let self, self.startResolveGeneration == generation,
                   self.state == .recording else { return }
-            if forcedMode == nil {
+            if forcedMode == nil, !self.startFastPathHit {
                 self.captureMode = decision.isEditable ? .dictation : .contextual
             }
-            self.startConfidence = decision.confidence
+            self.startConfidence = self.startFastPathHit ? .high : decision.confidence
             self.modeDecisionSummary = "mode=\(self.captureMode.rawValue), forced=\(self.modeWasForced), accessibilityTrusted=\(AXIsProcessTrusted()), \(decision.summary)"
             if let ctx = decision.cursorContext {
                 self.modeDecisionSummary += ", cursorElement=\(ctx.role):\(ctx.title ?? ctx.label ?? "untitled") in \(ctx.appName)"
             }
             print("[Session] Mode resolved: \(self.captureMode.rawValue) (\(self.modeDecisionSummary))")
+            // Never unanchor a fast-path pill — immediate field evidence won.
+            if self.startFastPathHit { return }
             if decision.isEditable, let target {
                 self.setHUDAnchor(target)
             } else if self.hudAnchor == nil {

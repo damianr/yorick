@@ -18,7 +18,7 @@ struct HUDContentView: View {
     @State private var gazeMounted = false
 
     private var isVisible: Bool {
-        session.state == .recording ||
+        (session.state == .recording && session.hudReady) ||
         session.state == .transcribing ||
         session.lastSavedCapture != nil ||
         session.transientNotice != nil ||
