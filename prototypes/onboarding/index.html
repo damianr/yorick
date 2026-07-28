@@ -78,11 +78,13 @@
   .check-item .ic svg { width: 27px; height: 27px; fill: var(--text-2); }
   /* granted: the button becomes a green circle with a white check;
      the identity icon on the left never changes */
+  /* darker green + a drawn stroke check — the light brand green with a
+     thin text glyph washed out */
   .granted-circle {
-    width: 22px; height: 22px; border-radius: 50%; background: var(--green);
-    color: #fff; font-size: 12px; font-weight: 700;
+    width: 22px; height: 22px; border-radius: 50%; background: #2b9e57;
     display: flex; align-items: center; justify-content: center;
   }
+  .granted-circle svg { width: 12px; height: 12px; }
   .kbd-note { transition: color .15s ease; }
   .kbd-note.lit { color: #fff; }
   .hint-above { margin: 2px 0 10px; }
@@ -310,7 +312,8 @@
     granted[which] = true;
     const item = document.getElementById('ci-' + which);
     item.classList.add('granted');
-    item.querySelector('.action').innerHTML = '<span class="granted-circle">✓</span>';
+    item.querySelector('.action').innerHTML =
+      '<span class="granted-circle"><svg viewBox="0 0 12 12"><path d="M2.5 6.4 5 8.9l4.5-5.4" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
     if (granted.mic && granted.ax) {
       document.getElementById('setup-continue').disabled = false;
       document.getElementById('setup-hint').textContent =
