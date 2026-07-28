@@ -31,6 +31,10 @@ final class MenuBarPanelController {
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // Stable identity: without an autosave name, every rebuild reads as
+        // a brand-new item — menu bar managers (Bartender/Ice) auto-hide
+        // newcomers, which made the skull "disappear."
+        item.autosaveName = "YorickMenuBar"
         if let button = item.button {
             button.image = Self.statusImage
             button.target = self
