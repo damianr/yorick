@@ -182,9 +182,8 @@ struct OnboardingView: View {
             icon: { stepIcon("power", granted: loginItemEnabled) },
             title: "Always ready",
             lines: [
-                "Yorick only hears the key while it's running.",
-                "Open it at login so dictation is one hold away after every restart.",
-                "You can change this anytime in System Settings or Yorick's settings."
+                "Yorick hears the hotkey only while it's running.",
+                "Open at login, and it's always one hold away."
             ]
         ) {
             if loginItemEnabled {
