@@ -28,8 +28,7 @@ struct OnboardingView: View {
     /// it hasn't after a while, the likeliest cause is another app already owning
     /// the shortcut (⌥Space is Raycast's default, and Handy's), which otherwise
     /// looks exactly like "Yorick is broken".
-    @State private var hotkeyFired = false
-    @State private var showConflictHelp = false
+    @State private var showShortcutRecorder = false
 
     private let axPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -98,7 +97,6 @@ struct OnboardingView: View {
             // step advances the moment the toggle flips, no relaunch needed.
             accessibilityTrusted = AXIsProcessTrusted()
             microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-            if session.state != .idle { hotkeyFired = true }
         }
     }
 
@@ -208,62 +206,67 @@ struct OnboardingView: View {
         stepLayout(
             icon: { logo },
             title: "Try it here",
-            lines: [
-                "Click the box, then hold  \(shortcut)  and say a sentence.",
-                "That's \(shortcutSpelled). Release when you're done."
-            ]
+            lines: []
         ) {
+            // The instruction IS the chips — no glyph-decoding aside needed.
+            HStack(spacing: 6) {
+                Text("Click the box, then hold")
+                    .font(Theme.mono(11.5))
+                    .foregroundStyle(Theme.textSecondary)
+                keyChips
+                Text("and say a sentence.")
+                    .font(Theme.mono(11.5))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            // The keyboard shows which keys — and lights up as they hold
+            // them: right keys purple, wrong keys red. Hands, not prose.
+            KeyboardMapView(targetKeyCodes: ShortcutLabel.targetKeyCodes)
+                .id(shortcut) // re-highlight when the shortcut is rebound
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder.toggle() }
+            } label: {
+                Text("Set your own key combination")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.textTertiary)
+                    .underline()
+            }
+            .buttonStyle(.plain)
+            if showShortcutRecorder {
+                ShortcutRecorderView(name: .toggleSession, label: "")
+                    .frame(maxWidth: 220)
+            }
             practiceField
-            if practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                if showConflictHelp && !hotkeyFired {
-                    conflictHelp
-                } else {
-                    Text("It works the same in every app. No text field focused? Your words are saved to this window instead.")
-                        .font(Theme.mono(10))
-                        .foregroundStyle(Theme.textTertiary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 400)
-                }
-            } else {
+            if !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 grantedLabel("That's it. That's the whole app.")
             }
             primaryButton("Start using Yorick") { onDone() }
-            Text("Yorick lives in your menu bar — click the skull to see everything you've saved.")
-                .font(Theme.mono(10))
-                .foregroundStyle(Theme.textTertiary)
-        }
-        .task(id: step) {
-            // Only arm the hint once we're actually asking them to press it.
-            guard step == .tryIt else { return }
-            try? await Task.sleep(nanoseconds: 12_000_000_000)
-            if !hotkeyFired { showConflictHelp = true }
         }
     }
 
-    /// Shown when the trigger hasn't fired after a beat: the failure a user can't
-    /// diagnose alone. Rebinding is offered right here rather than in Settings,
-    /// because this is the moment they discover it.
-    private var conflictHelp: some View {
-        VStack(spacing: 8) {
-            Text("Nothing happening?")
-                .font(Theme.mono(11, weight: .semibold))
-                .foregroundStyle(Theme.accentAmber)
-            Text("Another app may already use \(shortcut). Launchers like Raycast and other dictation apps often claim it. Pick a different trigger:")
-                .font(Theme.mono(10))
-                .foregroundStyle(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 400)
-            ShortcutRecorderView(name: .toggleSession, label: "")
-                .frame(maxWidth: 220)
+    /// Chips for the current hotkey: "⌥ OPT" + "SPACE".
+    private var keyChips: some View {
+        HStack(spacing: 4) {
+            ForEach(Array(ShortcutLabel.chips.enumerated()), id: \.offset) { index, chip in
+                if index > 0 {
+                    Text("+")
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.textTertiary)
+                }
+                Text(chip)
+                    .font(Theme.mono(10.5, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Theme.bgElevated)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.75)
+                    )
+            }
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 14)
-        .background(
-            RoundedRectangle(cornerRadius: 10).fill(Theme.accentAmber.opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10).stroke(Theme.accentAmber.opacity(0.25), lineWidth: 1)
-        )
     }
 
     /// Skipping a permission used to land here anyway, on a practice box that

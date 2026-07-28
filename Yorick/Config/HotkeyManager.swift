@@ -18,6 +18,49 @@ enum ShortcutLabel {
             .map(String.init(describing:)) ?? "⌥Space"
     }
 
+    /// The shortcut as chips: one per key, symbol plus short name — "⌥ OPT"
+    /// + "SPACE" — so nobody has to decode glyphs from a prose aside.
+    static var chips: [String] {
+        guard let shortcut = KeyboardShortcuts.getShortcut(for: .toggleSession) else {
+            return ["⌥ OPT", "SPACE"]
+        }
+        var chips: [String] = []
+        let mods = shortcut.modifiers
+        if mods.contains(.control) { chips.append("⌃ CTRL") }
+        if mods.contains(.option) { chips.append("⌥ OPT") }
+        if mods.contains(.shift) { chips.append("⇧ SHIFT") }
+        if mods.contains(.command) { chips.append("⌘ CMD") }
+
+        var key = String(describing: shortcut)
+        for glyph in ["⌃", "⌥", "⇧", "⌘"] { key = key.replacingOccurrences(of: glyph, with: "") }
+        key = key.trimmingCharacters(in: .whitespaces)
+        let spelledSymbols: [String: String] = [
+            "`": "` TILDE", ",": ", COMMA", ".": ". PERIOD", "/": "/ SLASH",
+            ";": "; SEMI", "'": "' QUOTE", "-": "- MINUS", "=": "= EQUALS",
+            "[": "[ BRACKET", "]": "] BRACKET", "\\": "\\ BACKSLASH",
+        ]
+        if !key.isEmpty {
+            chips.append(spelledSymbols[key] ?? key.uppercased())
+        }
+        return chips
+    }
+
+    /// Physical key codes the current shortcut wants pressed — both sides
+    /// for modifiers — for the onboarding keyboard map's highlights.
+    static var targetKeyCodes: Set<UInt16> {
+        guard let shortcut = KeyboardShortcuts.getShortcut(for: .toggleSession) else {
+            return [58, 61, 49] // option (both) + space
+        }
+        var codes: Set<UInt16> = []
+        let mods = shortcut.modifiers
+        if mods.contains(.control) { codes.formUnion([59, 62]) }
+        if mods.contains(.option) { codes.formUnion([58, 61]) }
+        if mods.contains(.shift) { codes.formUnion([56, 60]) }
+        if mods.contains(.command) { codes.formUnion([55, 54]) }
+        if let key = shortcut.key { codes.insert(UInt16(key.rawValue)) }
+        return codes
+    }
+
     static var spelled: String {
         guard let shortcut = KeyboardShortcuts.getShortcut(for: .toggleSession) else {
             return "Option and Space"
