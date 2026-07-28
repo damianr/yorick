@@ -176,16 +176,16 @@
 
   <!-- ============ 2 · SET UP (the new combined checklist) ============ -->
   <section class="step" data-step="1">
-    <h1>Three things, once</h1>
+    <h1>Grant Yorick access</h1>
     <div class="lines">
-      Everything happens on your Mac. Nothing is uploaded, ever.
+      Everything runs on your Mac. Nothing is uploaded.
     </div>
     <div class="checklist">
       <div class="check-item" id="ci-mic">
         <div class="ic">🎤</div>
         <div class="meat">
           <div class="name">Microphone</div>
-          <div class="why">To hear you. Audio is transcribed here and the recording is discarded.</div>
+          <div class="why">Hears what you say. Audio is transcribed on this Mac, then deleted.</div>
         </div>
         <div class="action"><button onclick="grant('mic')">Allow</button></div>
       </div>
@@ -193,7 +193,7 @@
         <div class="ic">⌨️</div>
         <div class="meat">
           <div class="name">Accessibility</div>
-          <div class="why">To type into the app you're using, and to see what you're pointing at. Never a screenshot.</div>
+          <div class="why">Types into the app you're using, and reads what your cursor is pointing at.</div>
         </div>
         <div class="action"><button onclick="grant('ax')">Open System Settings</button></div>
       </div>
@@ -201,7 +201,7 @@
         <div class="ic">⏻</div>
         <div class="meat">
           <div class="name">Open at login</div>
-          <div class="why">Yorick hears the hotkey only while it's running. This keeps it one hold away.</div>
+          <div class="why">Starts Yorick when you log in.</div>
         </div>
         <div class="action">
           <button onclick="grant('login')">Turn On</button>
@@ -209,15 +209,15 @@
       </div>
     </div>
     <button class="btn" id="setup-continue" disabled onclick="go(2)">Continue</button>
-    <div class="kbd-note" id="setup-hint">Microphone and Accessibility are required. Yorick can't work without them.</div>
+    <div class="kbd-note" id="setup-hint">Microphone and Accessibility are required.</div>
   </section>
 
   <!-- ============ 3 · SAY IT ANYWHERE (observe / save) ============ -->
   <section class="step" data-step="2">
     <h1>Say it anywhere</h1>
     <div class="lines">
-      Not in a text field? Yorick saves what you say instead of dropping it.<br>
-      It also notes what you were looking at, so the thought lands whole.
+      Not in a text field? Yorick saves what you say.<br>
+      It also saves what you were looking at: the app, the page, what you pointed at.
     </div>
     <div class="demo-zone" id="demo">
       <div class="demo-rows">
@@ -241,7 +241,7 @@
       </div>
     </div>
     <button class="btn" onclick="go(3)">Continue</button>
-    <div class="kbd-note">One click hands the whole thought to your agent.</div>
+    <div class="kbd-note">One click copies it, context included.</div>
   </section>
 
   <!-- ============ 4 · HANDOFF (lives up here now) ============ -->
@@ -249,10 +249,10 @@
     <div class="logo-circle">
       <svg viewBox="0 0 24 24"><path fill="#ece5d8" d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.6 1.2 4.8 3 6.2v3.1c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-3.1c1.8-1.4 3-3.6 3-6.2C20.5 5.6 17 2 12 2zM9 12.4a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zm6 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zM11 15.5h2v2.6h-2z"/></svg>
     </div>
-    <h1>Yorick lives up here now</h1>
+    <h1>Yorick lives in your menu bar</h1>
     <div class="lines">
-      This window is about to close. The skull in your menu bar<br>
-      holds everything you've saved — and the hotkey works everywhere.<br>
+      This window will close. Your saved items are under the skull.<br>
+      The hotkey works everywhere.<br>
       <span class="dim">(try-it step comes before this in the real flow; it's locked, so it's skipped here)</span>
     </div>
     <button class="btn" onclick="go(0)">Start using Yorick</button>
@@ -298,7 +298,7 @@
     if (granted.mic && granted.ax) {
       document.getElementById('setup-continue').disabled = false;
       document.getElementById('setup-hint').textContent =
-        granted.login ? ' ' : 'Open at login is optional. But restarts happen.';
+        granted.login ? ' ' : 'Open at login is optional.';
     }
   }
 
