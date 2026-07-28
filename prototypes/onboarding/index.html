@@ -76,11 +76,16 @@
     width: 36px; display: flex; align-items: center; justify-content: center; flex: none;
   }
   .check-item .ic svg { width: 27px; height: 27px; fill: var(--text-2); }
-  .check-item.granted .ic svg { display: none; }
-  .check-item .ic .granted-check { display: none; }
-  .check-item.granted .ic .granted-check {
-    display: block; color: var(--green); font-size: 18px; font-weight: 700;
+  /* granted: the button becomes a green circle with a white check;
+     the identity icon on the left never changes */
+  .granted-circle {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--green);
+    color: #fff; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
   }
+  .kbd-note { transition: color .15s ease; }
+  .kbd-note.lit { color: #fff; }
+  .hint-above { margin: 2px 0 10px; }
   .check-item .meat { flex: 1; min-width: 0; }
   .check-item .name { color: var(--text-1); font-size: 12.5px; font-weight: 700; margin-bottom: 3px; }
   .check-item .why { color: var(--text-3); font-size: 10.5px; line-height: 1.5; }
@@ -220,8 +225,8 @@
         </div>
       </div>
     </div>
-    <button class="btn" id="setup-continue" disabled onclick="go(2)">Continue</button>
-    <div class="kbd-note" id="setup-hint">Microphone and Accessibility are required.</div>
+    <div class="kbd-note hint-above" id="setup-hint">Microphone and Accessibility are required.</div>
+    <span id="setup-btn-wrap"><button class="btn" id="setup-continue" disabled onclick="go(2)">Continue</button></span>
   </section>
 
   <!-- ============ 3 · SAY IT ANYWHERE (observe / save) ============ -->
@@ -305,13 +310,22 @@
     granted[which] = true;
     const item = document.getElementById('ci-' + which);
     item.classList.add('granted');
-    item.querySelector('.action').innerHTML = '<span class="granted-tag">On</span>';
+    item.querySelector('.action').innerHTML = '<span class="granted-circle">✓</span>';
     if (granted.mic && granted.ax) {
       document.getElementById('setup-continue').disabled = false;
       document.getElementById('setup-hint').textContent =
         granted.login ? ' ' : 'Open at login is optional.';
     }
   }
+
+  // Hovering a not-yet-enabled Continue lights the required line — the
+  // button can't answer "why not?", so the line does.
+  const btnWrap = document.getElementById('setup-btn-wrap');
+  const setupHint = document.getElementById('setup-hint');
+  btnWrap.addEventListener('mouseenter', () => {
+    if (document.getElementById('setup-continue').disabled) setupHint.classList.add('lit');
+  });
+  btnWrap.addEventListener('mouseleave', () => setupHint.classList.remove('lit'));
 
   // ---------- observe/save demo loop ----------
   const rows = ['dr0','dr1','dr2','dr3'].map(id => document.getElementById(id));
