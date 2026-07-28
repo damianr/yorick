@@ -338,9 +338,9 @@ struct HUDContentView: View {
     /// legacy glyph if the asset is ever missing. The full-color 3D version
     /// takes over this slot when the look-around skull lands.
     private func skullMark(_ size: CGFloat, templateOpacity: Double = 0.75) -> some View {
-        // The asset ships in the catalog — no runtime existence check needed
-        // (that concern belongs to the on-disk skull.usdz, not bundled art).
-        Image("PillSkull")
+        // ONE mark asset app-wide: MenuBarIcon carries the skull for the
+        // menu bar, titlebar, onboarding, and these pills alike.
+        Image("MenuBarIcon")
             .resizable()
             .renderingMode(.template)
             .scaledToFit()
