@@ -451,7 +451,7 @@ struct HUDContentView: View {
                 // Contextual recording (bottom-center, no field): the 3D
                 // skull watches the cursor — the honest tell that pointer
                 // context is being read. Everywhere else: the flat mark.
-                if session.hudPillPlacement == .bottomCenter, SkullGazeView.isAvailable {
+                if session.hudPillPlacement == .bottomCenter, SkullGazeView.isReady {
                     SkullGazeView()
                         .frame(width: 26, height: 26)
                 } else {

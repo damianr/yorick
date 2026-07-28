@@ -13,14 +13,33 @@ import SwiftUI
 struct SkullGazeView: NSViewRepresentable {
     static let modelURL = AppPaths.root.appendingPathComponent("skull.usdz")
 
-    /// Checked once per launch — dropping the file in takes a relaunch.
-    static let isAvailable: Bool = FileManager.default.fileExists(atPath: modelURL.path)
+    /// The pill must appear at hotkey speed, and parsing a 32MB sculpt is
+    /// hundreds of main-thread milliseconds — so the scene is built ONCE,
+    /// off-main, at app launch, and the pill only ever attaches the cached
+    /// result. If the first recording beats the preload, the flat mark
+    /// shows instead; the skull joins from the next recording on.
+    @MainActor private static var cachedScene: SCNScene?
+    @MainActor private static var preloadStarted = false
+
+    /// True only when the skull can appear with ZERO pill-time cost.
+    @MainActor static var isReady: Bool { cachedScene != nil }
+
+    @MainActor
+    static func preload() {
+        guard !preloadStarted else { return }
+        preloadStarted = true
+        guard FileManager.default.fileExists(atPath: modelURL.path) else { return }
+        Task.detached(priority: .utility) {
+            let scene = makeScene() // SceneKit supports background loading
+            await MainActor.run { cachedScene = scene }
+        }
+    }
 
     func makeNSView(context: Context) -> SCNView {
         let view = SCNView()
         view.backgroundColor = .clear
         view.antialiasingMode = .multisampling4X
-        if let scene = Self.makeScene() {
+        if let scene = Self.cachedScene {
             view.scene = scene
             view.pointOfView = scene.rootNode.childNode(withName: "camera", recursively: false)
         }
@@ -40,7 +59,7 @@ struct SkullGazeView: NSViewRepresentable {
     /// pivot). The USDZ is authored Z-up; -90° about X puts the face on +Z,
     /// upright — verified by offscreen render. Pivot at the bounding-box
     /// center makes rotation read as looking around, not orbiting.
-    private static func makeScene() -> SCNScene? {
+    nonisolated private static func makeScene() -> SCNScene? {
         guard let loaded = try? SCNScene(url: modelURL, options: nil) else { return nil }
         let scene = SCNScene()
 

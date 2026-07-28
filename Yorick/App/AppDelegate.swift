@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         registerHotkeys()
+        // Parse the 3D skull off-main now so the recording pill never waits
+        // on it — the pill appears at hotkey speed or the experiment loses.
+        SkullGazeView.preload()
 
         let trusted = AXIsProcessTrusted()
         print("[AppDelegate] Accessibility trusted: \(trusted)")
