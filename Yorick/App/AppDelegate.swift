@@ -7,6 +7,7 @@ import Sparkle
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let sessionManager = SessionManager()
+    private var menuBarPanel: MenuBarPanelController?
     private var hudWindow: HUDWindow?
 
     /// Sparkle auto-updates. Checks the appcast on a schedule and on demand
@@ -21,6 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Parse the 3D skull off-main now so the recording pill never waits
         // on it — the pill appears at hotkey speed or the experiment loses.
         SkullGazeView.preload()
+        // The menu bar surface: custom status item + card-styled panel.
+        menuBarPanel = MenuBarPanelController(session: sessionManager)
 
         let trusted = AXIsProcessTrusted()
         print("[AppDelegate] Accessibility trusted: \(trusted)")

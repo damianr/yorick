@@ -25,15 +25,10 @@ struct YorickApp: App {
             }
         }
 
-        MenuBarExtra {
-            MenuBarView()
-                .environment(appDelegate.sessionManager)
-        } label: {
-            StatusIndicator(
-                state: appDelegate.sessionManager.state
-            )
-        }
-        .menuBarExtraStyle(.window)
+        // The menu bar surface is a custom NSStatusItem + NSPanel
+        // (MenuBarPanelController, installed by AppDelegate) — MenuBarExtra
+        // couldn't give the panel the room, card styling, or pinning the
+        // conduit design needs.
     }
 
     private func styleMainWindow() {
