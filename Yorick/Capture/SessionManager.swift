@@ -132,6 +132,9 @@ final class SessionManager {
     private var stopContextSnapshot: Task<[ContextFact], Never>?
     /// Samples the pointer's sweep while recording — pointing is a gesture.
     private var pointerTimeline: ContextCollector.PointerTimeline?
+    /// Frontmost app when the session started — the observation pill's
+    /// "Observing <App>" status line.
+    var observingApp: String?
     /// True when the pill is seated at a field's leading edge rather than a
     /// readable caret (single-line exception) — the pill must render as a
     /// capsule there: the pointer corner claims an exact insertion point.
@@ -179,6 +182,7 @@ final class SessionManager {
         // the utterance after transcription (UtteranceRouter).
         let decision = AccessibilityCapture.editabilityDecisionAtCursor()
         let isEditable = decision.isEditable
+        observingApp = NSWorkspace.shared.frontmostApplication?.localizedName
         captureMode = forcedMode ?? (isEditable ? .dictation : .contextual)
         startConfidence = decision.confidence
         modeWasForced = forcedMode != nil

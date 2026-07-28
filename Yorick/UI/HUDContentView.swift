@@ -51,7 +51,10 @@ struct HUDContentView: View {
                     // Toast for saved contextual capture
                     if let capture = session.lastSavedCapture {
                         captureSavedToast(capture)
-                            .transition(.opacity.combined(with: .move(edge: pillEdge)))
+                            // The card GROWS out of the pill's spot rather
+                            // than arriving from off-edge — pill becomes card.
+                            .transition(.scale(scale: 0.85, anchor: pillEdge == .top ? .top : .bottom)
+                                .combined(with: .opacity))
                     }
 
                     // Notice for a dropped capture (no speech / hallucination)
@@ -67,11 +70,8 @@ struct HUDContentView: View {
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
 
-                    if session.state == .transcribing {
-                        transcribingPill
-                            .transition(.opacity.combined(with: .move(edge: pillEdge)))
-                    } else if session.state == .recording {
-                        recordingPill
+                    if session.state == .recording || session.state == .transcribing {
+                        sessionPill
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
                 }
@@ -79,8 +79,9 @@ struct HUDContentView: View {
         }
         .animation(.spring(duration: 0.3), value: session.state)
         .onChange(of: session.state) { _, state in
-            // Every recording starts flat; the 3D upgrade re-earns its slot.
-            if state != .recording { gazeMounted = false }
+            // The skull stays through transcribing (one continuous presence)
+            // and re-earns its slot on the next recording.
+            if state != .recording, state != .transcribing { gazeMounted = false }
         }
         .animation(.spring(duration: 0.3), value: session.lastSavedCapture?.id)
         .animation(.spring(duration: 0.3), value: session.transientNotice?.id)
@@ -371,19 +372,29 @@ struct HUDContentView: View {
         }
     }
 
-    private var recordingPill: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 9) {
-                // Contextual recording (bottom-center, no field): the 3D
-                // skull watches the cursor — the honest tell that pointer
-                // context is being read. BULLETPROOF ORDERING: the pill
-                // always launches with the flat mark (instant, depends on
-                // nothing); the 3D guy is an UPGRADE that fades in a beat
-                // later, and only when his view is fully GPU-warm. If he
-                // can't, the flat mark simply stays — the pill never waits.
-                if session.hudPillPlacement == .bottomCenter, gazeMounted {
+    // MARK: - Session Pill (recording + transcribing, one identity)
+    //
+    // One pill, states within: recording (skull · status · EQ) crossfades
+    // into transcribing ("Summarizing…" · spinner) with no view swap — the
+    // old two-pill handoff read as a glitch. The unanchored observation
+    // pill is deliberately LOUDER than the field pill: bigger skull, the
+    // marketing site's amber recording dot and bone status text — it sits
+    // at a screen edge with no caret to mark, so it has to earn the glance.
+    // The field-anchored pill stays compact; near a caret, small is right.
+
+    private var sessionPill: some View {
+        let transcribing = session.state == .transcribing
+        let unanchored = session.hudPillPlacement == .bottomCenter
+        return VStack(spacing: 4) {
+            HStack(spacing: unanchored ? 10 : 9) {
+                // The 3D skull watches the cursor while evidence is being
+                // read, and keeps watching through "Summarizing…" — one
+                // continuous presence. BULLETPROOF ORDERING: always launch
+                // with the flat mark (instant, depends on nothing); the 3D
+                // guy is an upgrade that fades in only when fully GPU-warm.
+                if unanchored, gazeMounted {
                     SkullGazeView()
-                        .frame(width: 26, height: 26)
+                        .frame(width: 30, height: 30)
                         .transition(.opacity)
                 } else {
                     skullMark(16)
@@ -396,59 +407,61 @@ struct HUDContentView: View {
                             }
                         }
                 }
-                DotEqualizer(level: session.audioLevel)
-                if recordingHovering {
-                    Button(action: { session.stopIfRecording() }) {
-                        Image(systemName: "stop.fill")
+                if unanchored {
+                    Circle()
+                        .fill(transcribing ? Theme.success : Theme.siteAmber)
+                        .frame(width: 7, height: 7)
+                    Text(transcribing
+                         ? "Summarizing…"
+                         : session.observingApp.map { "Observing \($0)" } ?? "Observing…")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Theme.bone)
+                        .lineLimit(1)
+                }
+                if transcribing {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(.white)
+                    Button(action: { session.cancelProcessing() }) {
+                        Image(systemName: "xmark")
                             .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.85))
+                            .foregroundStyle(.white.opacity(0.7))
                             .frame(width: 19, height: 19)
-                            .background(.white.opacity(0.15))
+                            .background(.white.opacity(0.12))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .help("Cancel transcription")
+                } else {
+                    DotEqualizer(level: session.audioLevel)
+                    if recordingHovering {
+                        Button(action: { session.stopIfRecording() }) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .frame(width: 19, height: 19)
+                                .background(.white.opacity(0.15))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
-            if session.showSilenceWarning {
+            if session.showSilenceWarning, !transcribing {
                 Text("No audio detected — check your microphone")
                     .font(.system(size: 10))
                     .foregroundStyle(.orange)
             }
         }
-        // Constant padding so the logo + EQ never shift on hover — the stop
-        // button simply appends on the right, the pill grows rightward.
-        .padding(.horizontal, 11)
-        .padding(.vertical, 5)
+        // Constant padding so the mark + EQ never shift on hover — buttons
+        // append on the right, the pill grows rightward.
+        .padding(.horizontal, unanchored ? 14 : 11)
+        .padding(.vertical, unanchored ? 8 : 5)
         .pillGlass(corners: recordingCorners)
         .onHover { recordingHovering = $0 }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
+        .animation(.spring(duration: 0.3), value: transcribing)
         .animation(.easeOut(duration: 0.15), value: session.showSilenceWarning)
-    }
-
-    // MARK: - Transcribing Pill
-
-    private var transcribingPill: some View {
-        HStack(spacing: 9) {
-            skullMark(16)
-            ProgressView()
-                .controlSize(.mini)
-                .tint(.white)
-            Button(action: { session.cancelProcessing() }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 19, height: 19)
-                    .background(.white.opacity(0.12))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Cancel transcription")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        // Same corner grammar as the recording pill — transcribing at
-        // bottom-center must not wear the caret-claiming pointer corner.
-        .pillGlass(corners: recordingCorners)
     }
 }
 

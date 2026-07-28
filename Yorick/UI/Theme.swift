@@ -47,6 +47,11 @@ enum Theme {
     /// Amber accent
     static let accentAmber = Color(red: 0.949, green: 0.753, blue: 0.424)  // #f2c06c
 
+    /// The marketing site's palette (index.html: --amber, --bone) — the
+    /// observation pill borrows it so app and site speak one language.
+    static let siteAmber = Color(red: 0.878, green: 0.706, blue: 0.345)  // #e0b458
+    static let bone = Color(red: 0.925, green: 0.898, blue: 0.847)       // #ece5d8
+
     // MARK: - Semantic
 
     /// Success: soft green
