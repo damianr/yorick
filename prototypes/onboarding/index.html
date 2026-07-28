@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yorick Onboarding — Design Playground</title>
+<style>
+  :root {
+    --bg: #08080b;
+    --bg-elevated: rgba(255,255,255,.06);
+    --bg-card: rgba(255,255,255,.03);
+    --text-1: rgba(255,255,255,.9);
+    --text-2: rgba(255,255,255,.6);
+    --text-3: rgba(255,255,255,.35);
+    --purple: #a78bfa;
+    --bone: #ece5d8;
+    --amber: #e0b458;
+    --green: #8cd278;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a1e;
+    font-family: var(--mono);
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 30px 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ============ the app window ============ */
+  .window {
+    width: 760px; height: 620px; background: var(--bg);
+    border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .traffic { position: absolute; top: 14px; left: 14px; display: flex; gap: 8px; }
+  .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .traffic i:nth-child(1) { background: #ff5f57; }
+  .traffic i:nth-child(2) { background: #febc2e; }
+  .traffic i:nth-child(3) { background: #28c840; }
+
+  .step { flex: 1; display: none; flex-direction: column; align-items: center;
+          justify-content: center; padding: 40px 60px 10px; text-align: center; }
+  .step.active { display: flex; }
+
+  .logo-circle {
+    width: 72px; height: 72px; border-radius: 50%; background: #161619;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 26px;
+  }
+  .logo-circle svg { width: 34px; height: 34px; fill: var(--bone); }
+
+  h1 { color: var(--text-1); font-size: 24px; font-weight: 700; margin-bottom: 18px; }
+  .lines { color: var(--text-2); font-size: 13px; line-height: 1.75; margin-bottom: 26px; }
+  .lines .dim { color: var(--text-3); }
+
+  .btn {
+    background: var(--purple); color: #111; font-family: var(--mono);
+    font-size: 14px; font-weight: 700; border: 0; border-radius: 22px;
+    padding: 12px 28px; cursor: pointer; margin-top: 8px;
+  }
+  .btn:hover { filter: brightness(1.07); }
+  .btn[disabled] { background: var(--bg-elevated); color: var(--text-3); cursor: default; }
+
+  .dots { display: flex; gap: 10px; justify-content: center; padding: 18px 0 22px; }
+  .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--bg-elevated); cursor: pointer; }
+  .dots i.on { background: var(--purple); }
+
+  /* ============ STEP: setup checklist ============ */
+  .checklist { width: 520px; text-align: left; margin-bottom: 10px; }
+  .check-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px; border-radius: 12px; background: var(--bg-card);
+    border: 1px solid rgba(255,255,255,.06); margin-bottom: 10px;
+  }
+  .check-item .ic {
+    width: 34px; height: 34px; border-radius: 50%; background: var(--bg-elevated);
+    display: flex; align-items: center; justify-content: center; flex: none;
+    font-size: 15px;
+  }
+  .check-item.granted .ic { background: rgba(140,210,120,.14); }
+  .check-item .meat { flex: 1; min-width: 0; }
+  .check-item .name { color: var(--text-1); font-size: 12.5px; font-weight: 700; margin-bottom: 3px; }
+  .check-item .why { color: var(--text-3); font-size: 10.5px; line-height: 1.5; }
+  .check-item .action { flex: none; }
+  .action button {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    background: var(--bg-elevated); color: var(--text-1);
+    border: 0; border-radius: 14px; padding: 7px 14px; cursor: pointer;
+  }
+  .action button:hover { background: rgba(255,255,255,.1); }
+  .action .granted-tag { color: var(--green); font-size: 11px; font-weight: 600; }
+  .action .optional { color: var(--text-3); font-size: 10px; cursor: pointer; margin-left: 8px; }
+
+  /* ============ STEP: observe / save ============ */
+  .demo-zone {
+    width: 540px; height: 210px; border-radius: 12px; position: relative;
+    background: linear-gradient(160deg, #17171c 0%, #101014 100%);
+    border: 1px solid rgba(255,255,255,.05); margin-bottom: 20px; overflow: hidden;
+  }
+  /* faux app content being pointed at */
+  .demo-rows { position: absolute; left: 26px; top: 24px; width: 210px; }
+  .demo-rows .r { height: 13px; border-radius: 4px; background: rgba(255,255,255,.07); margin-bottom: 10px; }
+  .demo-rows .r.hot { outline: 1px solid rgba(236,229,216,.35); background: rgba(236,229,216,.1); }
+  .demo-cursor { position: absolute; font-size: 13px; transition: all .8s ease; z-index: 3; }
+
+  /* observation pill (borrowed from the pills playground language) */
+  .obs-pill {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 14px; border-radius: 999px;
+    background: rgba(10,10,12, .82);
+    box-shadow: 0 2px 10px rgba(0,0,0,.26), 0 0 14px rgba(236,229,216, var(--pill-halo, .25));
+    border: 1px solid rgba(236,229,216,.35);
+    transition: opacity .3s; z-index: 4;
+  }
+  .obs-pill .skull { width: 20px; height: 20px; fill: var(--bone); }
+  .obs-pill .label { color: var(--bone); font-size: 10.5px; font-weight: 500; }
+  .obs-pill .eq { display: flex; align-items: flex-end; gap: 2px; height: 11px; }
+  .obs-pill .eq i { width: 2.5px; background: var(--bone); border-radius: 1px; animation: eq .5s infinite alternate; }
+  .obs-pill .eq i:nth-child(1) { height: 4px; animation-delay: 0s; }
+  .obs-pill .eq i:nth-child(2) { height: 8px; animation-delay: .12s; }
+  .obs-pill .eq i:nth-child(3) { height: 11px; animation-delay: .24s; }
+  .obs-pill .eq i:nth-child(4) { height: 6px; animation-delay: .36s; }
+  @keyframes eq { to { transform: scaleY(.4); } }
+
+  /* the card it blooms into */
+  .obs-card {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%) scale(.9);
+    width: 330px; border-radius: 14px; text-align: left;
+    background: rgba(10,10,12,.9); border: 1px solid rgba(255,255,255,.16);
+    box-shadow: 0 6px 24px rgba(0,0,0,.4);
+    padding: 12px 14px; opacity: 0; transition: all .35s ease; z-index: 5;
+  }
+  .obs-card.show { opacity: 1; transform: translateX(-50%) scale(1); }
+  .obs-card .src { display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,.75);
+                   font-size: 9.5px; font-weight: 600; margin-bottom: 7px; }
+  .obs-card .src i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .obs-card .words { color: var(--text-1); font-size: 11px; line-height: 1.5;
+                     font-family: -apple-system, sans-serif; margin-bottom: 8px; }
+  .obs-card .rb { display: flex; gap: 5px; color: var(--text-2); font-style: italic;
+                  font-size: 9.5px; margin-bottom: 8px; }
+  .obs-card .ctx { color: var(--text-3); font-size: 9.5px; margin-bottom: 9px; }
+  .obs-card .acts { display: flex; gap: 7px; }
+  .obs-card .acts span {
+    font-size: 9.5px; font-weight: 600; color: rgba(255,255,255,.85);
+    background: rgba(255,255,255,.12); border-radius: 999px; padding: 4px 9px;
+  }
+  .obs-card .acts .x { margin-left: auto; }
+
+  /* ============ shared small bits ============ */
+  .kbd-note { color: var(--text-3); font-size: 10px; margin-top: 14px; }
+  .granted-line { color: var(--green); font-size: 12px; margin-bottom: 10px; }
+
+  /* iteration helper bar */
+  .helper { color: #666; font-size: 11px; font-family: var(--mono); margin-top: 16px; }
+  .helper b { color: #999; }
+</style>
+</head>
+<body>
+
+<div class="window">
+  <div class="traffic"><i></i><i></i><i></i></div>
+
+  <!-- ============ 1 · WELCOME (locked copy, for flow context) ============ -->
+  <section class="step" data-step="0">
+    <div class="logo-circle">
+      <svg viewBox="0 0 24 24"><path d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.6 1.2 4.8 3 6.2v3.1c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-3.1c1.8-1.4 3-3.6 3-6.2C20.5 5.6 17 2 12 2zM9 12.4a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zm6 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zM11 15.5h2v2.6h-2z"/></svg>
+    </div>
+    <h1>Talk instead of type</h1>
+    <div class="lines">
+      Hold the hotkey and speak. Let go, and it's typed.<br>
+      Not in a text field? It's saved. Nothing is lost.
+    </div>
+    <button class="btn" onclick="go(1)">Continue</button>
+  </section>
+
+  <!-- ============ 2 · SET UP (the new combined checklist) ============ -->
+  <section class="step" data-step="1">
+    <h1>Three things, once</h1>
+    <div class="lines">
+      Everything happens on your Mac. Nothing is uploaded, ever.
+    </div>
+    <div class="checklist">
+      <div class="check-item" id="ci-mic">
+        <div class="ic">🎤</div>
+        <div class="meat">
+          <div class="name">Microphone</div>
+          <div class="why">To hear you. Audio is transcribed here and the recording is discarded.</div>
+        </div>
+        <div class="action"><button onclick="grant('mic')">Allow</button></div>
+      </div>
+      <div class="check-item" id="ci-ax">
+        <div class="ic">⌨️</div>
+        <div class="meat">
+          <div class="name">Accessibility</div>
+          <div class="why">To type into the app you're using, and to see what you're pointing at. Never a screenshot.</div>
+        </div>
+        <div class="action"><button onclick="grant('ax')">Open System Settings</button></div>
+      </div>
+      <div class="check-item" id="ci-login">
+        <div class="ic">⏻</div>
+        <div class="meat">
+          <div class="name">Open at login</div>
+          <div class="why">Yorick hears the hotkey only while it's running. This keeps it one hold away.</div>
+        </div>
+        <div class="action">
+          <button onclick="grant('login')">Turn On</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn" id="setup-continue" disabled onclick="go(2)">Continue</button>
+    <div class="kbd-note" id="setup-hint">Microphone and Accessibility are required. Yorick can't work without them.</div>
+  </section>
+
+  <!-- ============ 3 · SAY IT ANYWHERE (observe / save) ============ -->
+  <section class="step" data-step="2">
+    <h1>Say it anywhere</h1>
+    <div class="lines">
+      Not in a text field? Yorick saves what you say instead of dropping it.<br>
+      It also notes what you were looking at, so the thought lands whole.
+    </div>
+    <div class="demo-zone" id="demo">
+      <div class="demo-rows">
+        <div class="r w1" id="dr0"></div>
+        <div class="r" id="dr1"></div>
+        <div class="r" id="dr2"></div>
+        <div class="r" id="dr3" style="width:70%"></div>
+      </div>
+      <div class="demo-cursor" id="demo-cursor">↖</div>
+      <div class="obs-pill" id="demo-pill">
+        <svg class="skull" viewBox="0 0 24 24"><path fill="#ece5d8" d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.6 1.2 4.8 3 6.2v3.1c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-3.1c1.8-1.4 3-3.6 3-6.2C20.5 5.6 17 2 12 2zM9 12.4a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zm6 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zM11 15.5h2v2.6h-2z"/></svg>
+        <span class="label" id="demo-label">Observing Figma</span>
+        <span class="eq"><i></i><i></i><i></i><i></i></span>
+      </div>
+      <div class="obs-card" id="demo-card">
+        <div class="src"><i></i> Figma · Homepage redesign</div>
+        <div class="words">"This section feels crowded, we should give it more air."</div>
+        <div class="rb">〜 <span>Figma: you want the hero section less crowded</span></div>
+        <div class="ctx">› context · 3</div>
+        <div class="acts"><span>Copy</span><span>Copy with context</span><span class="x">✕</span></div>
+      </div>
+    </div>
+    <button class="btn" onclick="go(3)">Continue</button>
+    <div class="kbd-note">One click hands the whole thought to your agent.</div>
+  </section>
+
+  <!-- ============ 4 · HANDOFF (lives up here now) ============ -->
+  <section class="step" data-step="3">
+    <div class="logo-circle">
+      <svg viewBox="0 0 24 24"><path fill="#ece5d8" d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.6 1.2 4.8 3 6.2v3.1c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-3.1c1.8-1.4 3-3.6 3-6.2C20.5 5.6 17 2 12 2zM9 12.4a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zm6 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zM11 15.5h2v2.6h-2z"/></svg>
+    </div>
+    <h1>Yorick lives up here now</h1>
+    <div class="lines">
+      This window is about to close. The skull in your menu bar<br>
+      holds everything you've saved — and the hotkey works everywhere.<br>
+      <span class="dim">(try-it step comes before this in the real flow; it's locked, so it's skipped here)</span>
+    </div>
+    <button class="btn" onclick="go(0)">Start using Yorick</button>
+  </section>
+
+  <div class="dots" id="dots"></div>
+</div>
+
+<div class="helper">
+  <b>←/→</b> switch steps · click dots · checklist items grant on click ·
+  the observe demo loops on its own · edit copy directly in this file
+</div>
+
+<script>
+  // ---------- step switching ----------
+  const steps = document.querySelectorAll('.step');
+  const dotsEl = document.getElementById('dots');
+  let current = 0;
+  steps.forEach((_, i) => {
+    const d = document.createElement('i');
+    d.onclick = () => go(i);
+    dotsEl.appendChild(d);
+  });
+  function go(i) {
+    current = (i + steps.length) % steps.length;
+    steps.forEach((s, j) => s.classList.toggle('active', j === current));
+    [...dotsEl.children].forEach((d, j) => d.classList.toggle('on', j === current));
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') go(current + 1);
+    if (e.key === 'ArrowLeft') go(current - 1);
+  });
+  go(0);
+
+  // ---------- checklist mock ----------
+  const granted = { mic: false, ax: false, login: false };
+  function grant(which) {
+    granted[which] = true;
+    const item = document.getElementById('ci-' + which);
+    item.classList.add('granted');
+    item.querySelector('.ic').textContent = '✓';
+    item.querySelector('.action').innerHTML = '<span class="granted-tag">On</span>';
+    if (granted.mic && granted.ax) {
+      document.getElementById('setup-continue').disabled = false;
+      document.getElementById('setup-hint').textContent =
+        granted.login ? ' ' : 'Open at login is optional. But restarts happen.';
+    }
+  }
+
+  // ---------- observe/save demo loop ----------
+  const rows = ['dr0','dr1','dr2','dr3'].map(id => document.getElementById(id));
+  const cursor = document.getElementById('demo-cursor');
+  const pill = document.getElementById('demo-pill');
+  const card = document.getElementById('demo-card');
+  const label = document.getElementById('demo-label');
+  const stops = [[100, 40], [150, 66], [120, 92], [90, 118]];
+  let phase = 0;
+  function demoTick() {
+    phase = (phase + 1) % 10;
+    if (phase < 4) {                       // sweeping the rows, pill observing
+      card.classList.remove('show');
+      pill.style.opacity = 1;
+      label.textContent = 'Observing Figma';
+      const [x, y] = stops[phase];
+      cursor.style.left = x + 'px'; cursor.style.top = y + 'px';
+      rows.forEach((r, i) => r.classList.toggle('hot', i === phase));
+    } else if (phase < 6) {                // summarizing
+      label.textContent = 'Summarizing…';
+      rows.forEach(r => r.classList.remove('hot'));
+    } else if (phase < 9) {                // card blooms
+      pill.style.opacity = 0;
+      card.classList.add('show');
+    } else {                               // reset
+      card.classList.remove('show');
+    }
+  }
+  setInterval(demoTick, 900);
+</script>
+</body>
+</html>
