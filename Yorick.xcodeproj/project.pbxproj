@@ -33,6 +33,7 @@
 		7C2BCF917315DD41058EF6C5 /* CaptureContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D2C98258B20C69D61D91180 /* CaptureContext.swift */; };
 		82F1DDC26119122797ED4A3F /* ContextCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A121B44D438B2AAC2B727B /* ContextCollector.swift */; };
 		88A8555B35995E7A2FBB83EC /* FieldProfilerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */; };
+		98CD574C2C2BFAF1CDAB1651 /* AdminMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9508203F2C34F0897692D0F4 /* AdminMode.swift */; };
 		A49F05C46D03C30835F7F541 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */; };
 		A8CD261A3FDF0619338D5566 /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D04D4D581F947FDD13AD5A /* Capture.swift */; };
 		A957EB88DFD7D005E9D45C79 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28302C5A969B4E66966DBB8 /* OnboardingView.swift */; };
@@ -99,6 +100,7 @@
 		813E2EEDBADFF07063F688D3 /* LocalIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalIntelligence.swift; sourceTree = "<group>"; };
 		86D3C0B62573CB6B00A999CE /* LoginItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItem.swift; sourceTree = "<group>"; };
 		8AD999AF3A2983F6D044382B /* HUDContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDContentView.swift; sourceTree = "<group>"; };
+		9508203F2C34F0897692D0F4 /* AdminMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminMode.swift; sourceTree = "<group>"; };
 		9BC530C070F06B8488BD526B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorderView.swift; sourceTree = "<group>"; };
 		A38DBA2E98DB5DAC38F5DFCE /* SkullGazeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkullGazeView.swift; sourceTree = "<group>"; };
@@ -271,6 +273,7 @@
 		F9C41DB554CC7DB5BDC8C41E /* Config */ = {
 			isa = PBXGroup;
 			children = (
+				9508203F2C34F0897692D0F4 /* AdminMode.swift */,
 				9BC530C070F06B8488BD526B /* Constants.swift */,
 				1276438ACBDE805AE73A96D8 /* HotkeyManager.swift */,
 				86D3C0B62573CB6B00A999CE /* LoginItem.swift */,
@@ -394,6 +397,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				59BA1D0795401D4E78FA1847 /* AccessibilityCapture.swift in Sources */,
+				98CD574C2C2BFAF1CDAB1651 /* AdminMode.swift in Sources */,
 				52CE643B36C72CD5AD101DDD /* AppDelegate.swift in Sources */,
 				CF95ECA12953ED4FC0AFA4C3 /* AppIdentifier.swift in Sources */,
 				6AA227E198DF170BDA250AF4 /* AppPaths.swift in Sources */,

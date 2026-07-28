@@ -18,8 +18,7 @@ final class FocusClassifierTests: XCTestCase {
             role: role,
             subrole: subrole,
             isEnabled: enabled,
-            isRichEditorApp: richEditor != nil,
-            richEditorBundleID: richEditor,
+            bundleID: richEditor,
             hasExplicitEditableIdentity: { explicitIdentity },
             valueSettable: { settable }
         ))

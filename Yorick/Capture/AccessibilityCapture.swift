@@ -61,11 +61,16 @@ enum AccessibilityCapture {
     // this. These aliases keep existing call sites reading naturally.
     private static let editableRoles = FocusClassifier.editableRoles
     private static let richEditorBundleIDs = FocusClassifier.richEditorBundleIDs
-    private static let textContainerRoles = FocusClassifier.textContainerRoles
 
     /// The cursor location in AX hit-test coordinates (global, top-left origin).
     /// The flip must use the PRIMARY screen (`screens[0]`) — `NSScreen.main` is
     /// the key window's screen and gives wrong coordinates on multi-display setups.
+    /// Seconds since the pointer last moved — the one "is the mouse in use"
+    /// primitive; routing's parked check and the pointer timeline both read it.
+    static func pointerIdleSeconds() -> Double {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved)
+    }
+
     static func axCursorPoint() -> CGPoint {
         let mouseLocation = NSEvent.mouseLocation
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
@@ -110,6 +115,9 @@ enum AccessibilityCapture {
         let frame: CGRect
         let element: AXUIElement
         let pid: pid_t
+        /// AX role of the field — lets placement reason semantically
+        /// ("single-line by contract") instead of from pixel heights.
+        let role: String
         /// The insertion-point rectangle (global top-left AX coords) when the app
         /// exposes it — Pages, Mail, and native text views do once their
         /// assistive tree is unlocked. Nil for AX-opaque targets.
@@ -174,7 +182,7 @@ enum AccessibilityCapture {
             isRichEditor: isRich,
             fieldFrame: frame
         )
-        return FieldTarget(frame: frame, element: element, pid: frontApp.processIdentifier, caret: caret)
+        return FieldTarget(frame: frame, element: element, pid: frontApp.processIdentifier, role: role, caret: caret)
     }
 
     // MARK: - Field shaping signals
@@ -184,13 +192,9 @@ enum AccessibilityCapture {
     /// Named attributes on one element only — never a tree walk. Nil when
     /// nothing is focused, which shapes as `.standard`.
     static func focusedFieldShapingSignals() -> FieldShapingSignals? {
-        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
-        let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
-        var focusedRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-              let focused = focusedRef
+        guard let frontApp = NSWorkspace.shared.frontmostApplication,
+              let element = frontmostFocusedElement(of: frontApp)
         else { return nil }
-        let element = focused as! AXUIElement
         return FieldShapingSignals(
             role: attribute(element, kAXRoleAttribute) as? String ?? "",
             subrole: attribute(element, kAXSubroleAttribute) as? String ?? "",
@@ -411,9 +415,7 @@ enum AccessibilityCapture {
             let focused = focusedEditability(editableRoles: editableRoles)
             let cursorNearFocused = focused.frame
                 .map { $0.insetBy(dx: -16, dy: -16).contains(axCursorPoint()) } ?? false
-            let pointerParked = CGEventSource.secondsSinceLastEventType(
-                .combinedSessionState, eventType: .mouseMoved
-            ) > 3.0
+            let pointerParked = pointerIdleSeconds() > 3.0
             let isEditable = focused.isEditable && (cursorNearFocused || pointerParked)
             // No editor focused anywhere → solidly contextual. An editor IS
             // focused → every verdict here is a guess (this exact spot produced
@@ -444,32 +446,37 @@ enum AccessibilityCapture {
         )
     }
 
+    /// Focused element of the given app, with the Electron unlock-and-retry:
+    /// Electron apps (VS Code, Cursor) expose NO tree — not even a focused
+    /// element — until the assistive flags are set, and unlike Pages-class
+    /// apps they need the stronger AXEnhancedUserInterface. "The app claims
+    /// nothing is focused at all" is precisely the case where escalating
+    /// can't hurt and is the only thing that helps: unlock and re-read.
+    /// The ONE focused-element fetch — every consumer (routing, field
+    /// shaping) goes through it so none silently misses the unlock.
+    private static func frontmostFocusedElement(of app: NSRunningApplication) -> AXUIElement? {
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        var focusedRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) != .success
+            || focusedRef == nil {
+            enableAssistiveTree(pid: app.processIdentifier, enhanced: true)
+            AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef)
+        }
+        guard let focused = focusedRef else { return nil }
+        return (focused as! AXUIElement)
+    }
+
     private static func focusedEditability(editableRoles: Set<String>) -> FocusedEditability {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else {
             return FocusedEditability(isEditable: false, summary: "focused=none app=none", frame: nil)
         }
-        let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
-
-        var focusedRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) != .success
-            || focusedRef == nil {
-            // Electron apps (VS Code, Cursor) expose NO tree — not even a focused
-            // element — until the assistive flags are set, and unlike Pages-class
-            // apps they need the stronger AXEnhancedUserInterface. "The app claims
-            // nothing is focused at all" is precisely the case where escalating
-            // can't hurt and is the only thing that helps: unlock and re-read.
-            enableAssistiveTree(pid: frontApp.processIdentifier, enhanced: true)
-            AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef)
-        }
-        guard let focused = focusedRef else {
+        guard let focusedElement = frontmostFocusedElement(of: frontApp) else {
             return FocusedEditability(
                 isEditable: false,
                 summary: "focused=none app=\(frontApp.localizedName ?? "unknown")",
                 frame: nil
             )
         }
-
-        let focusedElement = focused as! AXUIElement
         let role = attribute(focusedElement, kAXRoleAttribute) as? String ?? ""
         let subrole = attribute(focusedElement, kAXSubroleAttribute) as? String ?? ""
         let roleDescription = attribute(focusedElement, kAXRoleDescriptionAttribute) as? String ?? ""
@@ -485,8 +492,7 @@ enum AccessibilityCapture {
             role: role,
             subrole: subrole,
             isEnabled: (attribute(focusedElement, kAXEnabledAttribute) as? Bool) ?? true,
-            isRichEditorApp: frontApp.bundleIdentifier.map { richEditorBundleIDs.contains($0) } ?? false,
-            richEditorBundleID: frontApp.bundleIdentifier,
+            bundleID: frontApp.bundleIdentifier,
             hasExplicitEditableIdentity: { hasExplicitEditableIdentity(focusedElement, subrole: subrole) },
             valueSettable: {
                 var settable: DarwinBoolean = false
@@ -632,7 +638,9 @@ enum AccessibilityCapture {
         )
     }
 
-    private static func attribute(_ element: AXUIElement, _ attr: String) -> CFTypeRef? {
+    /// The one AX attribute-read primitive — ContextCollector delegates here
+    /// too, so there's a single place this plumbing lives.
+    static func attribute(_ element: AXUIElement, _ attr: String) -> CFTypeRef? {
         var value: CFTypeRef?
         AXUIElementCopyAttributeValue(element, attr as CFString, &value)
         return value

@@ -238,7 +238,7 @@ struct HUDContentView: View {
                 Circle()
                     .fill(.green)
                     .frame(width: 7, height: 7)
-                Text(contextLine(for: capture))
+                Text(capture.sourceLine)
                     .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
@@ -250,7 +250,7 @@ struct HUDContentView: View {
             // complete without it and the export never includes it.
             CaptureCardBody(
                 transcript: capture.transcript,
-                readback: session.cardReadback?.captureID == capture.id ? session.cardReadback?.text : nil,
+                readback: capture.readback,
                 context: capture.context,
                 transcriptLineLimit: 4
             )
@@ -297,22 +297,17 @@ struct HUDContentView: View {
         .onAppear {
             scheduleCardDismiss(capture.id, after: 6)
         }
-        .onChange(of: session.cardReadback) { _, readback in
+        .onChange(of: session.lastSavedCapture?.readback) { _, readback in
             // A readback landing near the end of the clock deserves reading
             // time — extend, unless the user is already holding the card.
-            guard readback?.captureID == capture.id, !cardHovering else { return }
+            guard readback != nil, !cardHovering else { return }
             scheduleCardDismiss(capture.id, after: 5)
         }
-        .animation(.easeOut(duration: 0.25), value: session.cardReadback)
+        .animation(.easeOut(duration: 0.25), value: session.lastSavedCapture?.readback)
         // New identity per capture, so a replacing card restarts its own clock.
         .id(capture.id)
     }
 
-    private func contextLine(for capture: Capture) -> String {
-        capture.windowTitle.isEmpty
-            ? capture.appName
-            : "\(capture.appName) · \(capture.windowTitle)"
-    }
 
 
     private func cardAction(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
@@ -353,22 +348,22 @@ struct HUDContentView: View {
     /// 12pt mark so the face actually reads at pill size. Falls back to the
     /// legacy glyph if the asset is ever missing. The full-color 3D version
     /// takes over this slot when the look-around skull lands.
-    @ViewBuilder
     private func skullMark(_ size: CGFloat, templateOpacity: Double = 0.75) -> some View {
-        if NSImage(named: "PillSkull") != nil {
-            Image("PillSkull")
-                .resizable()
-                .renderingMode(.template)
-                .scaledToFit()
-                .frame(width: size, height: size)
-                .foregroundStyle(.white.opacity(templateOpacity))
-        } else {
-            Image("MenuBarIcon")
-                .resizable()
-                .renderingMode(.template)
-                .frame(width: size * 0.8, height: size * 0.8)
-                .foregroundStyle(.white.opacity(templateOpacity))
-        }
+        // The asset ships in the catalog — no runtime existence check needed
+        // (that concern belongs to the on-disk skull.usdz, not bundled art).
+        Image("PillSkull")
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .foregroundStyle(.white.opacity(templateOpacity))
+    }
+
+    /// The ONE eligibility predicate for the 3D gaze skull: a contextual
+    /// recording in progress. Mounting additionally requires the warm view
+    /// (checked once at mount time — readiness is monotonic).
+    private var gazeEligible: Bool {
+        session.state == .recording && session.hudPillPlacement == .bottomCenter
     }
 
     /// The squared corner means "seated at your insertion point," so only a
@@ -397,7 +392,7 @@ struct HUDContentView: View {
                 // nothing); the 3D guy is an UPGRADE that fades in a beat
                 // later, and only when his view is fully GPU-warm. If he
                 // can't, the flat mark simply stays — the pill never waits.
-                if session.hudPillPlacement == .bottomCenter, SkullGazeView.isReady, gazeMounted {
+                if session.hudPillPlacement == .bottomCenter, gazeMounted {
                     SkullGazeView()
                         .frame(width: 26, height: 26)
                         .transition(.opacity)
@@ -405,12 +400,9 @@ struct HUDContentView: View {
                     skullMark(16)
                         .frame(height: 19) // seat at button height so hover adds no vertical jump
                         .onAppear {
-                            guard session.hudPillPlacement == .bottomCenter else { return }
                             Task { @MainActor in
                                 try? await Task.sleep(nanoseconds: 300_000_000)
-                                guard session.state == .recording,
-                                      session.hudPillPlacement == .bottomCenter,
-                                      SkullGazeView.isReady else { return }
+                                guard gazeEligible, SkullGazeView.isReady else { return }
                                 withAnimation(.easeIn(duration: 0.2)) { gazeMounted = true }
                             }
                         }

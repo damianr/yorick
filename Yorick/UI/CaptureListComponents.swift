@@ -101,10 +101,7 @@ struct CaptureRow: View {
             if !capture.needsTranscription {
                 Button("Copy") { copyRow() }
                 if capture.context != nil {
-                    Button("Copy with Context") {
-                        ClipboardOutput.copy(CaptureRenderer.renderWithContext(capture))
-                        captureStore.markActive(capture)
-                    }
+                    Button("Copy with Context") { copyRowWithContext() }
                 }
             }
             Button("Delete", role: .destructive) { captureStore.delete(capture) }

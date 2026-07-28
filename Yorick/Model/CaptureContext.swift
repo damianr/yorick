@@ -39,10 +39,6 @@ struct CaptureContext: Codable, Sendable, Equatable {
         }
         return facts.isEmpty ? nil : CaptureContext(facts: facts)
     }
-
-    func first(_ kind: String) -> ContextFact? {
-        facts.first { $0.kind == kind }
-    }
 }
 
 extension CaptureRenderer {
@@ -65,12 +61,7 @@ extension CaptureRenderer {
     /// Just the provenance lines — shared by the export and the readback
     /// prompt (the model reads the same evidence the receiver would).
     static func evidenceBlock(for capture: Capture) -> String {
-        // Window titles often embed the app name already ("InfuseFlow —
-        // homepage prototype - Google Chrome"); don't stutter.
-        let windowPart = capture.windowTitle.isEmpty || capture.windowTitle.contains(capture.appName)
-            ? capture.windowTitle
-            : "\(capture.appName) · \(capture.windowTitle)"
-        var provenance = ["— spoken in \(windowPart.isEmpty ? capture.appName : windowPart)"]
+        var provenance = ["— spoken in \(capture.sourceLine)"]
         var pointed: [String] = []
         let facts = capture.context?.facts ?? []
         for fact in facts {

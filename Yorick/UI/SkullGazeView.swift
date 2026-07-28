@@ -121,10 +121,12 @@ struct SkullGazeView: NSViewRepresentable {
     @MainActor
     final class Coordinator {
         private weak var view: SCNView?
+        private weak var gazeNode: SCNNode?
         private var loop: Task<Void, Never>?
 
         func attach(_ view: SCNView) {
             self.view = view
+            gazeNode = view.scene?.rootNode.childNode(withName: "gaze", recursively: false)
             loop = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     self?.tick()
@@ -138,9 +140,7 @@ struct SkullGazeView: NSViewRepresentable {
         }
 
         private func tick() {
-            guard let view, let window = view.window,
-                  let gaze = view.scene?.rootNode.childNode(withName: "gaze", recursively: false)
-            else { return }
+            guard let view, let window = view.window, let gaze = gazeNode else { return }
             let frameInWindow = view.convert(view.bounds, to: nil)
             let frameOnScreen = window.convertToScreen(frameInWindow)
             let dx = NSEvent.mouseLocation.x - frameOnScreen.midX

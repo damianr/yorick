@@ -37,14 +37,6 @@ struct TransientNotice: Equatable, Identifiable {
 
 /// A just-completed insertion, shown as an actionable pill next to the field:
 /// Cleanup re-inserts a disfluency-free version; Undo removes the paste.
-/// The on-device model's one-line reading of a saved capture, shown on the
-/// card as "Sounds like: …" so the speaker can confirm they were understood.
-/// Confidence layer only: never stored, never exported, fails to nothing.
-struct CardReadback: Equatable {
-    let captureID: UUID
-    let text: String
-}
-
 struct InsertionReceipt: Identifiable, Equatable {
     let id = UUID()
     /// The async ⌘V paste lands ~50–200ms after the receipt appears — the
@@ -140,9 +132,6 @@ final class SessionManager {
     private var stopContextSnapshot: Task<[ContextFact], Never>?
     /// Samples the pointer's sweep while recording — pointing is a gesture.
     private var pointerTimeline: ContextCollector.PointerTimeline?
-    /// The on-device model's reading of the current card's capture — the
-    /// confidence layer. Arrives late (or never), never blocks the card.
-    var cardReadback: CardReadback?
     /// True when the pill is seated at a field's leading edge rather than a
     /// readable caret (single-line exception) — the pill must render as a
     /// capsule there: the pointer corner claims an exact insertion point.
@@ -318,6 +307,10 @@ final class SessionManager {
     private func setHUDAnchor(_ target: AccessibilityCapture.FieldTarget?) {
         hudAnchor = target
         anchorMissTicks = 0
+        // Reset on EVERY placement — a stale true from a previous anchor
+        // must never survive into a new one; only the single-line tier
+        // below re-asserts it.
+        hudAnchorApproximate = false
         guard let target else {
             stopAnchorTracking()
             hudPillPlacement = .bottomCenter
@@ -346,12 +339,16 @@ final class SessionManager {
         // spot. Multi-line editors get no such middle tier: near-but-off the
         // cursor reads as broken, and bottom-center makes no false claim.
         let exactCaret = target.caret
-        let singleLineEdge: CGRect? = target.frame.height <= 44 && target.frame.width > 0
+        // Single-line by AX CONTRACT (role), not by pixel height — a compact
+        // multi-line composer must never get the leading-edge tier. Height
+        // stays only as a sanity clamp against mis-reported frames.
+        let singleLineRoles: Set<String> = ["AXTextField", "AXSearchField"]
+        let singleLineEdge: CGRect? = singleLineRoles.contains(target.role)
+            && target.frame.height <= 44 && target.frame.width > 0
             ? CGRect(x: target.frame.minX + 4, y: target.frame.minY, width: 0, height: target.frame.height)
             : nil
         guard let caret = exactCaret ?? singleLineEdge else {
             Self.placementLog.info("no caret → bottom-center (frame=\(NSStringFromRect(target.frame), privacy: .public))")
-            hudAnchorApproximate = false
             hudPillPlacement = .bottomCenter
             NotificationCenter.default.post(name: .hudReposition, object: nil)
             return
@@ -855,36 +852,31 @@ final class SessionManager {
     /// when the sentence arrives. Every failure path is silence — the card
     /// is complete without it.
     private func requestReadback(for capture: Capture) {
-        cardReadback = nil
         guard capture.context != nil, LocalIntelligence.isCleanupAvailable else { return }
         // A readback of a trivial utterance is noise ("Claude: Okay") — the
         // words ARE the summary below ~5 words.
         guard capture.transcript.split(separator: " ").count >= 5 else { return }
         Task { @MainActor [weak self] in
-            let admin = UserDefaults.standard.bool(forKey: "adminMode")
             do {
-                let text = try await LocalIntelligence.readback(
-                    transcript: capture.transcript,
-                    evidence: CaptureRenderer.evidenceBlock(for: capture),
-                    factValues: capture.context?.facts.map(\.value) ?? []
-                )
+                let text = try await LocalIntelligence.readback(for: capture)
                 // Reviewable after the card fades — a wrong readback is eval
                 // corpus, and the corpus can't be built from vanished lines.
-                if admin {
+                if AdminMode.enabled {
                     Self.readbackLog.notice("id=\(capture.id.uuidString.prefix(8), privacy: .public) text=\(text, privacy: .public)")
                 }
                 guard let self else { return }
-                // Persist as the row's scannable summary line — the list
-                // renders it visibly machine-made, beside the words, never
-                // instead of them.
+                // ONE channel: the readback lives on the capture. Persist it,
+                // and refresh the card's copy in place — the card and the
+                // list both just render `capture.readback`.
                 if var stored = self.captureStore.captures.first(where: { $0.id == capture.id }) {
                     stored.readback = text
                     self.captureStore.update(stored)
                 }
-                guard self.lastSavedCapture?.id == capture.id else { return }
-                self.cardReadback = CardReadback(captureID: capture.id, text: text)
+                if self.lastSavedCapture?.id == capture.id {
+                    self.lastSavedCapture?.readback = text
+                }
             } catch {
-                if admin {
+                if AdminMode.enabled {
                     Self.readbackLog.notice("id=\(capture.id.uuidString.prefix(8), privacy: .public) failed=\(error.localizedDescription, privacy: .public)")
                 }
             }
@@ -893,17 +885,30 @@ final class SessionManager {
 
     private static let readbackLog = Logger(subsystem: "com.heyyorick.Yorick", category: "readback")
 
-    /// First of (facts, 1.5s clock) wins; losing means saving without facts.
-    private static func awaitFacts(_ produce: @escaping @Sendable () async -> [ContextFact]) async -> [ContextFact] {
-        await withTaskGroup(of: [ContextFact]?.self) { group in
-            group.addTask { await produce() }
+    /// Gathers all producers concurrently against ONE shared 1.5s clock —
+    /// sequential per-producer races stacked to 4.5s worst case when apps
+    /// hung. Whatever hasn't finished when the clock fires is dropped:
+    /// facts are lost, the save never waits.
+    private static func gatherFacts(
+        _ producers: [@Sendable () async -> [ContextFact]]
+    ) async -> [[ContextFact]] {
+        await withTaskGroup(of: (Int, [ContextFact])?.self) { group in
+            for (index, produce) in producers.enumerated() {
+                group.addTask { (index, await produce()) }
+            }
             group.addTask {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 return nil
             }
-            let first = await group.next() ?? nil
+            var results = [[ContextFact]](repeating: [], count: producers.count)
+            var finished = 0
+            while finished < producers.count, let next = await group.next() {
+                guard let (index, facts) = next else { break } // clock fired
+                results[index] = facts
+                finished += 1
+            }
             group.cancelAll()
-            return first ?? []
+            return results
         }
     }
 
@@ -1295,15 +1300,17 @@ final class SessionManager {
             //    there is no background intelligence to wait for. The context
             //    bundle finished long ago (its AX reads are time-bounded);
             //    awaiting it here costs nothing.
-            // Race the context tasks against a wall clock: with no AX
+            // Race the context tasks against ONE wall clock: with no AX
             // timeouts in the collector, a hung app could stall its task
             // indefinitely — that must cost the facts, never the save.
-            let pointerFacts = await Self.awaitFacts({ await self.pointerTimeline?.finish(appName: primaryApp) ?? [] })
-            let startFacts = await Self.awaitFacts({ await self.startContextSnapshot?.value ?? [] })
-            let stopFacts = await Self.awaitFacts({ await self.stopContextSnapshot?.value ?? [] })
+            let gathered = await Self.gatherFacts([
+                { await self.startContextSnapshot?.value ?? [] },
+                { await self.stopContextSnapshot?.value ?? [] },
+                { await self.pointerTimeline?.finish(appName: primaryApp) ?? [] },
+            ])
             let captureContext = CaptureContext.merged(
-                start: startFacts,
-                stop: stopFacts + pointerFacts
+                start: gathered[0],
+                stop: gathered[1] + gathered[2]
             )
             let capture = Capture(
                 id: captureID,

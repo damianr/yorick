@@ -353,6 +353,15 @@ struct Capture: Identifiable, Codable {
         content ?? processedInstructions ?? transcript
     }
 
+    /// "App · Window" without stuttering — window titles often embed the
+    /// app name already ("InfuseFlow — homepage prototype - Google Chrome").
+    /// The one source line used by the HUD card header and exports alike.
+    var sourceLine: String {
+        if windowTitle.isEmpty { return appName }
+        if windowTitle.contains(appName) { return windowTitle }
+        return "\(appName) · \(windowTitle)"
+    }
+
     /// First ~150 chars for preview display.
     var transcriptPreview: String {
         let trimmed = bestText.trimmingCharacters(in: .whitespacesAndNewlines)

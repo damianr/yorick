@@ -49,8 +49,10 @@ struct CaptureCardBody: View {
                 .buttonStyle(.plain)
 
                 if evidenceExpanded {
+                    let chips = Self.chips(for: context)
                     VStack(alignment: .leading, spacing: 3) {
-                        ForEach(Array(Self.chips(for: context).enumerated()), id: \.offset) { _, chip in
+                        ForEach(chips.indices, id: \.self) { index in
+                            let chip = chips[index]
                             HStack(spacing: 5) {
                                 Image(systemName: chip.icon)
                                     .font(.system(size: 8, weight: .semibold))
@@ -107,6 +109,9 @@ struct CaptureCardBody: View {
                 let display = URL(string: fact.value).map { ($0.host ?? "") + $0.path } ?? fact.value
                 chips.append(("link", display))
             case "document" where !seen.contains(fact.kind):
+                // Chrome reports AXDocument = the page URL; same dedupe rule
+                // as the export renderer, so card and export agree.
+                guard !context.facts.contains(where: { $0.kind == "pageURL" && $0.value == fact.value }) else { continue }
                 seen.insert(fact.kind)
                 chips.append(("doc.text", (fact.value as NSString).lastPathComponent))
             case "selection" where !seen.contains(fact.kind):

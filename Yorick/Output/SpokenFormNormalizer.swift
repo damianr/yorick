@@ -15,8 +15,8 @@ enum SpokenFormNormalizer {
     /// matched run are untouched, so multi-line dictations survive intact
     /// (token separators are spaces/tabs only, never newlines).
     static func normalize(_ text: String) -> String {
-        var result = rewrite(text, pattern: emailPattern, transform: assembleEmail)
-        result = rewrite(result, pattern: webPattern, transform: assembleWebAddress)
+        var result = rewrite(text, regex: emailRegex, transform: assembleEmail)
+        result = rewrite(result, regex: webRegex, transform: assembleWebAddress)
         return result
     }
 
@@ -74,16 +74,9 @@ enum SpokenFormNormalizer {
               !stopwordLabels.contains(firstLabel.lowercased())
         else { return nil }
         let www = groups["www"] == nil ? "" : "www."
-        var path = ""
-        for token in tokenize(groups["path"] ?? "") {
-            switch token.lowercased() {
-            case "slash": path += "/"
-            case "dot": path += "."
-            case "dash", "hyphen": path += "-"
-            case "underscore": path += "_"
-            default: path += token.lowercased()
-            }
-        }
+        let path = tokenize(groups["path"] ?? "")
+            .map { symbolForConnector($0.lowercased()) }
+            .joined()
         let candidate = www + domain + path
         return isStructurallyValid(candidate, kind: .webAddress) ? candidate : nil
     }
@@ -98,6 +91,7 @@ enum SpokenFormNormalizer {
         case "underscore": return "_"
         case "dash", "hyphen": return "-"
         case "plus": return "+"
+        case "slash": return "/"
         default: return token
         }
     }
@@ -139,20 +133,24 @@ enum SpokenFormNormalizer {
 
     // MARK: - Regex plumbing
 
+    /// Compiled once — NSRegularExpression is immutable and Sendable, and
+    /// the patterns are constants exercised by the fixture suite (a compile
+    /// failure would fail every test, which justifies the force-try).
+    private static let emailRegex = compile(emailPattern)
+    private static let webRegex = compile(webPattern)
+
+    private static func compile(_ pattern: String) -> NSRegularExpression {
+        // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: pattern.replacingOccurrences(of: "@TLD@", with: tldAlternation))
+    }
+
     /// Replaces each match with `transform`'s output (skipping the match when
-    /// it returns nil), walking back-to-front so ranges stay valid. Regexes
-    /// are compiled per call — utterances arrive seconds apart, and immutable
-    /// statics don't survive strict concurrency without unsafe annotations.
+    /// it returns nil), walking back-to-front so ranges stay valid.
     private static func rewrite(
         _ text: String,
-        pattern: String,
+        regex: NSRegularExpression,
         transform: ([String: String]) -> String?
     ) -> String {
-        let expanded = pattern.replacingOccurrences(of: "@TLD@", with: tldAlternation)
-        guard let regex = try? NSRegularExpression(pattern: expanded) else {
-            assertionFailure("SpokenFormNormalizer pattern failed to compile")
-            return text
-        }
         let fullRange = NSRange(text.startIndex..., in: text)
         var result = text
         for match in regex.matches(in: text, range: fullRange).reversed() {

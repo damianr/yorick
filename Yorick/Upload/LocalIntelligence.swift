@@ -36,7 +36,12 @@ enum LocalIntelligence {
     /// guardrail refusal — measured on innocent text) simply means no line
     /// appears. Same discipline as Cleanup: guided generation, no few-shot
     /// examples (verbatim leakage was measured 3/3 with one).
-    static func readback(transcript: String, evidence: String, factValues: [String]) async throws -> String {
+    static func readback(for capture: Capture) async throws -> String {
+        // Derive evidence and fact values from the SAME capture here, so
+        // the leak guard below can never be handed a mismatched pair.
+        let transcript = capture.transcript
+        let evidence = CaptureRenderer.evidenceBlock(for: capture)
+        let factValues = capture.context?.facts.map(\.value) ?? []
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             // Prompt shaped by replaying a real miss: the first version let

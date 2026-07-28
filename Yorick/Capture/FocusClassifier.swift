@@ -55,8 +55,9 @@ enum FocusClassifier {
         var role = ""
         var subrole = ""
         var isEnabled = true
-        var isRichEditorApp = false
-        var richEditorBundleID: String?
+        /// Frontmost app's bundle id; classify derives rich-editor trust
+        /// from it so the flag and the id can never disagree.
+        var bundleID: String?
         var hasExplicitEditableIdentity: () -> Bool = { false }
         var valueSettable: () -> Bool = { false }
     }
@@ -102,8 +103,9 @@ enum FocusClassifier {
         if textContainerRoles.contains(s.role), s.valueSettable() { return (true, " valueSettable=true") }
 
         // AX-opaque rich editors, trusted by app identity + container role.
-        if s.isRichEditorApp, textContainerRoles.contains(s.role) {
-            return (true, " richEditorApp=\(s.richEditorBundleID ?? "?")")
+        if let bundleID = s.bundleID, richEditorBundleIDs.contains(bundleID),
+           textContainerRoles.contains(s.role) {
+            return (true, " richEditorApp=\(bundleID)")
         }
 
         return nil

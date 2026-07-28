@@ -27,28 +27,24 @@ enum ContextCollector {
             return Task { [] }
         }
         let pid = frontApp.processIdentifier
-        // Yorick never cites itself. Pointing at the saved list while
-        // speaking captured OLD transcripts as "screen context," and the
-        // readback then narrated the previous capture instead of the words
-        // (field-measured). Self-evidence is pollution in exports, too.
-        guard pid != ProcessInfo.processInfo.processIdentifier else { return Task { [] } }
+        guard !isSelf(pid) else { return Task { [] } }
         let appName = frontApp.localizedName ?? "unknown"
-        let cursor = AccessibilityCapture.axCursorPoint()
-        // The same primitive routing trusts: a parked pointer is wherever it
-        // was left, so pointer-derived facts are included only when the
-        // pointer was recently, deliberately moved.
-        let pointerParked = CGEventSource.secondsSinceLastEventType(
-            .combinedSessionState, eventType: .mouseMoved
-        ) > 3.0
 
         return Task.detached(priority: .utility) {
-            collect(phase: phase, pid: pid, appName: appName, cursor: cursor, pointerParked: pointerParked)
+            collect(phase: phase, pid: pid, appName: appName)
         }
     }
 
-    private static func collect(
-        phase: String, pid: pid_t, appName: String, cursor: CGPoint, pointerParked: Bool
-    ) -> [ContextFact] {
+    /// Yorick never cites itself. Pointing at the saved list while speaking
+    /// captured OLD transcripts as "screen context," and the readback then
+    /// narrated the previous capture instead of the words (field-measured).
+    /// Self-evidence is pollution in exports, too. One rule; every evidence
+    /// source calls it.
+    private static func isSelf(_ pid: pid_t) -> Bool {
+        pid == ProcessInfo.processInfo.processIdentifier
+    }
+
+    private static func collect(phase: String, pid: pid_t, appName: String) -> [ContextFact] {
         var facts: [ContextFact] = []
         // NO AXUIElementSetMessagingTimeout, anywhere in this file. Its
         // scoping proved broader than per-reference in practice: collector
@@ -107,7 +103,6 @@ enum ContextCollector {
         }
         logRung(phase, appName, "document", ok: facts.contains { $0.kind == "document" }, since: t, detail: "")
 
-        _ = (cursor, pointerParked) // pointer evidence comes from PointerTimeline
         return facts
     }
 
@@ -124,11 +119,13 @@ enum ContextCollector {
         var pointedRef: AXUIElement?
         AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &pointedRef)
         guard let leaf = pointedRef else { return nil }
-        // Yorick never cites itself (see snapshot) — pointing at the pill,
-        // card, or saved list is not evidence about the world.
+        // Pointing at the pill, card, or saved list is not evidence about
+        // the world — this is the cross-app path of the isSelf rule (the
+        // HUD floats over other apps, so hit-testing can land on Yorick
+        // even when another app is frontmost).
         var ownerPID: pid_t = 0
         AXUIElementGetPid(leaf, &ownerPID)
-        guard ownerPID != ProcessInfo.processInfo.processIdentifier else { return nil }
+        guard !isSelf(ownerPID) else { return nil }
 
         let leafText = bestText(of: leaf)
         // Climb toward meaning: a row/cell wins outright; otherwise the first
@@ -205,12 +202,9 @@ enum ContextCollector {
         private func sampleOnce() {
             // CGEvent's location is already top-left-origin global coords —
             // matching AX — and both CG calls are thread-safe.
-            let idle = CGEventSource.secondsSinceLastEventType(
-                .combinedSessionState, eventType: .mouseMoved
-            )
-            guard idle < 2.0, let point = CGEvent(source: nil)?.location else { return }
+            guard AccessibilityCapture.pointerIdleSeconds() < 2.0,
+                  let point = CGEvent(source: nil)?.location else { return }
             guard let resolved = ContextCollector.resolvePointed(at: point) else { return }
-            if let last = items.last, last.value == resolved.value { return }
             if items.contains(where: { $0.value == resolved.value }) { return }
             items.append(resolved)
         }
@@ -223,8 +217,7 @@ enum ContextCollector {
 
         /// The ordered sweep as facts. Also emits the coverage log line.
         func finish(appName: String) -> [ContextFact] {
-            sampler?.cancel()
-            sampler = nil
+            stopSampling()
             ContextCollector.logTimeline(appName: appName, count: items.count)
             return items.map {
                 ContextFact(kind: "pointedElement", value: $0.value, detail: $0.detail, phase: "timeline")
@@ -234,7 +227,7 @@ enum ContextCollector {
 
     // MARK: - Coverage instrumentation
 
-    private static var isLoggingEnabled: Bool { UserDefaults.standard.bool(forKey: "adminMode") }
+    private static var isLoggingEnabled: Bool { AdminMode.enabled }
 
     static func logTimeline(appName: String, count: Int) {
         guard isLoggingEnabled else { return }
@@ -253,8 +246,6 @@ enum ContextCollector {
     }
 
     private static func str(_ element: AXUIElement, _ attr: String) -> String? {
-        var ref: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attr as CFString, &ref) == .success else { return nil }
-        return ref as? String
+        AccessibilityCapture.attribute(element, attr) as? String
     }
 }
