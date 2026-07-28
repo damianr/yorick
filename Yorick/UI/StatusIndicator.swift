@@ -6,18 +6,24 @@ struct StatusIndicator: View {
     var body: some View {
         switch state {
         case .idle:
-            Image("MenuBarIcon")
-                .renderingMode(.template)
+            menuIcon(.primary)
         case .recording:
-            Image("MenuBarIcon")
-                .renderingMode(.template)
-                .foregroundStyle(.red)
+            menuIcon(.red)
         case .transcribing:
-            Image("MenuBarIcon")
-                .renderingMode(.template)
-                .foregroundStyle(.orange)
+            menuIcon(.orange)
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
         }
+    }
+
+    /// The mark's SVG has a 1024pt intrinsic size — unconstrained, it
+    /// swallowed the menu bar. Menu bar template icons are ~18pt.
+    private func menuIcon(_ color: some ShapeStyle) -> some View {
+        Image("MenuBarIcon")
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+            .frame(width: 18, height: 18)
+            .foregroundStyle(color)
     }
 }

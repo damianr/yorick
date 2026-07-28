@@ -72,9 +72,10 @@ enum AccessibilityCapture {
     }
 
     static func axCursorPoint() -> CGPoint {
-        let mouseLocation = NSEvent.mouseLocation
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        return CGPoint(x: mouseLocation.x, y: primaryHeight - mouseLocation.y)
+        // CGEvent's location is already global top-left (AX) coordinates and
+        // is thread-safe — start resolution now runs this off-main. (The old
+        // NSEvent/NSScreen flip was main-thread-flavored AppKit.)
+        CGEvent(source: nil)?.location ?? .zero
     }
 
     /// Whether the frontmost app currently has keyboard focus in an editable
@@ -111,7 +112,9 @@ enum AccessibilityCapture {
     /// owning app's pid. The HUD anchors to this and dismisses the moment the
     /// element stops being the focused one — switching windows or tabs makes
     /// the pill vanish with "its" field instead of haunting the new view.
-    struct FieldTarget {
+    // @unchecked: AXUIElement is an immutable CF token, safe to carry across
+    // threads — start resolution now hands targets back from a background task.
+    struct FieldTarget: @unchecked Sendable {
         let frame: CGRect
         let element: AXUIElement
         let pid: pid_t

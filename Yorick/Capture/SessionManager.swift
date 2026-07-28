@@ -135,6 +135,8 @@ final class SessionManager {
     /// Frontmost app when the session started — the observation pill's
     /// "Observing <App>" status line.
     var observingApp: String?
+    /// Guards the async start resolution against superseding sessions.
+    private var startResolveGeneration = 0
     /// True when the pill is seated at a field's leading edge rather than a
     /// readable caret (single-line exception) — the pill must render as a
     /// capsule there: the pointer corner claims an exact insertion point.
@@ -169,51 +171,31 @@ final class SessionManager {
         return String(format: "%d:%02d", mins, secs)
     }
 
-    /// Start capture — infers mode from cursor context.
-    /// If cursor is in a text field → dictation (will type transcript at cursor).
-    /// Otherwise → contextual capture (stores in Yorick).
+    /// Start capture — SHOW FIRST, DECIDE SECOND. The pill must appear at
+    /// hotkey speed, but the editability ladder is synchronous AX IPC into
+    /// an arbitrary app — cold apps took visible fractions of a second,
+    /// which read as the app not listening. The session starts provisional
+    /// (contextual, unanchored, audio already rolling) and the resolved
+    /// decision lands the pill at the field a beat later. A wrong-for-a-beat
+    /// placement costs nothing: routing re-decides at stop, and every
+    /// transcript persists regardless.
     func startIfIdle(forcedMode: CaptureMode? = nil) {
         // A stuck error state must never soft-lock the hotkey.
         if case .error = state { state = .idle }
         guard state == .idle else { return }
 
-        // Detect mode from cursor context. This is a starting guess, not the
-        // verdict — for low-confidence evidence the transcript itself routes
-        // the utterance after transcription (UtteranceRouter).
-        let decision = AccessibilityCapture.editabilityDecisionAtCursor()
-        let isEditable = decision.isEditable
         observingApp = NSWorkspace.shared.frontmostApplication?.localizedName
-        captureMode = forcedMode ?? (isEditable ? .dictation : .contextual)
-        startConfidence = decision.confidence
         modeWasForced = forcedMode != nil
-        let axTrusted = AXIsProcessTrusted()
-        if forcedMode != nil {
-            modeDecisionSummary = "mode=\(captureMode.rawValue), forced=true, automaticEditable=\(isEditable), accessibilityTrusted=\(axTrusted), \(decision.summary)"
-        } else {
-            modeDecisionSummary = "mode=\(captureMode.rawValue), forced=false, accessibilityTrusted=\(axTrusted), \(decision.summary)"
-        }
-        print("[Session] Mode detected: \(captureMode.rawValue) (\(modeDecisionSummary))")
-        if let ctx = decision.cursorContext {
-            print("[Session] Cursor element: role=\(ctx.role) app=\(ctx.appName) title=\(ctx.title ?? "nil")")
-            modeDecisionSummary += ", cursorElement=\(ctx.role):\(ctx.title ?? ctx.label ?? "untitled") in \(ctx.appName)"
-        }
+        captureMode = forcedMode ?? .contextual
+        startConfidence = .low
+        modeDecisionSummary = "mode=\(captureMode.rawValue), forced=\(modeWasForced), resolving"
         // A new utterance supersedes any lingering receipt — and it must be
         // cleared BEFORE the anchor is chosen: setHUDAnchor routes to the
         // receipt's gutter dock while a receipt exists, which parked the
         // RECORDING pill at the field's left edge when dictations came
         // back-to-back.
         dismissInsertionReceipt(reason: "superseded by new utterance")
-
-        // The pill anchors where routing actually intends to type — a
-        // field-adjacent pill means "will type here," bottom-center means
-        // "will save." It follows the corroborated DECISION, not bare focus:
-        // web apps and Electron keep some field focused at all times, so a
-        // focus-driven anchor flew to an input while the user deliberately
-        // pointed elsewhere to observe, promising a paste that routing
-        // wouldn't (and shouldn't) deliver. The Electron first-capture case
-        // (probe unsettled at start, field genuinely focused) is rescued by
-        // the retry below, which re-evaluates the decision as things settle.
-        setHUDAnchor(isEditable ? AccessibilityCapture.focusedEditableFieldTarget() : nil)
+        setHUDAnchor(nil)
         startCapture()
         // Layer B: freeze the semantic target at trigger, then follow the
         // pointer's sweep for the whole recording. The bundle is awaited
@@ -227,12 +209,45 @@ final class SessionManager {
         let timeline = ContextCollector.PointerTimeline()
         pointerTimeline = timeline
         Task { await timeline.begin() }
-        // Focus can lag the hotkey by well over a second (app still coming
-        // forward, focus just moved in). If we didn't anchor, keep polling for
-        // the whole recording so the pill lands on the field mid-utterance
-        // instead of only on the next capture.
-        if hudAnchor == nil {
-            acquireFieldAnchorWithRetry()
+
+        resolveStartDecision(forcedMode: forcedMode)
+    }
+
+    /// Runs the corroborated editability decision off the main thread and
+    /// applies it: mode, confidence, diagnostics, and — when the evidence
+    /// says "typing" — the pill's flight from unanchored to the field. The
+    /// pill anchors where routing intends to type, never on bare focus (web
+    /// and Electron apps keep some field focused at all times). If the
+    /// decision lands unanchored, the retry loop keeps watching for
+    /// late-settling focus for the rest of the recording.
+    private func resolveStartDecision(forcedMode: CaptureMode?) {
+        startResolveGeneration += 1
+        let generation = startResolveGeneration
+        Task { @MainActor [weak self] in
+            let decision = await Task.detached(priority: .userInitiated) {
+                AccessibilityCapture.editabilityDecisionAtCursor()
+            }.value
+            let target: AccessibilityCapture.FieldTarget? = decision.isEditable
+                ? await Task.detached(priority: .userInitiated) {
+                    AccessibilityCapture.focusedEditableFieldTarget()
+                }.value
+                : nil
+            guard let self, self.startResolveGeneration == generation,
+                  self.state == .recording else { return }
+            if forcedMode == nil {
+                self.captureMode = decision.isEditable ? .dictation : .contextual
+            }
+            self.startConfidence = decision.confidence
+            self.modeDecisionSummary = "mode=\(self.captureMode.rawValue), forced=\(self.modeWasForced), accessibilityTrusted=\(AXIsProcessTrusted()), \(decision.summary)"
+            if let ctx = decision.cursorContext {
+                self.modeDecisionSummary += ", cursorElement=\(ctx.role):\(ctx.title ?? ctx.label ?? "untitled") in \(ctx.appName)"
+            }
+            print("[Session] Mode resolved: \(self.captureMode.rawValue) (\(self.modeDecisionSummary))")
+            if decision.isEditable, let target {
+                self.setHUDAnchor(target)
+            } else if self.hudAnchor == nil {
+                self.acquireFieldAnchorWithRetry()
+            }
         }
     }
 
@@ -248,9 +263,16 @@ final class SessionManager {
                 guard state == .recording, hudAnchor == nil else { return }
                 // Same corroborated decision as everywhere else — a focused
                 // field only anchors once the evidence says "typing," so a
-                // deliberate point-away keeps the pill honestly bottom-center.
-                if AccessibilityCapture.editabilityDecisionAtCursor().isEditable,
-                   let target = AccessibilityCapture.focusedEditableFieldTarget() {
+                // deliberate point-away keeps the pill honestly unanchored.
+                // Off-main: each tick is AX IPC that must not hitch the pill.
+                let resolved = await Task.detached(priority: .utility) {
+                    () -> AccessibilityCapture.FieldTarget? in
+                    AccessibilityCapture.editabilityDecisionAtCursor().isEditable
+                        ? AccessibilityCapture.focusedEditableFieldTarget()
+                        : nil
+                }.value
+                guard state == .recording, hudAnchor == nil else { return }
+                if let target = resolved {
                     setHUDAnchor(target)
                     return
                 }
