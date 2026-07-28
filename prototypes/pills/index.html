@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yorick Pills — Design Playground</title>
+<style>
+  :root {
+    --bone: #ece5d8; --bone-rgb: 236, 229, 216;
+    --glass-black: 0.78;
+    --frost: 20px;
+    --rim-top: 0.30;
+    --rim-bot: 0.06;
+    --rim-w: 0.75px;
+    --rim-a-top: 0.45;
+    --rim-a-bot: 0.08;
+    --rim-a-w: 1px;
+    --sh1o: 0.26; --sh1b: 10px; --sh1y: 2px;
+    --sh2o: 0.14; --sh2b: 2px;  --sh2y: 0.5px;
+    --halo-o: 0; --halo-b: 16px;
+    --dot: 2.5px; --gap: 2px;
+    --dot-ms: 80ms;
+    --lit: 0.95; --dim: 0.18;
+    --tl: 12px; --bl: 4px;
+    --hover-ease: cubic-bezier(.3,1.2,.4,1); --hover-ms: 280ms;
+    --trans-ease: ease-out; --trans-ms: 300ms;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    display: flex; overflow: hidden; background: #111;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ============ STAGE ============ */
+  #stage {
+    flex: 1; position: relative; overflow: hidden;
+    display: flex; align-items: stretch; justify-content: stretch;
+  }
+  #backdrop { position: absolute; inset: 0; }
+  #backdrop .doc { display: none; }
+  #backdrop.bg-white  { background: #fff; }
+  #backdrop.bg-white .doc {
+    display: block; position: absolute; inset: 40px 15%; color: #222;
+  }
+  .doc .line { height: 11px; border-radius: 3px; background: #d8d8d8; margin: 14px 0; }
+  .doc .line.w60 { width: 60%; } .doc .line.w85 { width: 85%; } .doc .line.w75 { width: 75%; } .doc .line.w40 { width: 40%; }
+  #backdrop.bg-web { background: #f4f5f7; }
+  #backdrop.bg-web .card {
+    position: absolute; background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+  }
+  #backdrop.bg-dark { background: #1e1e21; }
+  #backdrop.bg-dark .code { position: absolute; inset: 40px 10%; font: 12px ui-monospace, monospace; }
+  .code .cl { height: 9px; border-radius: 2px; margin: 12px 0; opacity: .5; }
+  #backdrop.bg-photo { background:
+    radial-gradient(ellipse at 20% 20%, #ff9a56 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 30%, #b06ab3 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 90%, #4568dc 0%, transparent 60%),
+    #2a2040; }
+
+  /* Mock text field for anchored placements */
+  #mockfield {
+    position: absolute; left: 50%; top: 42%; transform: translateX(-50%);
+    width: 420px; height: 84px; border-radius: 8px;
+    background: rgba(255,255,255,.92); border: 1px solid rgba(0,0,0,.18);
+    outline: 3px solid rgba(0,122,255,.35);
+    padding: 10px 12px; color: #333; font-size: 13px;
+  }
+  #mockfield .caret { display: inline-block; width: 1.5px; height: 15px; background: #007aff;
+    vertical-align: text-bottom; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #mockfield.hidden { display: none; }
+
+  /* Pill stack — mirrors the VStack(spacing:8) + padding in HUDContentView */
+  #pillzone { position: absolute; inset: 0; pointer-events: none; }
+  #stack {
+    position: absolute; display: flex; flex-direction: column; gap: 8px;
+    padding: 8px 6px; pointer-events: auto;
+  }
+  #stack.place-bottom { left: 50%; bottom: 0; transform: translateX(-50%) scale(var(--zoom,1)); align-items: center; transform-origin: bottom center; }
+  #stack.place-above  { align-items: flex-start; transform: scale(var(--zoom,1)); transform-origin: bottom left; }
+  #stack.place-below  { align-items: flex-start; transform: scale(var(--zoom,1)); transform-origin: top left; }
+
+  /* ============ PILL GLASS ============ */
+  .pill {
+    position: relative; display: flex; align-items: center;
+    color: #fff;
+    background: rgba(0,0,0,var(--glass-black));
+    -webkit-backdrop-filter: blur(var(--frost)) saturate(1.6);
+    backdrop-filter: blur(var(--frost)) saturate(1.6);
+    box-shadow: 0 var(--sh1y) var(--sh1b) rgba(0,0,0,var(--sh1o)),
+                0 var(--sh2y) var(--sh2b) rgba(0,0,0,var(--sh2o)),
+                0 0 var(--halo-b) rgba(var(--bone-rgb), var(--halo-o));
+  }
+  .pill.capsule { border-radius: var(--full,999px); }
+  .pill.pointer { border-radius: var(--tl) var(--full,14.5px) var(--full,14.5px) var(--bl); }
+  .pill.pointerBelow { border-radius: var(--bl) var(--full,14.5px) var(--full,14.5px) var(--tl); }
+  .pill::before { /* rim light: gradient ring (white default, bone when accented) */
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: var(--rim-w); pointer-events: none;
+    background: linear-gradient(to bottom, rgba(255,255,255,var(--rim-top)), rgba(255,255,255,var(--rim-bot)));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+  }
+  .pill.accented::before {
+    padding: var(--rim-a-w);
+    background: linear-gradient(to bottom, rgba(var(--bone-rgb), var(--rim-a-top)), rgba(var(--bone-rgb), var(--rim-a-bot)));
+  }
+
+  /* entrance / exit (opacity + move from edge, spring) */
+  .holder { display: none; }
+  .holder.on { display: block; }
+  .holder .pillwrap {
+    transition: transform var(--trans-ms) var(--trans-ease), opacity 200ms ease-out;
+    transform-origin: bottom center;
+  }
+  .holder.entering .pillwrap { transform: translateY(var(--enter-dy, 10px)); opacity: 0; }
+  /* the capture card GROWS out of the pill's spot rather than arriving from off-edge */
+  .holder.grow.entering .pillwrap { transform: scale(.85); opacity: 0; }
+
+  /* ============ SESSION PILL (recording + transcribing, one identity) ============ */
+  #sessionPill { padding: 5px 11px; }
+  #sessionPill .col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #sessionPill .row { display: flex; align-items: center; gap: 9px; }
+  #sessionPill.unanchored { padding: 8px 14px; }
+  #sessionPill.unanchored .row { gap: 10px; }
+  .logo { width: 16px; height: 16px; opacity: .75; display: flex; align-items: center; }
+  .logo.seat { height: 19px; }  /* seated at button height — no vertical jump on hover */
+  .logo svg { width: 16px; height: 16px; display: block; }
+  /* 3D gaze skull: the real skull.usdz (decimated), WebGL, SkullGazeView math.
+     Falls back to the flat mark leaning toward the pointer if skull-data.js is absent. */
+  .gaze { width: var(--gaze-size, 30px); height: var(--gaze-size, 30px); display: none;
+    align-items: center; justify-content: center; }
+  .gaze canvas { width: 100%; height: 100%; display: block; }
+  .gaze svg { width: 86%; height: 86%; transition: transform 120ms ease-out; }
+  #sessionPill.unanchored.gazeOn .gaze { display: flex; }
+  #sessionPill.unanchored.gazeOn .logo { display: none; }
+  .status { display: none; font-size: 11.5px; font-weight: 500; color: var(--bone);
+    white-space: nowrap; }
+  #sessionPill.unanchored .status { display: block; }
+  .eqzone { display: flex; }
+  .tzone { display: none; align-items: center; gap: 9px; }
+  #sessionPill.transcribing .eqzone { display: none; }
+  #sessionPill.transcribing .tzone { display: flex; }
+  #sessionPill.transcribing .revealer { display: none; }
+  .silence { font-size: 10px; color: #ff9f0a; display: none; }
+  .silence.on { display: block; }
+
+  /* EQ — dots tinted bone to match the halo */
+  #eq { display: flex; gap: var(--gap); }
+  #eq .col2 { display: flex; flex-direction: column; gap: var(--gap); }
+  #eq .d { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--bone);
+    opacity: var(--dim); transition: opacity var(--dot-ms) ease-out; }
+
+  /* stop button, revealed on hover: pill grows rightward */
+  .revealer { overflow: hidden; width: 0; opacity: 0;
+    transition: width var(--hover-ms) var(--hover-ease), opacity 180ms ease-out;
+    display: flex; justify-content: flex-end; }
+  #sessionPill:hover .revealer { width: 28px; opacity: 1; }  /* 19 + 9 gap */
+  .cbtn { width: 19px; height: 19px; border-radius: 50%; border: 0; cursor: pointer;
+    background: rgba(255,255,255,.15); color: rgba(255,255,255,.85);
+    display: flex; align-items: center; justify-content: center; flex: none; padding: 0; }
+  .cbtn svg { width: 8px; height: 8px; }
+  .cbtn.dim { background: rgba(255,255,255,.12); color: rgba(255,255,255,.7); }
+
+  .spinner { width: 14px; height: 14px; position: relative; flex: none; }
+  .spinner i { position: absolute; left: 50%; top: 0; width: 1.6px; height: 4px; border-radius: 1px;
+    background: #fff; transform-origin: 50% 7px; }
+
+  /* ============ RECEIPT ============ */
+  #receiptRow { display: flex; align-items: flex-end; gap: 6px; }
+  .skull { width: 30px; height: 30px; justify-content: center; padding: 0; }
+  .skull .logo { width: 16px; height: 16px; opacity: .9; }
+  .skull .logo svg { width: 16px; height: 16px; }
+  .action { height: 30px; padding: 0 11px; gap: 6px; cursor: pointer;
+    opacity: 0; transform: scale(.92); transform-origin: bottom left;
+    transition: opacity 180ms ease-out, transform var(--hover-ms) var(--hover-ease);
+    pointer-events: none; white-space: nowrap; }
+  #receiptRow:hover .action { opacity: 1; transform: none; pointer-events: auto; }
+  .action .ic { width: 14px; display: flex; justify-content: center; opacity: .9; }
+  .action .ic svg { width: 12px; height: 12px; }
+  .action .lbl { font-size: 11px; font-weight: 500; color: rgba(255,255,255,.9); }
+
+  /* ============ SAVED-CAPTURE CARD ============ */
+  #capCard { flex-direction: column; align-items: stretch; padding: 11px 14px;
+    max-width: 400px; border-radius: 14px !important; gap: 7px; display: flex; }
+  #capCard .hdr { display: flex; align-items: center; gap: 6px; }
+  .gdot { width: 7px; height: 7px; border-radius: 50%; background: #30d158; flex: none; }
+  .srcline { font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,.75);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .readback { display: flex; gap: 5px; align-items: baseline; }
+  .readback .wf { color: rgba(255,255,255,.4); flex: none; }
+  .readback .wf svg { width: 10px; height: 10px; }
+  .readback em { font-size: 10.5px; color: rgba(255,255,255,.6); font-style: italic; }
+  .transcript { font-size: 12px; color: rgba(255,255,255,.92); }
+  .ctxbtn { display: flex; align-items: center; gap: 4px; background: none; border: 0;
+    color: rgba(255,255,255,.4); font-size: 10px; cursor: pointer; padding: 0;
+    font-family: inherit; }
+  .ctxbtn .chev { font-size: 7px; width: 7px; }
+  .chipsCol { display: none; flex-direction: column; gap: 3px; }
+  .chipsCol.open { display: flex; }
+  .chipsCol .fact { display: flex; align-items: center; gap: 5px; font-size: 10px;
+    color: rgba(255,255,255,.6); }
+  .chipsCol .fact svg { width: 9px; height: 9px; color: rgba(255,255,255,.45); flex: none; }
+  #capCard .actions { display: flex; gap: 8px; align-items: center; }
+  #capCard .actions .spacer { flex: 1; }
+  .cardbtn { display: flex; align-items: center; gap: 4px; border: 0; cursor: pointer;
+    color: rgba(255,255,255,.85); background: rgba(255,255,255,.12); border-radius: 20px;
+    font-size: 10.5px; font-weight: 600; padding: 4.5px 9px; font-family: inherit; }
+  .cardbtn svg { width: 9px; height: 9px; }
+
+  /* ============ NOTICE ============ */
+  #noticePill { padding: 9px 14px; gap: 10px; max-width: 400px; }
+  .tcol { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .t1 { font-size: 11px; font-weight: 500; }
+  .micslash { color: #ff9f0a; flex: none; display: flex; }
+  .micslash svg { width: 13px; height: 13px; }
+
+  /* ============ CONTROL PANEL ============ */
+  #panel {
+    width: 320px; flex: none; background: #1b1b1e; color: #ddd;
+    border-left: 1px solid #000; overflow-y: auto; padding-bottom: 40px;
+    user-select: none;
+  }
+  #panel h1 { font-size: 13px; font-weight: 600; padding: 14px 14px 6px; color: #fff; }
+  #panel .sub { font-size: 11px; color: #888; padding: 0 14px 10px; }
+  details { border-top: 1px solid #2a2a2e; }
+  summary { padding: 9px 14px; font-size: 12px; font-weight: 600; color: #bbb;
+    cursor: pointer; list-style: none; }
+  summary::before { content: "▸ "; color: #666; }
+  details[open] summary::before { content: "▾ "; }
+  .grp { padding: 2px 14px 12px; }
+  .ctl { display: grid; grid-template-columns: 118px 1fr 44px; align-items: center;
+    gap: 8px; margin: 5px 0; }
+  .ctl label { font-size: 11px; color: #999; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .ctl output { font-size: 11px; color: #eee; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: #7d8cff; height: 18px; }
+  input[type=color] { width: 100%; height: 22px; border: 0; background: none; padding: 0; }
+  select, button.pbtn {
+    background: #2a2a30; color: #ddd; border: 1px solid #3a3a42; border-radius: 6px;
+    font-size: 11px; padding: 4px 8px; cursor: pointer;
+  }
+  .rowc { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 14px 10px; }
+  .chip { background: #2a2a30; border: 1px solid #3a3a42; color: #bbb; border-radius: 20px;
+    font-size: 11px; padding: 4px 10px; cursor: pointer; }
+  .chip.on { background: #4a4dd4; border-color: #5d60ff; color: #fff; }
+  #scope { width: 100%; height: 64px; display: block; background: #101013; border-radius: 6px; }
+  .scopewrap { padding: 4px 14px 10px; }
+  .scopelabels { display: flex; justify-content: space-between; font-size: 10px; color: #777; padding: 2px 14px 6px; }
+  .note { font-size: 10.5px; color: #777; padding: 2px 14px 8px; line-height: 1.4; }
+  #copyout { position: fixed; left: -9999px; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="backdrop" class="bg-dark">
+    <div class="doc">
+      <div class="line w60"></div><div class="line w85"></div><div class="line w75"></div>
+      <div class="line w85"></div><div class="line w40"></div><div class="line w75"></div>
+      <div class="line w85"></div><div class="line w60"></div>
+    </div>
+  </div>
+
+  <div id="mockfield" class="hidden">Meeting notes: the quarterly numbers came in above <span class="caret"></span></div>
+
+  <div id="pillzone">
+    <div id="stack" class="place-bottom">
+
+      <!-- Saved-capture card (grows out of the pill's spot) -->
+      <div class="holder grow" id="h-card"><div class="pillwrap">
+        <div class="pill" id="capCard">
+          <div class="hdr">
+            <span class="gdot"></span>
+            <span class="srcline">Safari · anthropic.com</span>
+          </div>
+          <div class="readback" id="readbackRow">
+            <span class="wf"><svg viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1 6v0M4 3.5v5M7 1v10M10 3v6M13 5v2"/></svg></span>
+            <em>You flagged the quarterly revenue table while pointing at the growth chart.</em>
+          </div>
+          <div class="transcript">the quarterly numbers came in above what we expected so let's revisit the hiring plan on Thursday</div>
+          <button class="ctxbtn" id="ctxToggle"><span class="chev">▸</span><span>context · 3</span></button>
+          <div class="chipsCol" id="chipsCol">
+            <span class="fact"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 1.5 9 8l2-2.5L14.5 9 13 10.5 10 8l-1 3.5L6.5 1.5z"/></svg>Revenue table (AXTable)</span>
+            <span class="fact"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6.5 9.5 9.5 6.5M5 8l-2 2a2.5 2.5 0 0 0 3.5 3.5l2-2M11 8l2-2a2.5 2.5 0 0 0-3.5-3.5l-2 2"/></svg>anthropic.com/quarterly</span>
+            <span class="fact"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 3h4v4H4.5c0 2 1 3 2.5 3.5v1.5C4 11.5 3 9.5 3 7V3zm6 0h4v4h-2.5c0 2 1 3 2.5 3.5v1.5c-3-.5-4-2.5-4-5V3z"/></svg>“up 34% quarter over quarter”</span>
+          </div>
+          <div class="actions">
+            <button class="cardbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>Copy</button>
+            <button class="cardbtn"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10v1.5H4.5V11H3z"/></svg>Copy with context</button>
+            <span class="spacer"></span>
+            <button class="cardbtn"><svg viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"><path d="M1.5 1.5 8.5 8.5 M8.5 1.5 1.5 8.5"/></svg>Dismiss</button>
+          </div>
+        </div>
+      </div></div>
+
+      <!-- Notice -->
+      <div class="holder" id="h-notice"><div class="pillwrap">
+        <div class="pill capsule" id="noticePill">
+          <span class="micslash"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5c-1.1 0-2 .9-2 2v1.6l4 4V3.5c0-1.1-.9-2-2-2zM3.3 6.5v1.2c0 2.4 1.9 4.4 4.2 4.7v1.6H5.2v1h5.6v-1H8.5v-1.6c.7-.1 1.4-.4 2-.8l2.2 2.2.7-.7L2.1 1.8l-.7.7 1.9 1.9v2.1zm1 1.2V8l5.4 5.4c-.5.2-1.1.4-1.7.4-2 0-3.7-1.7-3.7-3.7v-.4z"/></svg></span>
+          <span class="tcol"><span class="t1">No speech detected — nothing saved</span></span>
+        </div>
+      </div></div>
+
+      <!-- Receipt: skull + hover action -->
+      <div class="holder" id="h-receipt"><div class="pillwrap">
+        <div id="receiptRow">
+          <div class="pill capsule skull"><span class="logo"></span></div>
+          <div class="pill capsule action">
+            <span class="ic"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.5 1l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6.6-1.9zM10.9 5.9l1.2 1.2L4.6 14.6a.85.85 0 0 1-1.2-1.2l7.5-7.5zM3.5 3l.4 1.3 1.3.4-1.3.4L3.5 6.4 3.1 5.1 1.8 4.7l1.3-.4L3.5 3z"/></svg></span>
+            <span class="lbl">Clean up</span>
+          </div>
+        </div>
+      </div></div>
+
+      <!-- Session pill: recording + transcribing, one identity -->
+      <div class="holder on" id="h-session"><div class="pillwrap">
+        <div class="pill capsule unanchored accented" id="sessionPill">
+          <div class="col">
+            <div class="row">
+              <span class="gaze" id="gazeSkull"><canvas id="gazeCanvas" width="256" height="256"></canvas></span>
+              <span class="logo seat"></span>
+              <span class="status" id="statusText">Observing Safari</span>
+              <span class="eqzone"><div id="eq"></div></span>
+              <span class="tzone">
+                <span class="spinner" id="spin"></span>
+                <button class="cbtn dim" title="Cancel">
+                  <svg viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"><path d="M1.5 1.5 8.5 8.5 M8.5 1.5 1.5 8.5"/></svg>
+                </button>
+              </span>
+              <div class="revealer">
+                <button class="cbtn" title="Stop">
+                  <svg viewBox="0 0 8 8" fill="currentColor"><rect width="8" height="8" rx="1"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="silence" id="silence">No audio detected — check your microphone</div>
+          </div>
+        </div>
+      </div></div>
+
+    </div>
+  </div>
+</div>
+
+<div id="panel">
+  <h1>Yorick Pills — Playground</h1>
+  <div class="sub">Every value maps 1:1 to the Swift constants (enrichment branch). Tune, then “Copy Swift values”.</div>
+
+  <div class="rowc" id="stateChips">
+    <button class="chip on" data-state="recording">Recording</button>
+    <button class="chip" data-state="transcribing">Summarizing</button>
+    <button class="chip" data-pill="receipt">Receipt</button>
+    <button class="chip" data-pill="card">Capture card</button>
+    <button class="chip" data-pill="notice">Notice</button>
+    <button class="chip" id="replay">↻ Replay entrance</button>
+  </div>
+
+  <details open><summary>Audio source</summary><div class="grp">
+    <div class="rowc" style="padding:2px 0 6px">
+      <button class="chip on" data-src="sim">Simulated speech</button>
+      <button class="chip" data-src="mic">Microphone</button>
+      <button class="chip" data-src="manual">Manual</button>
+    </div>
+    <div id="ctl-source"></div>
+    <div class="scopewrap"><canvas id="scope" width="580" height="128"></canvas></div>
+    <div class="scopelabels"><span>■ raw</span><span>■ smoothed (drives EQ + halo)</span></div>
+  </div></details>
+
+  <details open><summary>Bone accent (rim + breathing halo)</summary><div class="grp" id="ctl-accent"></div>
+    <div class="note">Unanchored pill: always accented, halo scales with the live level (“breathes with the voice”). Any pill while summarizing: accent at fixed intensity. Field-anchored recording pill: plain.</div>
+  </details>
+
+  <details open><summary>3D gaze skull</summary><div class="grp" id="ctl-gaze"></div>
+    <div class="note">The real skull.usdz (decimated to ~118k tris), orthographic camera + camera-aligned key light like the SceneKit scene. Constants map 1:1 to SkullGazeView.Coordinator.tick: yaw = clamp(atan2(dx, reach)), pitch likewise, EMA smoothing per tick.</div>
+  </details>
+
+  <details open><summary>Dot equalizer</summary><div class="grp" id="ctl-eq"></div>
+    <div class="note">shimmer = base + depth·(sin(col·phase + level·freq)·0.5+0.5); column lights ⌈level·profile·shimmer·rows⌉ dots from the bottom. Dots are tinted bone to match the halo.</div>
+  </details>
+
+  <details><summary>Level pipeline (AudioCapture.swift)</summary><div class="grp" id="ctl-level"></div>
+    <div class="note">raw = clamp((dB − floor)/(ceiling − floor)) · asymmetric EMA · gate to 0 below threshold.</div>
+  </details>
+
+  <details><summary>Glass &amp; rim</summary><div class="grp" id="ctl-glass"></div></details>
+
+  <details><summary>Shadow</summary><div class="grp" id="ctl-shadow"></div>
+    <div class="note">CSS blur ≈ 2× SwiftUI shadow radius — the export converts back automatically.</div>
+  </details>
+
+  <details><summary>Motion (springs)</summary><div class="grp" id="ctl-motion"></div>
+    <div class="note">Hover spring = stop-button / receipt-action reveal. Transition spring = pill entrance/exit and the card growing out of the pill. Springs render as real curves via CSS linear() easing.</div>
+  </details>
+
+  <details open><summary>Stage</summary><div class="grp" id="ctl-stage"></div></details>
+
+  <div class="rowc">
+    <button class="pbtn" id="copySwift">Copy Swift values</button>
+    <button class="pbtn" id="copyJson">Copy JSON</button>
+    <button class="pbtn" id="resetAll">Reset to branch values</button>
+  </div>
+</div>
+
+<textarea id="copyout"></textarea>
+
+<script src="skull-data.js"></script>
+<script>
+/* ---------------- skull logo (real asset: MenuBarIcon) ---------------- */
+const SKULL = `<svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.46517 0.933002C7.10651 0.114865 8.96091 -0.175319 10.7738 0.101947C11.364 0.19538 11.7907 0.311984 12.349 0.498432C14.3037 1.15205 16.0775 2.60745 16.9925 4.4623C18.1224 6.7532 18.5184 10.4789 15.8001 11.8305C15.5818 11.9386 15.3535 12.0271 15.1195 12.0951C14.9462 12.1268 14.7451 12.209 14.6058 12.3178C14.3782 12.5267 14.2563 12.7508 14.2503 13.0658C14.2453 13.3317 14.2483 13.5977 14.2484 13.8637V15.3646C14.2484 15.6236 14.26 15.8994 14.2386 16.1566C14.1905 16.733 13.7112 17.0688 13.1605 17.0307C13.0259 17.0022 12.932 16.9794 12.8099 16.9105C12.5671 16.7744 12.3959 16.5384 12.3431 16.265C12.3117 16.0947 12.3325 15.8769 12.1429 15.7836C12.0583 15.7421 11.923 15.7421 11.8402 15.7894C11.6412 15.9063 11.6839 16.1247 11.6751 16.309C11.6582 16.6679 11.7361 17.1182 11.5833 17.4467C11.4754 17.6799 11.2774 17.8594 11.0345 17.9437C10.7909 18.0296 10.5232 18.0154 10.2904 17.9037C9.94586 17.7374 9.75356 17.4031 9.74837 17.0258C9.74151 16.8846 9.76615 16.7339 9.72103 16.598C9.66157 16.4193 9.44953 16.3487 9.28548 16.4262C9.04257 16.5414 9.11173 16.8489 9.10287 17.0717C9.09943 17.1696 9.0804 17.2665 9.0472 17.3588C8.96129 17.5997 8.7839 17.7976 8.55306 17.9076C8.32052 18.0165 8.05377 18.0288 7.81185 17.9428C7.49586 17.8299 7.26273 17.559 7.19759 17.2299C7.14456 16.9558 7.19123 16.5891 7.17708 16.3051C7.16733 16.1089 7.21088 15.8458 6.95736 15.768C6.87073 15.7407 6.77642 15.75 6.69662 15.7934C6.48299 15.9078 6.55461 16.1503 6.48568 16.3646C6.40732 16.6097 6.23435 16.814 6.00521 16.931C5.77279 17.0492 5.50192 17.0681 5.25521 16.9838C4.98237 16.8907 4.74898 16.6654 4.65755 16.393C4.58207 16.1678 4.60285 15.7697 4.60287 15.5219L4.60384 13.8402C4.60382 13.5525 4.61046 13.2448 4.59212 12.9584C4.58555 12.8558 4.54845 12.7294 4.50033 12.6391C4.2652 12.1979 3.97753 12.1772 3.5638 12.0414C2.64883 11.7411 1.89174 11.1161 1.45931 10.2523C0.755132 8.84558 0.954548 6.93206 1.43099 5.48867C2.0973 3.47026 3.5716 1.87739 5.46517 0.933002ZM9.39193 10.933C8.85529 11.0106 8.3641 11.9231 8.47494 12.4301C8.5006 12.5475 8.52649 12.6638 8.63607 12.7377C8.83475 12.8709 9.23313 12.8567 9.47005 12.8568C10.0272 12.8464 10.4021 12.8789 10.388 12.1937C10.3791 11.7593 9.87424 10.8853 9.39193 10.933ZM13.7103 4.8666C13.3691 4.79049 12.9601 4.81684 12.6273 4.9164C11.6627 5.20512 10.9943 6.0671 10.7865 7.02773C10.6057 7.84876 10.7579 8.7081 11.2093 9.41738C11.577 9.98607 12.1439 10.4157 12.8119 10.556C13.0887 10.6143 13.4218 10.6269 13.6986 10.56C13.7476 10.5613 13.8429 10.5386 13.8919 10.5238C16.3582 9.78038 16.5267 6.08138 14.2249 5.01992C14.0722 4.94951 13.8781 4.88423 13.7103 4.8666ZM5.52376 4.82363C4.31004 4.84296 3.38976 5.7866 3.09798 6.90663C2.88628 7.72086 3.00471 8.58626 3.42708 9.31386C3.77634 9.90256 4.3316 10.366 5.00228 10.5346C5.32283 10.6179 5.65817 10.6269 5.98275 10.5609C6.03517 10.5606 6.14577 10.5322 6.19662 10.518C6.56077 10.4122 6.89554 10.2234 7.17513 9.96718C8.38838 8.87639 8.45444 6.85341 7.36849 5.65078C7.08476 5.33268 6.72489 5.09031 6.32357 4.94667C6.22338 4.91127 6.0999 4.87397 5.99349 4.86855C5.83272 4.82591 5.68852 4.82101 5.52376 4.82363Z" fill="currentColor"/></svg>`;
+document.querySelectorAll('.logo').forEach(el => el.innerHTML = SKULL);
+
+/* mouse position, tracked for the gaze */
+let mouseX = innerWidth / 2, mouseY = innerHeight / 2;
+document.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+
+/* spinner blades */
+const spin = document.getElementById('spin');
+for (let i = 0; i < 8; i++) {
+  const b = document.createElement('i');
+  b.style.transform = `translateX(-50%) rotate(${i*45}deg)`;
+  b.style.animation = `spinfade 0.8s linear ${-(8-i)*0.1}s infinite`;
+  spin.appendChild(b);
+}
+const st = document.createElement('style');
+st.textContent = `@keyframes spinfade { 0%{opacity:1} 100%{opacity:.15} }`;
+document.head.appendChild(st);
+
+/* ---------------- parameters (enrichment-branch defaults) ---------------- */
+const DEFAULTS = {
+  // level pipeline — AudioCapture.swift
+  floorDb: -35, ceilDb: -6, attack: 0.40, release: 0.15, gate: 0.05, tickMs: 21,
+  // equalizer — DotEqualizer
+  rows: 4, cols: 8, dot: 2.5, gap: 2, edge: 0.5,
+  shimBase: 0.75, shimDepth: 0.35, shimFreq: 47, shimPhase: 1.7,
+  lit: 0.95, dim: 0.18, dotMs: 80,
+  // glass — PillGlass
+  glassBlack: 0.78, frost: 20, rimTop: 0.30, rimBot: 0.06, rimW: 0.75,
+  tl: 12, bl: 4,
+  // bone accent — PillGlass(accent:)
+  rimATop: 0.45, rimABot: 0.08, rimAW: 1,
+  haloBaseO: 0.12, haloGainO: 0.28, haloBaseR: 8, haloGainR: 6, trIntensity: 0.5,
+  // gaze skull — SkullGazeView.Coordinator.tick
+  reach: 260, yawClamp: 0.55, pitchClamp: 0.45, gazeSmooth: 0.25, gazeTick: 33,
+  gazeSize: 30, gazeFill: 0.9,
+  // shadow (CSS blur = 2× SwiftUI radius)
+  sh1o: 0.26, sh1b: 10, sh1y: 2, sh2o: 0.14, sh2b: 2, sh2y: 0.5,
+  // motion
+  hovResp: 0.28, hovDamp: 0.82, trResp: 0.30, trDamp: 1.0,
+  // stage
+  zoom: 1,
+};
+const P = { ...DEFAULTS };
+let bone = '#ece5d8';   // Theme.bone
+const PROFILE8 = [0.5, 0.72, 0.9, 1.0, 1.0, 0.9, 0.72, 0.5];
+
+/* session pill state (one pill, states within) */
+const state = { session: 'recording', placement: 'bottom', gaze: true };
+
+/* ---------------- control builder ---------------- */
+function slider(host, key, label, min, max, step, fmt) {
+  const row = document.createElement('div'); row.className = 'ctl';
+  const lab = document.createElement('label'); lab.textContent = label;
+  const inp = document.createElement('input');
+  inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = P[key];
+  const out = document.createElement('output');
+  const show = () => out.textContent = fmt ? fmt(P[key]) : P[key];
+  inp.oninput = () => { P[key] = parseFloat(inp.value); show(); apply(); };
+  inp._sync = () => { inp.value = P[key]; show(); };
+  row.append(lab, inp, out); host.appendChild(row); show();
+  sliders.push(inp);
+}
+const sliders = [];
+const $ = id => document.getElementById(id);
+const f1 = v => (+v).toFixed(1), f2 = v => (+v).toFixed(2);
+
+slider($('ctl-source'), 'tickMs', 'tick interval ms', 10, 80, 1);
+
+const A = $('ctl-accent');
+{ // accent color: hex field + Theme.swift presets (no native picker — it
+  // misbehaves in the embedded pane)
+  const row = document.createElement('div'); row.className = 'ctl';
+  row.innerHTML = '<label>accent color</label>';
+  const inp = document.createElement('input'); inp.type = 'text'; inp.value = bone;
+  inp.style.cssText = 'background:#2a2a30;color:#ddd;border:1px solid #3a3a42;border-radius:6px;font-size:11px;padding:3px 6px;width:100%;font-family:ui-monospace,monospace';
+  const sw = document.createElement('output');
+  const paint = () => { sw.textContent = '⬤'; sw.style.color = bone; };
+  inp.oninput = () => {
+    if (/^#[0-9a-fA-F]{6}$/.test(inp.value)) { bone = inp.value; paint(); apply(); }
+  };
+  inp._syncColor = () => { inp.value = bone; paint(); };
+  window._colorField = inp;
+  row.append(inp, sw); A.appendChild(row); paint();
+
+  const presets = document.createElement('div'); presets.className = 'rowc';
+  presets.style.padding = '2px 0 6px';
+  [['bone', '#ece5d8'], ['siteAmber', '#e0b458'], ['accentBlue', '#78afe4'], ['white', '#ffffff']]
+    .forEach(([name, hex]) => {
+      const b = document.createElement('button'); b.className = 'chip';
+      b.innerHTML = `<span style="color:${hex}">⬤</span> ${name}`;
+      b.onclick = () => { bone = hex; inp._syncColor(); apply(); };
+      presets.appendChild(b);
+    });
+  A.appendChild(presets);
+}
+slider(A, 'rimATop', 'rim top opacity', 0, 1, 0.01, f2);
+slider(A, 'rimABot', 'rim bottom opacity', 0, 0.5, 0.01, f2);
+slider(A, 'rimAW', 'rim width', 0, 2.5, 0.05, f2);
+slider(A, 'haloBaseO', 'halo base opacity', 0, 0.6, 0.01, f2);
+slider(A, 'haloGainO', 'halo opacity ×level', 0, 0.8, 0.01, f2);
+slider(A, 'haloBaseR', 'halo base radius', 0, 24, 0.5, f1);
+slider(A, 'haloGainR', 'halo radius ×level', 0, 24, 0.5, f1);
+slider(A, 'trIntensity', 'summarizing intensity', 0, 1, 0.05, f2);
+
+const GZ = $('ctl-gaze');
+slider(GZ, 'reach', 'reach (virtual dist)', 80, 600, 10);
+slider(GZ, 'yawClamp', 'yaw clamp rad', 0.1, 1.2, 0.01, f2);
+slider(GZ, 'pitchClamp', 'pitch clamp rad', 0.1, 1.2, 0.01, f2);
+slider(GZ, 'gazeSmooth', 'smoothing α', 0.05, 1, 0.01, f2);
+slider(GZ, 'gazeTick', 'tick ms', 16, 100, 1);
+slider(GZ, 'gazeSize', 'frame size pt', 20, 48, 1);
+slider(GZ, 'gazeFill', 'skull fill', 0.5, 1.3, 0.01, f2);
+
+const E = $('ctl-eq');
+slider(E, 'cols', 'columns', 3, 16, 1);
+slider(E, 'rows', 'rows', 2, 8, 1);
+slider(E, 'dot', 'dot size', 1.5, 6, 0.25, f2);
+slider(E, 'gap', 'gap', 1, 5, 0.25, f2);
+slider(E, 'edge', 'edge falloff', 0, 1, 0.01, f2);
+slider(E, 'shimBase', 'shimmer base', 0.3, 1, 0.01, f2);
+slider(E, 'shimDepth', 'shimmer depth', 0, 1, 0.01, f2);
+slider(E, 'shimFreq', 'shimmer freq', 0, 120, 1);
+slider(E, 'shimPhase', 'column phase', 0, 5, 0.1, f1);
+slider(E, 'lit', 'lit opacity', 0.4, 1, 0.01, f2);
+slider(E, 'dim', 'dim opacity', 0, 0.5, 0.01, f2);
+slider(E, 'dotMs', 'dot ease-out ms', 0, 400, 5);
+
+const L = $('ctl-level');
+slider(L, 'floorDb', 'floor dB', -60, -20, 1);
+slider(L, 'ceilDb', 'ceiling dB', -30, 0, 1);
+slider(L, 'attack', 'attack α (rising)', 0.05, 1, 0.01, f2);
+slider(L, 'release', 'release α (falling)', 0.02, 1, 0.01, f2);
+slider(L, 'gate', 'gate threshold', 0, 0.2, 0.005, f2);
+
+const G = $('ctl-glass');
+slider(G, 'glassBlack', 'black opacity', 0.3, 1, 0.01, f2);
+slider(G, 'frost', 'frost blur px', 0, 60, 1);
+slider(G, 'rimTop', 'plain rim top', 0, 0.8, 0.01, f2);
+slider(G, 'rimBot', 'plain rim bottom', 0, 0.8, 0.01, f2);
+slider(G, 'rimW', 'plain rim width', 0, 2, 0.05, f2);
+slider(G, 'tl', 'pointer round r', 0, 15, 0.5, f1);
+slider(G, 'bl', 'pointer seated r', 0, 15, 0.5, f1);
+
+const S = $('ctl-shadow');
+slider(S, 'sh1o', 'lift opacity', 0, 0.7, 0.01, f2);
+slider(S, 'sh1b', 'lift blur px', 0, 40, 0.5, f1);
+slider(S, 'sh1y', 'lift offset-y', 0, 12, 0.5, f1);
+slider(S, 'sh2o', 'contact opacity', 0, 0.7, 0.01, f2);
+slider(S, 'sh2b', 'contact blur px', 0, 12, 0.5, f1);
+slider(S, 'sh2y', 'contact offset-y', 0, 4, 0.25, f2);
+
+const M = $('ctl-motion');
+slider(M, 'hovResp', 'hover response s', 0.1, 0.8, 0.01, f2);
+slider(M, 'hovDamp', 'hover damping', 0.3, 1, 0.01, f2);
+slider(M, 'trResp', 'transition response s', 0.1, 0.8, 0.01, f2);
+slider(M, 'trDamp', 'transition damping', 0.3, 1, 0.01, f2);
+
+const ST = $('ctl-stage');
+slider(ST, 'zoom', 'zoom', 1, 4, 0.5, f1);
+{ // background + placement selects + toggles
+  const r1 = document.createElement('div'); r1.className = 'ctl';
+  r1.innerHTML = '<label>background</label>';
+  const sel = document.createElement('select');
+  [['bg-dark','Dark editor'],['bg-white','White document'],['bg-web','Web page'],['bg-photo','Photo / vivid']]
+    .forEach(([v,t]) => sel.add(new Option(t, v)));
+  sel.onchange = () => $('backdrop').className = sel.value;
+  r1.appendChild(sel); r1.appendChild(document.createElement('span')); ST.appendChild(r1);
+
+  const r2 = document.createElement('div'); r2.className = 'ctl';
+  r2.innerHTML = '<label>placement</label>';
+  const sel2 = document.createElement('select');
+  [['bottom','Unanchored (observing)'],['above','Above field (dictation)'],['below','Below field (dictation)']]
+    .forEach(([v,t]) => sel2.add(new Option(t, v)));
+  sel2.onchange = () => { state.placement = sel2.value; setPlacement(sel2.value); applySession(); };
+  r2.appendChild(sel2); r2.appendChild(document.createElement('span')); ST.appendChild(r2);
+
+  const r3 = document.createElement('div'); r3.className = 'ctl';
+  r3.innerHTML = '<label>3D gaze skull</label>';
+  const cb = document.createElement('input'); cb.type = 'checkbox';
+  cb.checked = state.gaze;
+  cb.onchange = () => { state.gaze = cb.checked; applySession(); };
+  r3.appendChild(cb); r3.appendChild(document.createElement('span')); ST.appendChild(r3);
+
+  const r4 = document.createElement('div'); r4.className = 'ctl';
+  r4.innerHTML = '<label>silence warning</label>';
+  const cb2 = document.createElement('input'); cb2.type = 'checkbox';
+  cb2.onchange = () => $('silence').classList.toggle('on', cb2.checked);
+  r4.appendChild(cb2); r4.appendChild(document.createElement('span')); ST.appendChild(r4);
+}
+
+function setPlacement(mode) {
+  const stack = $('stack'), field = $('mockfield');
+  stack.className = 'place-' + mode;
+  // grow direction: below-field pills enter from above; everything else from below
+  stack.style.setProperty('--enter-dy', mode === 'below' ? '-10px' : '10px');
+  field.classList.toggle('hidden', mode === 'bottom');
+  if (mode === 'bottom') { stack.style.left = ''; stack.style.top = ''; stack.style.bottom = ''; return; }
+  const fr = field.getBoundingClientRect(), sr = $('stage').getBoundingClientRect();
+  stack.style.left = (fr.left - sr.left - 6) + 'px';
+  if (mode === 'above') { stack.style.bottom = (sr.bottom - fr.top) + 'px'; stack.style.top = ''; }
+  else { stack.style.top = (fr.bottom - sr.top) + 'px'; stack.style.bottom = ''; }
+}
+
+/* ---------------- spring → CSS linear() easing ---------------- */
+function springCurve(response, damping) {
+  const w0 = 2 * Math.PI / response, z = Math.min(damping, 0.9999);
+  const settle = Math.min(2.0, Math.max(0.15, -Math.log(0.004) / (z * w0)));
+  const N = 60, pts = [];
+  const wd = w0 * Math.sqrt(1 - z * z);
+  for (let i = 0; i <= N; i++) {
+    const t = settle * i / N;
+    let x;
+    if (damping >= 0.999) x = 1 - (1 + w0 * t) * Math.exp(-w0 * t);
+    else x = 1 - Math.exp(-z * w0 * t) * (Math.cos(wd * t) + (z * w0 / wd) * Math.sin(wd * t));
+    pts.push(x.toFixed(4));
+  }
+  return { easing: `linear(${pts.join(',')})`, ms: Math.round(settle * 1000) };
+}
+
+/* ---------------- session pill state machine ---------------- */
+/* Accent rules from sessionPill/pillGlass:
+   unanchored || transcribing → accent bone; intensity = transcribing ? 0.5 : live level.
+   Field-anchored recording pill stays plain. */
+function applySession() {
+  const pill = $('sessionPill');
+  const unanchored = state.placement === 'bottom';
+  const transcribing = state.session === 'transcribing';
+  pill.classList.toggle('unanchored', unanchored);
+  pill.classList.toggle('transcribing', transcribing);
+  pill.classList.toggle('gazeOn', state.gaze && unanchored);
+  pill.classList.toggle('accented', unanchored || transcribing);
+  // corners: capsule when unanchored, pointer above / pointerBelow below
+  pill.classList.remove('capsule', 'pointer', 'pointerBelow');
+  pill.classList.add(unanchored ? 'capsule' : (state.placement === 'above' ? 'pointer' : 'pointerBelow'));
+  $('statusText').textContent = transcribing ? 'Summarizing…' : 'Observing Safari';
+  updateHalo(lastLevel);
+}
+
+function updateHalo(level) {
+  const pill = $('sessionPill');
+  const unanchored = state.placement === 'bottom';
+  const transcribing = state.session === 'transcribing';
+  if (!(unanchored || transcribing)) { pill.style.setProperty('--halo-o', 0); return; }
+  const I = transcribing ? P.trIntensity : Math.min(Math.max(level, 0), 1);
+  pill.style.setProperty('--halo-o', (P.haloBaseO + P.haloGainO * I).toFixed(3));
+  pill.style.setProperty('--halo-b', (2 * (P.haloBaseR + P.haloGainR * I)).toFixed(1) + 'px');
+}
+
+/* ---------------- apply parameters ---------------- */
+function hexToRgb(h) {
+  return [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ');
+}
+function buildEq() {
+  const eq = $('eq'); eq.innerHTML = '';
+  for (let c = 0; c < P.cols; c++) {
+    const col = document.createElement('div'); col.className = 'col2';
+    for (let r = 0; r < P.rows; r++) {
+      const d = document.createElement('span'); d.className = 'd'; col.appendChild(d);
+    }
+    eq.appendChild(col);
+  }
+  eqDots = [...eq.querySelectorAll('.col2')].map(c => [...c.children]);
+}
+let eqDots = [];
+
+function profile(c) {
+  const t = P.cols === 1 ? 0 : c / (P.cols - 1);
+  const x = t * (PROFILE8.length - 1);
+  const i = Math.floor(x), fr = x - i;
+  const base = PROFILE8[i] + (PROFILE8[Math.min(i + 1, 7)] - PROFILE8[i]) * fr;
+  // edge slider remaps the profile's floor: shipped floor 0.5 → chosen floor
+  return P.edge + (base - 0.5) * (1 - P.edge) / 0.5;
+}
+
+function apply() {
+  const R = document.documentElement.style;
+  R.setProperty('--bone', bone);
+  R.setProperty('--bone-rgb', hexToRgb(bone));
+  R.setProperty('--glass-black', P.glassBlack);
+  R.setProperty('--frost', P.frost + 'px');
+  R.setProperty('--rim-top', P.rimTop);
+  R.setProperty('--rim-bot', P.rimBot);
+  R.setProperty('--rim-w', P.rimW + 'px');
+  R.setProperty('--rim-a-top', P.rimATop);
+  R.setProperty('--rim-a-bot', P.rimABot);
+  R.setProperty('--rim-a-w', P.rimAW + 'px');
+  R.setProperty('--sh1o', P.sh1o); R.setProperty('--sh1b', P.sh1b + 'px'); R.setProperty('--sh1y', P.sh1y + 'px');
+  R.setProperty('--sh2o', P.sh2o); R.setProperty('--sh2b', P.sh2b + 'px'); R.setProperty('--sh2y', P.sh2y + 'px');
+  R.setProperty('--dot', P.dot + 'px'); R.setProperty('--gap', P.gap + 'px');
+  R.setProperty('--dot-ms', P.dotMs + 'ms');
+  R.setProperty('--lit', P.lit); R.setProperty('--dim', P.dim);
+  R.setProperty('--tl', P.tl + 'px'); R.setProperty('--bl', P.bl + 'px');
+  R.setProperty('--gaze-size', P.gazeSize + 'px');
+  R.setProperty('--zoom', P.zoom);
+  const h = springCurve(P.hovResp, P.hovDamp);
+  R.setProperty('--hover-ease', h.easing); R.setProperty('--hover-ms', h.ms + 'ms');
+  const t = springCurve(P.trResp, P.trDamp);
+  R.setProperty('--trans-ease', t.easing); R.setProperty('--trans-ms', t.ms + 'ms');
+  if (eqDots.length !== P.cols || (eqDots[0] && eqDots[0].length !== P.rows)) buildEq();
+  updateHalo(lastLevel);
+}
+
+/* non-capsule pills need --full = height/2 (CSS proportionally shrinks ALL radii if we fake it with 999px) */
+const ro2 = new ResizeObserver(entries => {
+  for (const e of entries) e.target.style.setProperty('--full', e.target.offsetHeight / 2 + 'px');
+});
+ro2.observe($('sessionPill'));
+
+/* ---------------- level engine ---------------- */
+let source = 'sim';
+let smoothed = 0, raw = 0, manual = 0.6, lastLevel = 0;
+let micAnalyser = null, micBuf = null;
+
+/* simulated speech: syllable bursts with pauses */
+const sim = { target: 0, until: 0, mode: 'pause', syll: 0 };
+function simTick(now) {
+  if (now >= sim.until) {
+    if (sim.mode === 'syll') {
+      sim.syll++;
+      const longPause = sim.syll % (4 + Math.floor(Math.random() * 5)) === 0;
+      sim.mode = 'pause'; sim.target = 0;
+      sim.until = now + (longPause ? 400 + Math.random() * 700 : 40 + Math.random() * 130);
+    } else {
+      sim.mode = 'syll';
+      sim.target = 0.35 + Math.random() * 0.6;
+      sim.until = now + 70 + Math.random() * 220;
+    }
+  }
+  const jitter = sim.mode === 'syll' ? (0.85 + Math.random() * 0.3) : 1;
+  return Math.min(1, sim.target * jitter);
+}
+
+function micTick() {
+  if (!micAnalyser) return 0;
+  micAnalyser.getFloatTimeDomainData(micBuf);
+  let sum = 0;
+  for (let i = 0; i < micBuf.length; i++) sum += micBuf[i] * micBuf[i];
+  const rms = Math.sqrt(sum / micBuf.length);
+  if (rms <= 0) return 0;
+  const db = 20 * Math.log10(rms);
+  return Math.max(0, Math.min(1, (db - P.floorDb) / (P.ceilDb - P.floorDb)));
+}
+
+async function enableMic() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    const ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(stream);
+    micAnalyser = ctx.createAnalyser();
+    micAnalyser.fftSize = 2048;
+    micBuf = new Float32Array(micAnalyser.fftSize);
+    src.connect(micAnalyser);
+    return true;
+  } catch (err) {
+    alert('Microphone unavailable: ' + err.message + '\nFalling back to simulated speech.');
+    return false;
+  }
+}
+
+/* scope */
+const scope = $('scope'), sctx = scope.getContext('2d');
+const histRaw = new Array(290).fill(0), histSm = new Array(290).fill(0);
+function drawScope() {
+  const w = scope.width, h = scope.height;
+  sctx.clearRect(0, 0, w, h);
+  sctx.fillStyle = '#101013'; sctx.fillRect(0, 0, w, h);
+  sctx.strokeStyle = '#2c2c33'; sctx.beginPath();
+  sctx.moveTo(0, h - P.gate * h); sctx.lineTo(w, h - P.gate * h); sctx.stroke();
+  const plot = (arr, color) => {
+    sctx.strokeStyle = color; sctx.lineWidth = 1.5; sctx.beginPath();
+    arr.forEach((v, i) => { const x = i * 2, y = h - 2 - v * (h - 4); i ? sctx.lineTo(x, y) : sctx.moveTo(x, y); });
+    sctx.stroke();
+  };
+  plot(histRaw, '#5a5a66');
+  plot(histSm, '#ffffff');
+}
+
+/* main tick — mirrors the per-buffer callback cadence */
+let timer = null;
+function startLoop() {
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => {
+    const now = performance.now();
+    if (source === 'sim') raw = simTick(now);
+    else if (source === 'mic') raw = micTick();
+    else raw = manual;
+    const alpha = raw > smoothed ? P.attack : P.release;
+    smoothed = smoothed + alpha * (raw - smoothed);
+    const level = smoothed < P.gate ? 0 : smoothed;
+    lastLevel = level;
+    histRaw.push(raw); histRaw.shift();
+    histSm.push(level); histSm.shift();
+    updateEq(level);
+    if (state.session === 'recording') updateHalo(level);  // the halo breathes with the voice
+    drawScope();
+  }, P.tickMs);
+}
+setInterval(() => { /* cheap: rebuild intervals if changed */
+  if (timer && timer._ms !== P.tickMs) { startLoop(); timer._ms = P.tickMs; }
+  if (gazeTimer && gazeTimer._ms !== P.gazeTick) startGazeLoop();
+}, 300);
+
+function updateEq(level) {
+  const clamped = Math.min(Math.max(level, 0), 1);
+  for (let c = 0; c < eqDots.length; c++) {
+    const shimmer = P.shimBase + P.shimDepth * (Math.sin(c * P.shimPhase + clamped * P.shimFreq) * 0.5 + 0.5);
+    const amplitude = clamped * profile(c) * shimmer;
+    const lit = Math.ceil(amplitude * P.rows);
+    const col = eqDots[c];
+    for (let r = 0; r < col.length; r++) {
+      const rowFromBottom = col.length - 1 - r;
+      col[r].style.opacity = rowFromBottom < lit ? P.lit : P.dim;
+    }
+  }
+}
+
+/* ---------------- 3D gaze skull (WebGL; math from SkullGazeView.Coordinator) ---------------- */
+const gaze = { gl: null, count: 0, ex: 0, ey: 0, uR: null, uFill: null, uColor: null };
+
+/* column-major 3x3 helpers */
+function rotX(a) { const c = Math.cos(a), s = Math.sin(a); return [1,0,0, 0,c,s, 0,-s,c]; }
+function rotY(a) { const c = Math.cos(a), s = Math.sin(a); return [c,0,-s, 0,1,0, s,0,c]; }
+function mul3(A, B) {
+  const C = new Array(9);
+  for (let c = 0; c < 3; c++) for (let r = 0; r < 3; r++) {
+    C[c*3+r] = A[r] * B[c*3] + A[3+r] * B[c*3+1] + A[6+r] * B[c*3+2];
+  }
+  return C;
+}
+
+function initGaze() {
+  const host = $('gazeSkull');
+  if (!window.SKULL_DATA) {   // no mesh payload beside the html: flat mark leans instead
+    host.innerHTML = SKULL;
+    setInterval(() => {
+      const g = host.querySelector('svg');
+      if (!g || !host.closest('.gazeOn')) return;
+      const r = host.getBoundingClientRect();
+      const dx = mouseX - (r.left + r.width / 2), dy = mouseY - (r.top + r.height / 2);
+      const a = Math.atan2(dy, dx), m = Math.min(1, Math.hypot(dx, dy) / 400) * 3;
+      g.style.transform = `translate(${Math.cos(a)*m}px,${Math.sin(a)*m}px) rotate(${Math.cos(a)*m*2}deg)`;
+    }, 33);
+    return;
+  }
+  const canvas = $('gazeCanvas');
+  const gl = canvas.getContext('webgl2', { antialias: true, alpha: true });
+  if (!gl) { host.innerHTML = SKULL; return; }
+  /* decode payload: [u32 nv][u32 nf][f32 pos ×3nv][f32 nrm ×3nv][u32 idx ×3nf] */
+  const s = atob(window.SKULL_DATA);
+  const buf = new ArrayBuffer(s.length);
+  const u8 = new Uint8Array(buf);
+  for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+  const [nv, nf] = new Uint32Array(buf, 0, 2);
+  const pos = new Float32Array(buf, 8, nv * 3);
+  const nrm = new Float32Array(buf, 8 + nv * 12, nv * 3);
+  const idx = new Uint32Array(buf, 8 + nv * 24, nf * 3);
+
+  const vs = `#version 300 es
+  layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNrm;
+  uniform mat3 uR; uniform float uFill; out vec3 vN;
+  void main(){ vec3 p = uR*aPos; vN = uR*aNrm; gl_Position = vec4(p.xy*uFill, -p.z*0.3, 1.0); }`;
+  const fs = `#version 300 es
+  precision mediump float; in vec3 vN; uniform vec3 uColor; out vec4 o;
+  void main(){ vec3 n = normalize(vN); float d = max(n.z, 0.0);
+    float spec = pow(d, 24.0) * 0.18;
+    o = vec4(uColor*(0.16 + 0.84*d) + spec, 1.0); }`;   // key light from the camera + ambient floor
+  const mk = (type, src) => {
+    const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(sh));
+    return sh;
+  };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs));
+  gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(prog); gl.useProgram(prog);
+
+  const bind = (loc, data) => {
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
+  };
+  bind(0, pos); bind(1, nrm);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+
+  gaze.gl = gl; gaze.count = nf * 3;
+  gaze.uR = gl.getUniformLocation(prog, 'uR');
+  gaze.uFill = gl.getUniformLocation(prog, 'uFill');
+  gaze.uColor = gl.getUniformLocation(prog, 'uColor');
+  gl.enable(gl.DEPTH_TEST);
+  gl.clearColor(0, 0, 0, 0);
+  drawSkull();
+}
+
+function drawSkull() {
+  if (!gaze.gl) return;
+  const gl = gaze.gl;
+  /* USDZ is Z-up: base -90° about X (like makeScene), then gaze pitch+yaw on top.
+     SceneKit euler = Ry(yaw)·Rx(pitch), so total = Ry(ey)·Rx(ex − π/2). */
+  const R = mul3(rotY(gaze.ey), rotX(gaze.ex - Math.PI / 2));
+  gl.uniformMatrix3fv(gaze.uR, false, R);
+  gl.uniform1f(gaze.uFill, P.gazeFill);
+  gl.uniform3f(gaze.uColor, 0.84, 0.81, 0.77);   // bone-gray, near the sculpt's read
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.drawElements(gl.TRIANGLES, gaze.count, gl.UNSIGNED_INT, 0);
+}
+
+let gazeTimer = null;
+function startGazeLoop() {
+  if (gazeTimer) clearInterval(gazeTimer);
+  gazeTimer = setInterval(() => {
+    if (!gaze.gl || !$('sessionPill').classList.contains('gazeOn')) return;
+    const r = $('gazeSkull').getBoundingClientRect();
+    if (!r.width) return;
+    /* Coordinator.tick verbatim: dx/dy from the view's center, AppKit y-up */
+    const dx = mouseX - (r.left + r.width / 2);
+    const dyUp = (r.top + r.height / 2) - mouseY;
+    const yaw = Math.max(-P.yawClamp, Math.min(P.yawClamp, Math.atan2(dx, P.reach)));
+    const pitch = Math.max(-P.pitchClamp, Math.min(P.pitchClamp, Math.atan2(dyUp, P.reach)));
+    gaze.ex += (-pitch - gaze.ex) * P.gazeSmooth;
+    gaze.ey += (yaw - gaze.ey) * P.gazeSmooth;
+    drawSkull();
+  }, P.gazeTick);
+  gazeTimer._ms = P.gazeTick;
+}
+
+/* ---------------- UI wiring ---------------- */
+document.querySelectorAll('[data-src]').forEach(btn => {
+  btn.onclick = async () => {
+    let target = btn.dataset.src;
+    if (target === 'mic' && !micAnalyser) { if (!(await enableMic())) target = 'sim'; }
+    source = target;
+    document.querySelectorAll('[data-src]').forEach(b => b.classList.toggle('on', b.dataset.src === source));
+    manualRow.style.display = source === 'manual' ? '' : 'none';
+  };
+});
+/* manual level slider (own row, not part of P) */
+const manualRow = document.createElement('div');
+manualRow.className = 'ctl'; manualRow.style.display = 'none';
+manualRow.innerHTML = '<label>manual level</label>';
+const mInp = document.createElement('input');
+mInp.type = 'range'; mInp.min = 0; mInp.max = 1; mInp.step = 0.01; mInp.value = manual;
+const mOut = document.createElement('output'); mOut.textContent = manual.toFixed(2);
+mInp.oninput = () => { manual = parseFloat(mInp.value); mOut.textContent = manual.toFixed(2); };
+manualRow.append(mInp, mOut);
+$('ctl-source').prepend(manualRow);
+
+/* session state chips (one pill, states within — crossfade, no view swap) */
+document.querySelectorAll('[data-state]').forEach(btn => {
+  btn.onclick = () => {
+    state.session = btn.dataset.state;
+    document.querySelectorAll('[data-state]').forEach(b => b.classList.toggle('on', b.dataset.state === state.session));
+    applySession();
+  };
+});
+/* auxiliary pill chips */
+document.querySelectorAll('[data-pill]').forEach(btn => {
+  btn.onclick = () => {
+    const h = $('h-' + btn.dataset.pill);
+    const showing = !h.classList.contains('on');
+    btn.classList.toggle('on', showing);
+    if (showing) enter(h); else h.classList.remove('on');
+  };
+});
+function enter(h) {
+  h.classList.add('on', 'entering');
+  requestAnimationFrame(() => requestAnimationFrame(() => h.classList.remove('entering')));
+}
+$('replay').onclick = () => {
+  document.querySelectorAll('.holder.on').forEach(h => {
+    h.classList.remove('on');
+    void h.offsetWidth;
+    enter(h);
+  });
+};
+$('ctxToggle').onclick = () => {
+  const col = $('chipsCol');
+  const open = col.classList.toggle('open');
+  $('ctxToggle').querySelector('.chev').textContent = open ? '▾' : '▸';
+};
+
+/* ---------------- export ---------------- */
+function copy(text) {
+  const ta = $('copyout'); ta.value = text;
+  navigator.clipboard?.writeText(text).catch(() => { ta.select(); document.execCommand('copy'); });
+}
+$('copyJson').onclick = () => copy(JSON.stringify({ ...P, bone }, null, 2));
+$('copySwift').onclick = () => {
+  copy(`// Yorick pill tuning — from prototypes/pills playground
+// Theme.swift
+static let bone = Color(hex: "${bone}")  // was #ece5d8
+
+// AudioCapture.swift (level pipeline)
+let floor: Float = ${P.floorDb}
+let ceiling: Float = ${P.ceilDb}
+let alpha: Float = raw > smoothedLevel ? ${P.attack} : ${P.release}
+let level = smoothedLevel < ${P.gate} ? Float(0) : smoothedLevel
+
+// HUDContentView.swift — DotEqualizer
+private let rows = ${P.rows}
+private let cols = ${P.cols}
+private let dot: CGFloat = ${P.dot}
+private let gap: CGFloat = ${P.gap}
+// profile floor (edge falloff): ${P.edge}
+let shimmer = ${P.shimBase} + ${P.shimDepth} * (sin(Double(col) * ${P.shimPhase} + clamped * ${P.shimFreq}.0) * 0.5 + 0.5)
+// lit / dim opacity: ${P.lit} / ${P.dim}
+.animation(.easeOut(duration: ${(P.dotMs / 1000).toFixed(2)}), value: level)
+
+// HUDContentView.swift — PillGlass
+shape.fill(Color.black.opacity(${P.glassBlack}))
+// plain rim: .white.opacity(${P.rimTop}) → .white.opacity(${P.rimBot}), lineWidth: ${P.rimW}
+// accent rim: accent.opacity(${P.rimATop}) → accent.opacity(${P.rimABot}), lineWidth: ${P.rimAW}
+.shadow(color: .black.opacity(${P.sh1o}), radius: ${(P.sh1b / 2).toFixed(1)}, y: ${P.sh1y})
+.shadow(color: .black.opacity(${P.sh2o}), radius: ${(P.sh2b / 2).toFixed(1)}, y: ${P.sh2y})
+// halo: accent.opacity(${P.haloBaseO} + ${P.haloGainO} * intensity), radius: ${P.haloBaseR} + ${P.haloGainR} * intensity
+// summarizing intensity: ${P.trIntensity}
+// pointer corners: round ${P.tl}, seated ${P.bl} (pointerBelow mirrors)
+
+// SkullGazeView.swift — Coordinator.tick
+let reach: CGFloat = ${P.reach}
+let yaw = Float(max(-${P.yawClamp}, min(${P.yawClamp}, atan2(dx, reach))))
+let pitch = Float(max(-${P.pitchClamp}, min(${P.pitchClamp}, atan2(dy, reach))))
+// smoothing: current + (target - current) * ${P.gazeSmooth}, tick ${P.gazeTick}ms
+// frame: ${P.gazeSize}×${P.gazeSize}pt; orthographicScale tuned so skull fills ~${Math.round(P.gazeFill * 100)}%
+
+// springs
+.animation(.spring(response: ${P.hovResp}, dampingFraction: ${P.hovDamp}))  // hover reveals
+.animation(.spring(response: ${P.trResp}, dampingFraction: ${P.trDamp}))  // pill transitions`);
+};
+$('resetAll').onclick = () => {
+  Object.assign(P, DEFAULTS);
+  bone = '#ece5d8';
+  sliders.forEach(s => s._sync && s._sync());
+  window._colorField && window._colorField._syncColor();
+  apply();
+};
+
+/* web backdrop cards */
+{
+  const web = document.createElement('div');
+  [[30,30,300,180],[360,30,220,120],[30,240,550,90],[360,170,220,150]].forEach(([x,y,w,h]) => {
+    const c = document.createElement('div'); c.className = 'card';
+    c.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+    web.appendChild(c);
+  });
+  const bd = $('backdrop');
+  const decorate = () => {
+    bd.querySelectorAll('.card').forEach(c => c.remove());
+    bd.querySelectorAll('.code').forEach(c => c.remove());
+    if (bd.classList.contains('bg-web')) [...web.children].forEach(c => bd.appendChild(c.cloneNode()));
+    if (bd.classList.contains('bg-dark')) {
+      const code = document.createElement('div'); code.className = 'code';
+      const colors = ['#c586c0','#9cdcfe','#ce9178','#6a9955','#dcdcaa','#4ec9b0'];
+      for (let i = 0; i < 14; i++) {
+        const l = document.createElement('div'); l.className = 'cl';
+        l.style.width = (20 + Math.abs(Math.sin(i * 3.7)) * 60) + '%';
+        l.style.marginLeft = (i % 4) * 24 + 'px';
+        l.style.background = colors[i % colors.length];
+        code.appendChild(l);
+      }
+      bd.appendChild(code);
+    }
+  };
+  new MutationObserver(decorate).observe(bd, { attributes: true });
+  decorate();
+}
+
+/* go */
+apply(); buildEq(); applySession(); startLoop(); initGaze(); startGazeLoop();
+</script>
+</body>
+</html>
