@@ -77,15 +77,20 @@ enum FocusClassifier {
         if s.subrole == "AXContentEditable" || s.subrole == "AXPlainText" { return (true, "") }
 
         // Toolkit-agnostic caret signal (AXSelectedTextRange — a CHARACTER
-        // range). Two measured exceptions where a document-level selection
+        // range). THREE measured exceptions where a selection range
         // masquerades as a caret on read-only content: bare AXWebArea
-        // (Chrome pages typed into nothing) and bare AXGroup (the Claude
-        // app's Electron preview pane, same failure). Real editors behind
-        // those shells focus a text role or contenteditable, caught above;
-        // truly editable web areas (Mail compose) pass via settable below.
-        // The asymmetry decides close calls: wrongly saving costs one Copy
-        // click, wrongly typing swallows the paste invisibly.
-        if s.role != "AXWebArea", s.role != "AXGroup", s.hasTextCaret() { return (true, " textCaret=true") }
+        // (Chrome pages typed into nothing), bare AXGroup (the Claude app's
+        // Electron preview pane), and AXStaticText (selectable SwiftUI text
+        // — Yorick's own saved list routed dictation into itself). Static
+        // text is non-editable by contract; real editors focus a text role
+        // or contenteditable, caught above; truly editable web areas (Mail
+        // compose) pass via settable below. The asymmetry decides close
+        // calls: wrongly saving costs one Copy click, wrongly typing
+        // swallows the paste invisibly. NOTE: every field hit of this rung
+        // so far has been a false positive — if a fourth masquerade
+        // appears, delete the rung rather than extend this list.
+        if s.role != "AXWebArea", s.role != "AXGroup", s.role != "AXStaticText",
+           s.hasTextCaret() { return (true, " textCaret=true") }
 
         // Text-editing affordances short of a caret.
         if s.isLikelyEditableText() { return (true, " likelyText=true") }

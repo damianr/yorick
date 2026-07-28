@@ -66,6 +66,14 @@ final class FocusClassifierTests: XCTestCase {
         XCTAssertNil(classify(role: "AXGroup", caret: true))
     }
 
+    func testSelectableStaticTextIsUndecided() {
+        // Field diagnosis: "focusedRole=AXStaticText desc=text app=Yorick
+        // textCaret=true" — SwiftUI selectable text in Yorick's own list
+        // routed dictation into itself. Static text is read-only by
+        // contract, whatever selection range it carries.
+        XCTAssertNil(classify(role: "AXStaticText", caret: true))
+    }
+
     func testMailComposeStillTypes() {
         // Mail's compose body: an AXWebArea whose ONLY editable tell is the
         // settable value. The web-area caret exclusion must not kill it.
