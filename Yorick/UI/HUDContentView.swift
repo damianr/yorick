@@ -457,7 +457,9 @@ struct HUDContentView: View {
         // append on the right, the pill grows rightward.
         .padding(.horizontal, unanchored ? 14 : 11)
         .padding(.vertical, unanchored ? 8 : 5)
-        .pillGlass(corners: recordingCorners)
+        // The amber rim + halo only where the pill has no caret announcing
+        // it — the field pill sits where you're already looking.
+        .pillGlass(corners: recordingCorners, accent: unanchored ? Theme.siteAmber : nil)
         .onHover { recordingHovering = $0 }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
         .animation(.spring(duration: 0.3), value: transcribing)
@@ -515,9 +517,14 @@ private struct PillShape: InsettableShape {
 }
 
 /// Dark capsule with a gradient rim light and a lifted shadow, so the pill
-/// separates from whatever busy UI it happens to float over.
+/// separates from whatever busy UI it happens to float over. An optional
+/// `accent` warms the rim and adds a faint glow — the unanchored pill's
+/// answer to vanishing against dark-mode backdrops (a dark pill on a dark
+/// page had nothing but a white hairline to announce it). Kept deliberately
+/// quiet: tinted edge and halo, never a filled color.
 private struct PillGlass: ViewModifier {
     var corners: PillCorners = .capsule
+    var accent: Color?
     private var shape: PillShape { PillShape(corners: corners) }
 
     func body(content: Content) -> some View {
@@ -525,11 +532,12 @@ private struct PillGlass: ViewModifier {
             .overlay(
                 shape.strokeBorder(
                     LinearGradient(
-                        colors: [.white.opacity(0.30), .white.opacity(0.06)],
+                        colors: accent.map { [$0.opacity(0.55), $0.opacity(0.10)] }
+                            ?? [.white.opacity(0.30), .white.opacity(0.06)],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 0.75
+                    lineWidth: accent == nil ? 0.75 : 1
                 )
             )
             .compositingGroup()
@@ -538,6 +546,7 @@ private struct PillGlass: ViewModifier {
             // lift plus a crisp contact edge that reads on any backdrop.
             .shadow(color: .black.opacity(0.26), radius: 5, y: 2)
             .shadow(color: .black.opacity(0.14), radius: 1, y: 0.5)
+            .shadow(color: (accent ?? .clear).opacity(accent == nil ? 0 : 0.30), radius: 10)
     }
 
     /// A DARK capsule, not light glass — and explicitly NOT Liquid Glass, whose
@@ -558,8 +567,8 @@ private struct PillGlass: ViewModifier {
 }
 
 private extension View {
-    func pillGlass(corners: PillCorners = .capsule) -> some View {
-        modifier(PillGlass(corners: corners))
+    func pillGlass(corners: PillCorners = .capsule, accent: Color? = nil) -> some View {
+        modifier(PillGlass(corners: corners, accent: accent))
     }
 }
 
