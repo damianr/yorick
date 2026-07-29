@@ -92,12 +92,20 @@ enum LocalIntelligence {
             guard leaked.count < 2 else { throw LocalIntelligenceError.emptyResponse }
 
             let point = firstSentence.prefix(1).uppercased() + firstSentence.dropFirst()
-            // Project prefix only when the model's name actually appears in
-            // the evidence — a structural field plus a verbatim check, so a
-            // hallucinated or section-heading "project" can't surface.
+            // Project prefix only when the model's name appears in the
+            // IDENTITY sources — window title, page URL, document — never
+            // in pointed content (checking the whole evidence block let a
+            // pointed-at headline become "SYNERGY DASHBOARD PRO!!: you
+            // think…", replay-measured).
+            let identitySources = ([capture.sourceLine]
+                + (capture.context?.facts
+                    .filter { $0.kind == "pageURL" || $0.kind == "document" }
+                    .map(\.value) ?? []))
+                .joined(separator: "\n")
+                .lowercased()
             let project = response.content.project.trimmingCharacters(in: .whitespacesAndNewlines)
             if !project.isEmpty, project.count <= 40,
-               evidence.lowercased().contains(project.lowercased()) {
+               identitySources.contains(project.lowercased()) {
                 return "\(project): \(point)"
             }
             return point
