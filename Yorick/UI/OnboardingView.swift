@@ -14,7 +14,6 @@ struct OnboardingView: View {
         case welcome
         case setup
         case tryIt
-        case observe
         case done
     }
 
@@ -30,7 +29,6 @@ struct OnboardingView: View {
     /// looks exactly like "Yorick is broken".
     @State private var showShortcutRecorder = false
     @State private var setupHintLit = false
-    @State private var observeBaselineCount = 0
     /// Bumped when the shortcut is rebound — recording a new combo changes
     /// no SwiftUI state, so chips and keyboard highlights went stale.
     @State private var shortcutGeneration = 0
@@ -68,7 +66,6 @@ struct OnboardingView: View {
             case .welcome: welcome
             case .setup: setup
             case .tryIt: tryIt
-            case .observe: observe
             case .done: done
             }
 
@@ -163,7 +160,7 @@ struct OnboardingView: View {
                 setupRow(
                     icon: "keyboard.fill",
                     name: "Accessibility",
-                    why: "Types into the app you're using, and reads what your cursor is pointing at.",
+                    why: "Types into the app you're using, and sees whether a text field is focused.",
                     granted: accessibilityTrusted,
                     actionLabel: "Open System Settings"
                 ) {
@@ -318,84 +315,8 @@ struct OnboardingView: View {
             if !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 grantedLabel("That's it. That's the whole app.")
             }
-            primaryButton("Continue") { step = .observe }
-        }
-    }
-
-    // The observe/save try-it, plain-catch framing: a deliberately terrible
-    // design and an invitation to just talk with no field focused. The lesson
-    // taught is the CATCH — you weren't in a field, so your words were kept —
-    // and pointing is deliberately NOT instructed: the pill, pointer timeline,
-    // readback, and card all run for real, so whatever the user gestured at
-    // arrives as discovered depth on the card, never as a taught skill.
-    private var observe: some View {
-        stepLayout(
-            icon: { EmptyView() },
-            title: "Now try it outside a field",
-            lines: [
-                "Nothing focused this time. This design has problems.",
-                "Hold the hotkey and say what's wrong with it."
-            ]
-        ) {
-            uglyDesignCard
-            if session.captureStore.captures.count > observeBaselineCount {
-                grantedLabel("Caught. It's saved, ready to put wherever you meant it.")
-            }
             primaryButton("Continue") { step = .done }
         }
-        .onAppear {
-            observeBaselineCount = session.captureStore.captures.count
-            // Narrow exception to "Yorick never cites itself": the practice
-            // target lives in Yorick's own window, so pointing at it must
-            // collect. Revoked the moment this step leaves the screen.
-            ContextCollector.selfEvidenceAllowed = true
-        }
-        .onDisappear { ContextCollector.selfEvidenceAllowed = false }
-    }
-
-    /// Every crime pointable. The texts read out through accessibility, so
-    /// the pointer timeline captures the actual offending content.
-    private var uglyDesignCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("SYNERGY DASHBOARD PRO!!")
-                .font(.custom("Chalkboard SE", size: 20).weight(.bold))
-                .foregroundStyle(Color(red: 1, green: 0.12, blue: 0.56))
-                .shadow(color: Color(red: 0.14, green: 1, blue: 0.82), radius: 0, x: 2, y: 2)
-            Text("Leverage holistic paradigms to empower best-in-class stakeholder alignment across all verticals and unlock world-class synergies going forward on a go-forward basis.")
-                .font(.custom("Chalkboard SE", size: 10))
-                .foregroundStyle(Color(red: 0.45, green: 0.15, blue: 0.66))
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 16) {
-                Text("CLICK NOW")
-                    .font(.custom("Chalkboard SE", size: 13).weight(.heavy))
-                    .foregroundStyle(Color(red: 0.83, green: 0, blue: 0))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(Color(red: 0.11, green: 1, blue: 0.37))
-                    .overlay(Rectangle().stroke(Color(red: 0.83, green: 0, blue: 0), lineWidth: 2))
-                    .rotationEffect(.degrees(-2))
-                Text("★ 100% FREE ★")
-                    .font(.custom("Chalkboard SE", size: 12).weight(.heavy))
-                    .foregroundStyle(Color(red: 1, green: 0.3, blue: 0))
-                    .rotationEffect(.degrees(4))
-            }
-        }
-        .padding(14)
-        .frame(width: 360)
-        .background(
-            LinearGradient(
-                colors: [Color(red: 1, green: 0.91, blue: 0.48), Color(red: 1, green: 0.62, blue: 0.8)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .overlay(
-            Rectangle().strokeBorder(
-                Color(red: 0.88, green: 0.31, blue: 0.79),
-                style: StrokeStyle(lineWidth: 3, dash: [6, 4])
-            )
-        )
-        .padding(.bottom, 4)
     }
 
     private var done: some View {

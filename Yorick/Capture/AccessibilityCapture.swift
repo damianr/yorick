@@ -662,7 +662,7 @@ enum AccessibilityCapture {
         )
     }
 
-    /// The one AX attribute-read primitive — ContextCollector delegates here
+    /// The one AX attribute-read primitive — every caller delegates here
     /// too, so there's a single place this plumbing lives.
     static func attribute(_ element: AXUIElement, _ attr: String) -> CFTypeRef? {
         var value: CFTypeRef?

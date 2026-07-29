@@ -250,14 +250,10 @@ struct HUDContentView: View {
                     .lineLimit(1)
                 Spacer(minLength: 12)
             }
-            // Shared presentation with the saved list: readback + raw words,
-            // evidence collapsed behind "context · n" — simplest first. The
-            // readback fades in when the model produces one; the card is
-            // complete without it and the export never includes it.
+            // Shared presentation with the saved list: the words, exactly
+            // as spoken.
             CaptureCardBody(
                 transcript: capture.transcript,
-                readback: capture.readback,
-                context: capture.context,
                 transcriptLineLimit: 4
             )
             HStack(spacing: 8) {
@@ -266,13 +262,6 @@ struct HUDContentView: View {
                 CardActionButton(icon: "doc.on.doc", label: "Copy") {
                     ClipboardOutput.copy(capture.transcript)
                     session.lastSavedCapture = nil
-                }
-                // The agent-handoff artifact: words + evidence, paste-ready.
-                if capture.context != nil {
-                    CardActionButton(icon: "doc.on.doc.fill", label: "Copy with context") {
-                        ClipboardOutput.copy(CaptureRenderer.renderWithContext(capture))
-                        session.lastSavedCapture = nil
-                    }
                 }
                 Spacer()
                 CardActionButton(icon: "xmark", label: "Dismiss") {
@@ -303,13 +292,6 @@ struct HUDContentView: View {
         .onAppear {
             scheduleCardDismiss(capture.id, after: 6)
         }
-        .onChange(of: session.lastSavedCapture?.readback) { _, readback in
-            // A readback landing near the end of the clock deserves reading
-            // time — extend, unless the user is already holding the card.
-            guard readback != nil, !cardHovering else { return }
-            scheduleCardDismiss(capture.id, after: 5)
-        }
-        .animation(.easeOut(duration: 0.25), value: session.lastSavedCapture?.readback)
         // New identity per capture, so a replacing card restarts its own clock.
         .id(capture.id)
     }
@@ -375,20 +357,20 @@ struct HUDContentView: View {
     // MARK: - Session Pill (recording + transcribing, one identity)
     //
     // One pill, states within: recording (skull · status · EQ) crossfades
-    // into transcribing ("Summarizing…" · spinner) with no view swap — the
-    // old two-pill handoff read as a glitch. The unanchored observation
-    // pill is deliberately LOUDER than the field pill: bigger skull, the
-    // marketing site's amber recording dot and bone status text — it sits
-    // at a screen edge with no caret to mark, so it has to earn the glance.
-    // The field-anchored pill stays compact; near a caret, small is right.
+    // into transcribing ("Transcribing…" · spinner) with no view swap — the
+    // old two-pill handoff read as a glitch. The unanchored pill is
+    // deliberately LOUDER than the field pill: bigger skull and bone status
+    // text — it sits at a screen edge with no caret to mark, so it has to
+    // earn the glance. The field-anchored pill stays compact; near a caret,
+    // small is right.
 
     private var sessionPill: some View {
         let transcribing = session.state == .transcribing
         let unanchored = session.hudPillPlacement == .bottomCenter
         return VStack(spacing: 4) {
             HStack(spacing: unanchored ? 10 : 9) {
-                // The 3D skull watches the cursor while evidence is being
-                // read, and keeps watching through "Summarizing…" — one
+                // The 3D skull watches the cursor — pure delight, no claim —
+                // and keeps watching through "Transcribing…": one
                 // continuous presence. BULLETPROOF ORDERING: always launch
                 // with the flat mark (instant, depends on nothing); the 3D
                 // guy is an upgrade that fades in only when fully GPU-warm.
@@ -408,9 +390,7 @@ struct HUDContentView: View {
                         }
                 }
                 if unanchored {
-                    Text(transcribing
-                         ? "Summarizing…"
-                         : session.observingApp.map { "Observing \($0)" } ?? "Observing…")
+                    Text(transcribing ? "Transcribing…" : "Listening…")
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(Theme.bone)
                         .lineLimit(1)

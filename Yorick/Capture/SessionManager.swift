@@ -126,15 +126,6 @@ final class SessionManager {
 
     let microphoneManager = MicrophoneManager()
     private let audioCapture = AudioCapture()
-    /// Layer B context snapshots, taken at hotkey-down and release. Awaited
-    /// only after transcription (seconds later), never on the hot path.
-    private var startContextSnapshot: Task<[ContextFact], Never>?
-    private var stopContextSnapshot: Task<[ContextFact], Never>?
-    /// Samples the pointer's sweep while recording — pointing is a gesture.
-    private var pointerTimeline: ContextCollector.PointerTimeline?
-    /// Frontmost app when the session started — the observation pill's
-    /// "Observing <App>" status line.
-    var observingApp: String?
     /// Guards the async start resolution against superseding sessions.
     private var startResolveGeneration = 0
     /// The dictation fast path anchored this session — the full resolution
@@ -192,7 +183,6 @@ final class SessionManager {
         if case .error = state { state = .idle }
         guard state == .idle else { return }
 
-        observingApp = NSWorkspace.shared.frontmostApplication?.localizedName
         modeWasForced = forcedMode != nil
         captureMode = forcedMode ?? .contextual
         startConfidence = .low
@@ -240,19 +230,6 @@ final class SessionManager {
             }
             self.hudReady = true
         }
-        // Layer B: freeze the semantic target at trigger, then follow the
-        // pointer's sweep for the whole recording. The bundle is awaited
-        // only after transcription, seconds from now.
-        stopContextSnapshot?.cancel()
-        stopContextSnapshot = nil
-        startContextSnapshot = ContextCollector.snapshot(phase: "start")
-        if let stale = pointerTimeline {
-            Task { await stale.stopSampling() }
-        }
-        let timeline = ContextCollector.PointerTimeline()
-        pointerTimeline = timeline
-        Task { await timeline.begin() }
-
         resolveStartDecision(forcedMode: forcedMode)
     }
 
@@ -328,14 +305,6 @@ final class SessionManager {
     /// Stop capture — transcribes and either types text or saves capture.
     func stopIfRecording() {
         guard case .recording = state else { return }
-        // Second context snapshot: the pointer may have moved to its target
-        // WHILE talking; the stop-phase delta is itself evidence. Sampling
-        // ends with the recording — the pill leaving the screen is the
-        // watching ending.
-        stopContextSnapshot = ContextCollector.snapshot(phase: "stop")
-        if let timeline = pointerTimeline {
-            Task { await timeline.stopSampling() }
-        }
         stopCapture()
     }
 
@@ -917,72 +886,6 @@ final class SessionManager {
     }
 
     /// Put back exactly what was said, undoing the cleanup edit.
-    /// Fire-and-forget readback for the card. Only for captures that carry
-    /// evidence (with nothing to ground on, a readback is just paraphrase),
-    /// only when the model exists, and only if the same card is still up
-    /// when the sentence arrives. Every failure path is silence — the card
-    /// is complete without it.
-    private func requestReadback(for capture: Capture) {
-        guard capture.context != nil, LocalIntelligence.isCleanupAvailable else { return }
-        // A readback of a trivial utterance is noise ("Claude: Okay") — the
-        // words ARE the summary below ~5 words.
-        guard capture.transcript.split(separator: " ").count >= 5 else { return }
-        Task { @MainActor [weak self] in
-            do {
-                let text = try await LocalIntelligence.readback(for: capture)
-                // Reviewable after the card fades — a wrong readback is eval
-                // corpus, and the corpus can't be built from vanished lines.
-                if AdminMode.enabled {
-                    Self.readbackLog.notice("id=\(capture.id.uuidString.prefix(8), privacy: .public) text=\(text, privacy: .public)")
-                }
-                guard let self else { return }
-                // ONE channel: the readback lives on the capture. Persist it,
-                // and refresh the card's copy in place — the card and the
-                // list both just render `capture.readback`.
-                if var stored = self.captureStore.captures.first(where: { $0.id == capture.id }) {
-                    stored.readback = text
-                    self.captureStore.update(stored)
-                }
-                if self.lastSavedCapture?.id == capture.id {
-                    self.lastSavedCapture?.readback = text
-                }
-            } catch {
-                if AdminMode.enabled {
-                    Self.readbackLog.notice("id=\(capture.id.uuidString.prefix(8), privacy: .public) failed=\(error.localizedDescription, privacy: .public)")
-                }
-            }
-        }
-    }
-
-    private static let readbackLog = Logger(subsystem: "com.heyyorick.Yorick", category: "readback")
-
-    /// Gathers all producers concurrently against ONE shared 1.5s clock —
-    /// sequential per-producer races stacked to 4.5s worst case when apps
-    /// hung. Whatever hasn't finished when the clock fires is dropped:
-    /// facts are lost, the save never waits.
-    private static func gatherFacts(
-        _ producers: [@Sendable () async -> [ContextFact]]
-    ) async -> [[ContextFact]] {
-        await withTaskGroup(of: (Int, [ContextFact])?.self) { group in
-            for (index, produce) in producers.enumerated() {
-                group.addTask { (index, await produce()) }
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                return nil
-            }
-            var results = [[ContextFact]](repeating: [], count: producers.count)
-            var finished = 0
-            while finished < producers.count, let next = await group.next() {
-                guard let (index, facts) = next else { break } // clock fired
-                results[index] = facts
-                finished += 1
-            }
-            group.cancelAll()
-            return results
-        }
-    }
-
     func revertCleanup() {
         guard let receipt = insertionReceipt, let raw = rawTranscriptForRevert else { return }
         guard insertionTargetStillFocused(receipt) else {
@@ -1368,21 +1271,7 @@ final class SessionManager {
             )
 
             // 5. Save. The capture is complete the moment transcription ends —
-            //    there is no background intelligence to wait for. The context
-            //    bundle finished long ago (its AX reads are time-bounded);
-            //    awaiting it here costs nothing.
-            // Race the context tasks against ONE wall clock: with no AX
-            // timeouts in the collector, a hung app could stall its task
-            // indefinitely — that must cost the facts, never the save.
-            let gathered = await Self.gatherFacts([
-                { await self.startContextSnapshot?.value ?? [] },
-                { await self.stopContextSnapshot?.value ?? [] },
-                { await self.pointerTimeline?.finish(appName: primaryApp) ?? [] },
-            ])
-            let captureContext = CaptureContext.merged(
-                start: gathered[0],
-                stop: gathered[1] + gathered[2]
-            )
+            //    there is no background intelligence to wait for.
             let capture = Capture(
                 id: captureID,
                 timestamp: sessionStartedAt,
@@ -1402,8 +1291,7 @@ final class SessionManager {
                 suggestedTags: [],
                 actionHint: nil,
                 effects: effects,
-                diagnostics: diagnostics,
-                context: captureContext
+                diagnostics: diagnostics
             )
 
             guard isLive() else { return }
@@ -1418,7 +1306,6 @@ final class SessionManager {
 
             if effectiveMode == .contextual {
                 lastSavedCapture = capture
-                requestReadback(for: capture)
             }
         } catch {
             print("[Session] Failed: \(error)")

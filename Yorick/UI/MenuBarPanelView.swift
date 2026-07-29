@@ -111,7 +111,7 @@ struct MenuBarPanelView: View {
             case .transcribing:
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.mini)
-                    Text("Summarizing…")
+                    Text("Transcribing…")
                         .foregroundStyle(Theme.textSecondary)
                 }
             case .error(let message):

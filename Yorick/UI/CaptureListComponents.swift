@@ -62,12 +62,9 @@ struct CaptureRow: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                // Same presentation as the HUD card (CaptureCardBody):
-                // readback + raw words, evidence behind "context · n".
+                // Same presentation as the HUD card (CaptureCardBody).
                 CaptureCardBody(
                     transcript: displayText,
-                    readback: capture.readback,
-                    context: capture.context,
                     transcriptLineLimit: nil,
                     onTranscriptTap: { copyRow() }
                 )
@@ -77,9 +74,6 @@ struct CaptureRow: View {
                 // dismissed cards live.
                 HStack(spacing: 8) {
                     CardActionButton(icon: "doc.on.doc", label: "Copy") { copyRow() }
-                    if capture.context != nil {
-                        CardActionButton(icon: "doc.on.doc.fill", label: "Copy with context") { copyRowWithContext() }
-                    }
                     Spacer()
                 }
                 .padding(.top, 2)
@@ -101,9 +95,6 @@ struct CaptureRow: View {
         .contextMenu {
             if !capture.needsTranscription {
                 Button("Copy") { copyRow() }
-                if capture.context != nil {
-                    Button("Copy with Context") { copyRowWithContext() }
-                }
             }
             Button("Delete", role: .destructive) { captureStore.delete(capture) }
         }
@@ -150,12 +141,6 @@ struct CaptureRow: View {
     private func copyRow() {
         guard !capture.needsTranscription else { return }
         ClipboardOutput.copy(displayText)
-        flashCopied()
-    }
-
-    private func copyRowWithContext() {
-        guard !capture.needsTranscription else { return }
-        ClipboardOutput.copy(CaptureRenderer.renderWithContext(capture))
         flashCopied()
     }
 
