@@ -12,10 +12,10 @@ struct OnboardingView: View {
 
     private enum Step: Int, CaseIterable {
         case welcome
-        case microphone
-        case accessibility
-        case autostart
+        case setup
         case tryIt
+        case observe
+        case done
     }
 
     @State private var step: Step = .welcome
@@ -29,6 +29,8 @@ struct OnboardingView: View {
     /// the shortcut (⌥Space is Raycast's default, and Handy's), which otherwise
     /// looks exactly like "Yorick is broken".
     @State private var showShortcutRecorder = false
+    @State private var setupHintLit = false
+    @State private var observeBaselineCount = 0
     /// Bumped when the shortcut is rebound — recording a new combo changes
     /// no SwiftUI state, so chips and keyboard highlights went stale.
     @State private var shortcutGeneration = 0
@@ -64,10 +66,10 @@ struct OnboardingView: View {
 
             switch step {
             case .welcome: welcome
-            case .microphone: microphone
-            case .accessibility: accessibility
-            case .autostart: autostart
+            case .setup: setup
             case .tryIt: tryIt
+            case .observe: observe
+            case .done: done
             }
 
             Spacer()
@@ -100,6 +102,7 @@ struct OnboardingView: View {
             // step advances the moment the toggle flips, no relaunch needed.
             accessibilityTrusted = AXIsProcessTrusted()
             microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+            loginItemEnabled = LoginItem.isEnabled
         }
         // KeyboardShortcuts' change notification (raw name; the library
         // doesn't export a constant) — chips and map re-render on rebind.
@@ -127,87 +130,123 @@ struct OnboardingView: View {
                 "Not in a text field? It's saved. Nothing is lost."
             ]
         ) {
-            primaryButton("Continue") { step = .microphone }
+            primaryButton("Continue") { step = .setup }
         }
     }
 
-    private var microphone: some View {
+    // The three asks as one checklist — a list you work down, not pages you
+    // travel. No skips on the required two (mic: no product without it;
+    // AX: a skipper meets a voice-notes app instead of the product); the
+    // poll flips rows to granted the moment System Settings does.
+    private var setup: some View {
         stepLayout(
-            icon: { stepIcon("mic.fill", granted: microphoneGranted) },
-            title: "Microphone",
-            lines: [
-                "Yorick needs the microphone to hear you.",
-                "Audio is transcribed on this Mac and the recording is discarded."
-            ]
+            icon: { EmptyView() },
+            title: "Grant Yorick access",
+            lines: ["Everything runs on your Mac. Nothing is uploaded."]
         ) {
-            if microphoneGranted {
-                grantedLabel("Microphone access granted")
-                primaryButton("Continue") { step = .accessibility }
-            } else if microphoneDenied {
-                // Already denied: macOS won't ask again, so send them to Settings.
-                // No skip — without the microphone there is no product to
-                // meet, and the poll advances the moment access is granted.
-                primaryButton("Open Microphone Settings") {
-                    openPrivacyPane("Privacy_Microphone")
-                }
-            } else {
-                primaryButton("Allow Microphone Access") {
-                    AVCaptureDevice.requestAccess(for: .audio) { granted in
-                        DispatchQueue.main.async {
-                            microphoneGranted = granted
-                            if granted { step = .accessibility }
+            VStack(spacing: 10) {
+                setupRow(
+                    icon: "mic.fill",
+                    name: "Microphone",
+                    why: "Hears what you say. Audio is transcribed on this Mac, then deleted.",
+                    granted: microphoneGranted,
+                    actionLabel: microphoneDenied ? "Open System Settings" : "Allow"
+                ) {
+                    if microphoneDenied {
+                        openPrivacyPane("Privacy_Microphone")
+                    } else {
+                        AVCaptureDevice.requestAccess(for: .audio) { granted in
+                            DispatchQueue.main.async { microphoneGranted = granted }
                         }
                     }
                 }
-            }
-        }
-    }
-
-    private var accessibility: some View {
-        stepLayout(
-            icon: { stepIcon("keyboard.fill", granted: accessibilityTrusted) },
-            title: "Accessibility",
-            lines: [
-                "This is how Yorick types into the app you're using,",
-                "and how it knows whether a text field is focused.",
-                "macOS asks you to enable it in System Settings."
-            ]
-        ) {
-            if accessibilityTrusted {
-                grantedLabel("Accessibility enabled")
-                primaryButton("Continue") { step = .autostart }
-            } else {
-                // No skip — without Accessibility nothing can be typed, and
-                // a skipper meets a voice-notes app instead of the product.
-                // The poll auto-advances the moment the toggle flips.
-                primaryButton("Open Accessibility Settings") {
+                setupRow(
+                    icon: "keyboard.fill",
+                    name: "Accessibility",
+                    why: "Types into the app you're using, and reads what your cursor is pointing at.",
+                    granted: accessibilityTrusted,
+                    actionLabel: "Open System Settings"
+                ) {
                     let options = ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary
                     AXIsProcessTrustedWithOptions(options)
                 }
+                setupRow(
+                    icon: "power",
+                    name: "Open at login",
+                    why: "Starts Yorick when you log in.",
+                    granted: loginItemEnabled,
+                    actionLabel: "Turn On"
+                ) {
+                    loginItemEnabled = LoginItem.setEnabled(true)
+                }
             }
+            .frame(width: 500)
+            // The hint holds the space above Continue, and answers a hover
+            // on a not-yet-enabled Continue in white — a disabled button
+            // that explains itself.
+            Text(!isReady
+                 ? "Microphone and Accessibility are required."
+                 : (loginItemEnabled ? " " : "Open at login is optional."))
+                .font(Theme.mono(10))
+                .foregroundStyle(setupHintLit ? Color.white : Theme.textTertiary)
+                .animation(.easeOut(duration: 0.15), value: setupHintLit)
+            primaryButton("Continue") { step = .tryIt }
+                .disabled(!isReady)
+                .opacity(isReady ? 1 : 0.45)
+                .onHover { hovering in setupHintLit = hovering && !isReady }
         }
     }
 
-    private var autostart: some View {
-        stepLayout(
-            icon: { stepIcon("power", granted: loginItemEnabled) },
-            title: "Always ready",
-            lines: [
-                "Yorick hears the hotkey only while it's running.",
-                "Open at login, and it's always one hold away."
-            ]
-        ) {
-            if loginItemEnabled {
-                grantedLabel("Opens at login")
-                primaryButton("Continue") { step = .tryIt }
-            } else {
-                primaryButton("Open at Login") {
-                    loginItemEnabled = LoginItem.setEnabled(true)
-                    if loginItemEnabled { step = .tryIt }
+    private func setupRow(
+        icon: String,
+        name: String,
+        why: String,
+        granted: Bool,
+        actionLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 34)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name)
+                    .font(Theme.mono(12.5, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(why)
+                    .font(Theme.mono(10.5))
+                    .foregroundStyle(Theme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if granted {
+                // Darker green than the text accent + a heavy check — the
+                // light brand green washed out (prototype-measured).
+                ZStack {
+                    Circle()
+                        .fill(Color(red: 0.17, green: 0.62, blue: 0.34))
+                        .frame(width: 22, height: 22)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(.white)
                 }
-                quietButton("Not now") { step = .tryIt }
+            } else {
+                Button(action: action) {
+                    Text(actionLabel)
+                        .font(Theme.mono(11, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Theme.bgElevated))
+                }
+                .buttonStyle(.plain)
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.bgCard))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
     }
 
     @ViewBuilder
@@ -279,6 +318,93 @@ struct OnboardingView: View {
             if !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 grantedLabel("That's it. That's the whole app.")
             }
+            primaryButton("Continue") { step = .observe }
+        }
+    }
+
+    // The observe/save try-it: a deliberately terrible design and an
+    // invitation to review it. NOTHING here is simulated — the real pill,
+    // pointer timeline, readback, and card run exactly as they would
+    // anywhere; the capture that lands is a genuine saved item.
+    private var observe: some View {
+        stepLayout(
+            icon: { EmptyView() },
+            title: "Now try it outside a field",
+            lines: [
+                "Nothing focused this time. This design has problems.",
+                "Hold the hotkey, point at what's wrong, and say so."
+            ]
+        ) {
+            uglyDesignCard
+            if session.captureStore.captures.count > observeBaselineCount {
+                grantedLabel("Saved, with everything you pointed at.")
+            }
+            primaryButton("Continue") { step = .done }
+        }
+        .onAppear {
+            observeBaselineCount = session.captureStore.captures.count
+            // Narrow exception to "Yorick never cites itself": the practice
+            // target lives in Yorick's own window, so pointing at it must
+            // collect. Revoked the moment this step leaves the screen.
+            ContextCollector.selfEvidenceAllowed = true
+        }
+        .onDisappear { ContextCollector.selfEvidenceAllowed = false }
+    }
+
+    /// Every crime pointable. The texts read out through accessibility, so
+    /// the pointer timeline captures the actual offending content.
+    private var uglyDesignCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("SYNERGY DASHBOARD PRO!!")
+                .font(.custom("Chalkboard SE", size: 20).weight(.bold))
+                .foregroundStyle(Color(red: 1, green: 0.12, blue: 0.56))
+                .shadow(color: Color(red: 0.14, green: 1, blue: 0.82), radius: 0, x: 2, y: 2)
+            Text("Leverage holistic paradigms to empower best-in-class stakeholder alignment across all verticals and unlock world-class synergies going forward on a go-forward basis.")
+                .font(.custom("Chalkboard SE", size: 10))
+                .foregroundStyle(Color(red: 0.45, green: 0.15, blue: 0.66))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 16) {
+                Text("CLICK NOW")
+                    .font(.custom("Chalkboard SE", size: 13).weight(.heavy))
+                    .foregroundStyle(Color(red: 0.83, green: 0, blue: 0))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Color(red: 0.11, green: 1, blue: 0.37))
+                    .overlay(Rectangle().stroke(Color(red: 0.83, green: 0, blue: 0), lineWidth: 2))
+                    .rotationEffect(.degrees(-2))
+                Text("★ 100% FREE ★")
+                    .font(.custom("Chalkboard SE", size: 12).weight(.heavy))
+                    .foregroundStyle(Color(red: 1, green: 0.3, blue: 0))
+                    .rotationEffect(.degrees(4))
+            }
+        }
+        .padding(14)
+        .frame(width: 360)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 1, green: 0.91, blue: 0.48), Color(red: 1, green: 0.62, blue: 0.8)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            Rectangle().strokeBorder(
+                Color(red: 0.88, green: 0.31, blue: 0.79),
+                style: StrokeStyle(lineWidth: 3, dash: [6, 4])
+            )
+        )
+        .padding(.bottom, 4)
+    }
+
+    private var done: some View {
+        stepLayout(
+            icon: { logo },
+            title: "Yorick lives in your menu bar",
+            lines: [
+                "This window will close. Your saved items are under the skull.",
+                "The hotkey works everywhere."
+            ]
+        ) {
             primaryButton("Start using Yorick") { onDone() }
         }
     }

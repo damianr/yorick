@@ -35,13 +35,21 @@ enum ContextCollector {
         }
     }
 
+    /// ONBOARDING EXCEPTION to the self-evidence rule: the observe try-it
+    /// renders its practice target inside Yorick's own window, so pointing
+    /// at it must collect. Set only while that step is on screen; flipped
+    /// from the main actor, read from collector tasks (a benign
+    /// boolean race — worst case one sample obeys the old value).
+    nonisolated(unsafe) static var selfEvidenceAllowed = false
+
     /// Yorick never cites itself. Pointing at the saved list while speaking
     /// captured OLD transcripts as "screen context," and the readback then
     /// narrated the previous capture instead of the words (field-measured).
     /// Self-evidence is pollution in exports, too. One rule; every evidence
     /// source calls it.
     private static func isSelf(_ pid: pid_t) -> Bool {
-        pid == ProcessInfo.processInfo.processIdentifier
+        if selfEvidenceAllowed { return false }
+        return pid == ProcessInfo.processInfo.processIdentifier
     }
 
     private static func collect(phase: String, pid: pid_t, appName: String) -> [ContextFact] {
