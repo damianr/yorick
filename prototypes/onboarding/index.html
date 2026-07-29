@@ -153,6 +153,38 @@
   .prop .p-chart { display: flex; align-items: flex-end; gap: 4px; height: 24px; margin-top: 4px; }
   .prop .p-chart i { width: 14px; background: rgba(167,139,250,.35); border-radius: 2px 2px 0 0; }
 
+  /* the deliberately terrible design — every crime pointable */
+  .ugly {
+    position: absolute; width: 340px; padding: 12px;
+    background: linear-gradient(135deg, #ffe97a, #ff9ecd);
+    border: 3px dashed #e14eca; border-radius: 4px;
+    font-family: "Comic Sans MS", "Chalkboard SE", cursive;
+    transition: outline .15s, box-shadow .15s;
+  }
+  .ugly .u-head {
+    color: #ff1f8f; font-size: 17px; font-weight: 800; letter-spacing: 1px;
+    text-shadow: 2px 2px 0 #24ffd0; margin-bottom: 7px;
+    transition: outline .15s, box-shadow .15s;
+  }
+  .ugly .u-body {
+    color: #7326a8; font-size: 9px; line-height: 1.35; text-align: justify;
+    margin-bottom: 9px; transition: outline .15s, box-shadow .15s;
+  }
+  .ugly .u-row { display: flex; align-items: center; gap: 12px; }
+  .ugly .u-btn {
+    background: #1dff5e; color: #d40000; font-size: 12px; font-weight: 800;
+    padding: 5px 13px; border-radius: 2px; border: 2px solid #d40000;
+    transform: rotate(-2deg); transition: outline .15s, box-shadow .15s;
+  }
+  .ugly .u-burst {
+    color: #ff4d00; font-size: 11px; font-weight: 800;
+    transform: rotate(4deg); transition: outline .15s, box-shadow .15s;
+  }
+  .ugly.hot, .ugly .u-head.hot, .ugly .u-body.hot, .ugly .u-btn.hot, .ugly .u-burst.hot {
+    outline: 2px solid rgba(236,229,216,.85);
+    box-shadow: 0 0 12px rgba(236,229,216,.35);
+  }
+
   /* observation pill (borrowed from the pills playground language) */
   .obs-pill {
     position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
@@ -290,24 +322,21 @@
   <section class="step" data-step="3">
     <h1>Now try it outside a field</h1>
     <div class="lines" style="margin-bottom:12px">
-      Nothing focused this time. While you talk, point at what you're talking about.<br>
-      <span class="dim">In this mock, hold SPACE for the hotkey, and sweep your cursor over the cards.</span>
+      Nothing focused this time. This design has problems.<br>
+      Hold the hotkey, point at what's wrong, and say so.<br>
+      <span class="dim">In this mock, SPACE stands in for the hotkey.</span>
     </div>
     <div class="obs-stage" id="obs-stage">
-      <!-- props to point at -->
-      <div class="prop" data-prop="Standup notes" style="left:26px; top:56px; width:150px;">
-        <div class="p-title">Standup notes</div>
-        <div class="p-line"></div><div class="p-line short"></div>
-        <div class="p-btn">Share</div>
-      </div>
-      <div class="prop" data-prop="Fix login flow" style="left:196px; top:56px; width:150px;">
-        <div class="p-title">Tasks</div>
-        <div class="p-row" data-prop="Fix login flow">Fix login flow</div>
-        <div class="p-row" data-prop="Ship v2 beta">Ship v2 beta</div>
-      </div>
-      <div class="prop" data-prop="Revenue chart" style="left:366px; top:56px; width:150px;">
-        <div class="p-title">Revenue</div>
-        <div class="p-chart"><i style="height:9px"></i><i style="height:16px"></i><i style="height:12px"></i><i style="height:22px"></i><i style="height:18px"></i></div>
+      <!-- a deliberately terrible design, every offense pointable -->
+      <div class="ugly" data-prop="the whole card" style="left:110px; top:34px;">
+        <div class="u-head" data-prop="the headline">SYNERGY DASHBOARD PRO!!</div>
+        <div class="u-body" data-prop="the wall of text">Leverage holistic paradigms to empower
+          best-in-class stakeholder alignment across all verticals and unlock
+          world-class synergies going forward on a go-forward basis.</div>
+        <div class="u-row">
+          <div class="u-btn" data-prop="the button">CLICK NOW</div>
+          <div class="u-burst" data-prop="the starburst">★ 100% FREE ★</div>
+        </div>
       </div>
       <!-- the observation pill -->
       <div class="obs-pill" id="obs-pill" style="opacity:0">
@@ -318,7 +347,7 @@
       <!-- the card it becomes -->
       <div class="obs-card" id="obs-card">
         <div class="src"><i></i> This screen</div>
-        <div class="words">"…and your words land here."</div>
+        <div class="words">"…and your review lands here, word for word."</div>
         <div class="ctx" id="obs-ctx">pointed at: nothing yet</div>
         <div class="acts"><span>Copy</span><span>Copy with context</span><span class="x">✕</span></div>
       </div>
@@ -429,7 +458,7 @@
     swept = [];
     obsPill.style.opacity = 0;
     obsCard.classList.remove('show');
-    document.querySelectorAll('.prop, .p-row').forEach(p => p.classList.remove('hot'));
+    document.querySelectorAll('#obs-stage .hot').forEach(p => p.classList.remove('hot'));
   }
 
   document.addEventListener('keydown', e => {
