@@ -322,22 +322,24 @@ struct OnboardingView: View {
         }
     }
 
-    // The observe/save try-it: a deliberately terrible design and an
-    // invitation to review it. NOTHING here is simulated — the real pill,
-    // pointer timeline, readback, and card run exactly as they would
-    // anywhere; the capture that lands is a genuine saved item.
+    // The observe/save try-it, plain-catch framing: a deliberately terrible
+    // design and an invitation to just talk with no field focused. The lesson
+    // taught is the CATCH — you weren't in a field, so your words were kept —
+    // and pointing is deliberately NOT instructed: the pill, pointer timeline,
+    // readback, and card all run for real, so whatever the user gestured at
+    // arrives as discovered depth on the card, never as a taught skill.
     private var observe: some View {
         stepLayout(
             icon: { EmptyView() },
             title: "Now try it outside a field",
             lines: [
                 "Nothing focused this time. This design has problems.",
-                "Hold the hotkey, point at what's wrong, and say so."
+                "Hold the hotkey and say what's wrong with it."
             ]
         ) {
             uglyDesignCard
             if session.captureStore.captures.count > observeBaselineCount {
-                grantedLabel("Saved, with everything you pointed at.")
+                grantedLabel("Caught. It's saved, ready to put wherever you meant it.")
             }
             primaryButton("Continue") { step = .done }
         }
