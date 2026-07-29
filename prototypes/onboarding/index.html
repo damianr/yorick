@@ -101,17 +101,57 @@
   .action .granted-tag { color: var(--green); font-size: 11px; font-weight: 600; }
   .action .optional { color: var(--text-3); font-size: 10px; cursor: pointer; margin-left: 8px; }
 
-  /* ============ STEP: observe / save ============ */
-  .demo-zone {
-    width: 540px; height: 210px; border-radius: 12px; position: relative;
-    background: linear-gradient(160deg, #17171c 0%, #101014 100%);
-    border: 1px solid rgba(255,255,255,.05); margin-bottom: 20px; overflow: hidden;
+  /* ============ STEP: try it (mock) ============ */
+  .chip {
+    display: inline-block; background: var(--bg-elevated); color: var(--text-1);
+    border: .75px solid rgba(255,255,255,.12); border-radius: 5px;
+    font-size: 10.5px; font-weight: 700; padding: 2px 7px; margin: 0 2px;
   }
-  /* faux app content being pointed at */
-  .demo-rows { position: absolute; left: 26px; top: 24px; width: 210px; }
-  .demo-rows .r { height: 13px; border-radius: 4px; background: rgba(255,255,255,.07); margin-bottom: 10px; }
-  .demo-rows .r.hot { outline: 1px solid rgba(236,229,216,.35); background: rgba(236,229,216,.1); }
-  .demo-cursor { position: absolute; font-size: 13px; transition: all .8s ease; z-index: 3; }
+  .chip-plus { color: var(--text-3); font-size: 10px; }
+  .mini-kb { display: flex; flex-direction: column; gap: 2.5px; align-items: center; }
+  .mini-kb .kr { display: flex; gap: 2.5px; }
+  .mini-kb .k {
+    height: 16px; border-radius: 4px; background: var(--bg-elevated);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .mini-kb .k.target { background: rgba(167,139,250,.10); border-color: rgba(167,139,250,.8); }
+  .practice-box {
+    width: 480px; height: 84px; border-radius: 10px; margin: 4px 0 14px;
+    border: 1px solid rgba(167,139,250,.5); background: var(--bg-card);
+    color: var(--text-3); font-size: 11px; padding: 12px; text-align: left;
+  }
+
+  /* ============ STEP: observe / save (interactive) ============ */
+  .obs-stage {
+    width: 560px; height: 218px; border-radius: 12px; position: relative;
+    background: linear-gradient(160deg, #17171c 0%, #101014 100%);
+    border: 1px solid rgba(255,255,255,.05); margin-bottom: 16px;
+  }
+  .prop {
+    position: absolute; border-radius: 10px; background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.07); padding: 10px 12px; text-align: left;
+    transition: border-color .15s, background .15s, box-shadow .15s;
+  }
+  .prop.hot, .p-row.hot {
+    border-color: rgba(236,229,216,.55); background: rgba(236,229,216,.07);
+    box-shadow: 0 0 10px rgba(236,229,216,.12);
+  }
+  .prop .p-title { color: var(--text-1); font-size: 10.5px; font-weight: 700; margin-bottom: 7px; }
+  .prop .p-line { height: 8px; border-radius: 3px; background: rgba(255,255,255,.08); margin-bottom: 6px; }
+  .prop .p-line.short { width: 60%; }
+  .prop .p-btn {
+    display: inline-block; margin-top: 4px; font-size: 9px; font-weight: 600;
+    color: var(--text-1); background: rgba(255,255,255,.1);
+    border-radius: 10px; padding: 3px 9px;
+  }
+  .prop .p-row {
+    font-size: 9.5px; color: var(--text-2); padding: 4px 6px; border-radius: 5px;
+    border: 1px solid transparent; margin-bottom: 3px;
+    font-family: -apple-system, sans-serif;
+    transition: border-color .15s, background .15s;
+  }
+  .prop .p-chart { display: flex; align-items: flex-end; gap: 4px; height: 24px; margin-top: 4px; }
+  .prop .p-chart i { width: 14px; background: rgba(167,139,250,.35); border-radius: 2px 2px 0 0; }
 
   /* observation pill (borrowed from the pills playground language) */
   .obs-pill {
@@ -231,36 +271,60 @@
     <span id="setup-btn-wrap"><button class="btn" id="setup-continue" disabled onclick="go(2)">Continue</button></span>
   </section>
 
-  <!-- ============ 3 · SAY IT ANYWHERE (observe / save) ============ -->
+  <!-- ============ 3 · TRY IT (dictation, mock of the locked Swift step) ============ -->
   <section class="step" data-step="2">
-    <h1>Say it anywhere</h1>
-    <div class="lines">
-      Not in a text field? Yorick saves what you say.<br>
-      It also saves what you were looking at: the app, the page, what you pointed at.
+    <h1>Try it here</h1>
+    <div class="lines" style="margin-bottom:14px">
+      Click the box, then hold
+      <span class="chip">⌥ OPT</span><span class="chip-plus">+</span><span class="chip">SPACE</span>
+      and say a sentence.
     </div>
-    <div class="demo-zone" id="demo">
-      <div class="demo-rows">
-        <div class="r w1" id="dr0"></div>
-        <div class="r" id="dr1"></div>
-        <div class="r" id="dr2"></div>
-        <div class="r" id="dr3" style="width:70%"></div>
+    <div class="mini-kb" id="mini-kb"></div>
+    <div class="kbd-note" style="margin:8px 0 14px"><u>Set your own key combination</u></div>
+    <div class="practice-box">Your words land here as you speak.</div>
+    <button class="btn" onclick="go(3)">Continue</button>
+    <div class="kbd-note">(mock of the already-built step, here for flow)</div>
+  </section>
+
+  <!-- ============ 4 · NOW TRY IT OUTSIDE A FIELD (observe / save, interactive) ============ -->
+  <section class="step" data-step="3">
+    <h1>Now try it outside a field</h1>
+    <div class="lines" style="margin-bottom:12px">
+      Nothing focused this time. While you talk, point at what you're talking about.<br>
+      <span class="dim">In this mock, hold SPACE for the hotkey, and sweep your cursor over the cards.</span>
+    </div>
+    <div class="obs-stage" id="obs-stage">
+      <!-- props to point at -->
+      <div class="prop" data-prop="Standup notes" style="left:26px; top:56px; width:150px;">
+        <div class="p-title">Standup notes</div>
+        <div class="p-line"></div><div class="p-line short"></div>
+        <div class="p-btn">Share</div>
       </div>
-      <div class="demo-cursor" id="demo-cursor">↖</div>
-      <div class="obs-pill" id="demo-pill">
+      <div class="prop" data-prop="Fix login flow" style="left:196px; top:56px; width:150px;">
+        <div class="p-title">Tasks</div>
+        <div class="p-row" data-prop="Fix login flow">Fix login flow</div>
+        <div class="p-row" data-prop="Ship v2 beta">Ship v2 beta</div>
+      </div>
+      <div class="prop" data-prop="Revenue chart" style="left:366px; top:56px; width:150px;">
+        <div class="p-title">Revenue</div>
+        <div class="p-chart"><i style="height:9px"></i><i style="height:16px"></i><i style="height:12px"></i><i style="height:22px"></i><i style="height:18px"></i></div>
+      </div>
+      <!-- the observation pill -->
+      <div class="obs-pill" id="obs-pill" style="opacity:0">
         <svg class="skull" viewBox="0 0 24 24"><path fill="#ece5d8" d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.6 1.2 4.8 3 6.2v3.1c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-3.1c1.8-1.4 3-3.6 3-6.2C20.5 5.6 17 2 12 2zM9 12.4a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zm6 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zM11 15.5h2v2.6h-2z"/></svg>
-        <span class="label" id="demo-label">Observing Figma</span>
-        <span class="eq"><i></i><i></i><i></i><i></i></span>
+        <span class="label" id="obs-label">Observing</span>
+        <span class="eq" id="obs-eq"><i></i><i></i><i></i><i></i></span>
       </div>
-      <div class="obs-card" id="demo-card">
-        <div class="src"><i></i> Figma · Homepage redesign</div>
-        <div class="words">"This section feels crowded, we should give it more air."</div>
-        <div class="rb">〜 <span>Figma: you want the hero section less crowded</span></div>
-        <div class="ctx">› context · 3</div>
+      <!-- the card it becomes -->
+      <div class="obs-card" id="obs-card">
+        <div class="src"><i></i> This screen</div>
+        <div class="words">"…and your words land here."</div>
+        <div class="ctx" id="obs-ctx">pointed at: nothing yet</div>
         <div class="acts"><span>Copy</span><span>Copy with context</span><span class="x">✕</span></div>
       </div>
     </div>
-    <button class="btn" onclick="go(3)">Continue</button>
-    <div class="kbd-note">One click copies it, context included.</div>
+    <button class="btn" onclick="go(4)">Continue</button>
+    <div class="kbd-note">Everything you swept over travels with the words.</div>
   </section>
 
   <!-- ============ 4 · HANDOFF (lives up here now) ============ -->
@@ -271,8 +335,7 @@
     <h1>Yorick lives in your menu bar</h1>
     <div class="lines">
       This window will close. Your saved items are under the skull.<br>
-      The hotkey works everywhere.<br>
-      <span class="dim">(try-it step comes before this in the real flow; it's locked, so it's skipped here)</span>
+      The hotkey works everywhere.
     </div>
     <button class="btn" onclick="go(0)">Start using Yorick</button>
   </section>
@@ -330,34 +393,78 @@
   });
   btnWrap.addEventListener('mouseleave', () => setupHint.classList.remove('lit'));
 
-  // ---------- observe/save demo loop ----------
-  const rows = ['dr0','dr1','dr2','dr3'].map(id => document.getElementById(id));
-  const cursor = document.getElementById('demo-cursor');
-  const pill = document.getElementById('demo-pill');
-  const card = document.getElementById('demo-card');
-  const label = document.getElementById('demo-label');
-  const stops = [[100, 40], [150, 66], [120, 92], [90, 118]];
-  let phase = 0;
-  function demoTick() {
-    phase = (phase + 1) % 10;
-    if (phase < 4) {                       // sweeping the rows, pill observing
-      card.classList.remove('show');
-      pill.style.opacity = 1;
-      label.textContent = 'Observing Figma';
-      const [x, y] = stops[phase];
-      cursor.style.left = x + 'px'; cursor.style.top = y + 'px';
-      rows.forEach((r, i) => r.classList.toggle('hot', i === phase));
-    } else if (phase < 6) {                // summarizing
-      label.textContent = 'Summarizing…';
-      rows.forEach(r => r.classList.remove('hot'));
-    } else if (phase < 9) {                // card blooms
-      pill.style.opacity = 0;
-      card.classList.add('show');
-    } else {                               // reset
-      card.classList.remove('show');
-    }
+  // ---------- try-it mock: static mini keyboard, hotkey highlighted ----------
+  (function buildMiniKB() {
+    const rows = [14, 14, 13, 12, 7]; // key counts per row
+    const kb = document.getElementById('mini-kb');
+    const targets = { 4: [1, 3] };    // bottom row: opt (idx1) + space (idx3)
+    rows.forEach((count, r) => {
+      const row = document.createElement('div');
+      row.className = 'kr';
+      for (let i = 0; i < count; i++) {
+        const k = document.createElement('div');
+        k.className = 'k';
+        let w = 21;
+        if (r === 4) w = i === 3 ? 108 : 30;           // spacebar row
+        else if (i === 0 || i === count - 1) w = 32;   // edge keys wider
+        k.style.width = w + 'px';
+        if (targets[r] && targets[r].includes(i)) k.classList.add('target');
+        row.appendChild(k);
+      }
+      kb.appendChild(row);
+    });
+  })();
+
+  // ---------- observe/save: hold SPACE, sweep, release, bloom ----------
+  const obsPill = document.getElementById('obs-pill');
+  const obsCard = document.getElementById('obs-card');
+  const obsLabel = document.getElementById('obs-label');
+  const obsEq = document.getElementById('obs-eq');
+  const obsCtx = document.getElementById('obs-ctx');
+  let observing = false;
+  let swept = [];
+
+  function obsReset() {
+    observing = false;
+    swept = [];
+    obsPill.style.opacity = 0;
+    obsCard.classList.remove('show');
+    document.querySelectorAll('.prop, .p-row').forEach(p => p.classList.remove('hot'));
   }
-  setInterval(demoTick, 900);
+
+  document.addEventListener('keydown', e => {
+    if (e.code !== 'Space' || current !== 3 || observing || e.repeat) return;
+    e.preventDefault();
+    obsReset();
+    observing = true;
+    obsLabel.textContent = 'Observing';
+    obsEq.style.display = 'flex';
+    obsPill.style.opacity = 1;
+  });
+
+  document.addEventListener('keyup', e => {
+    if (e.code !== 'Space' || current !== 3 || !observing) return;
+    e.preventDefault();
+    observing = false;
+    obsLabel.textContent = 'Summarizing…';
+    obsEq.style.display = 'none';
+    setTimeout(() => {
+      obsPill.style.opacity = 0;
+      obsCtx.textContent = swept.length
+        ? 'pointed at, in order: ' + swept.join(' · ')
+        : 'pointed at: nothing (sweep the cards next time)';
+      obsCard.classList.add('show');
+    }, 900);
+  });
+
+  document.getElementById('obs-stage').addEventListener('mouseover', e => {
+    if (!observing) return;
+    const target = e.target.closest('[data-prop]');
+    if (!target) return;
+    target.classList.add('hot');
+    const name = target.dataset.prop;
+    if (!swept.includes(name)) swept.push(name);
+  });
 </script>
 </body>
 </html>
