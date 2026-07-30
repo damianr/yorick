@@ -121,114 +121,6 @@
     color: var(--text-3); font-size: 11px; padding: 12px; text-align: left;
   }
 
-  /* ============ STEP: observe / save (interactive) ============ */
-  .obs-stage {
-    width: 560px; height: 218px; border-radius: 12px; position: relative;
-    background: linear-gradient(160deg, #17171c 0%, #101014 100%);
-    border: 1px solid rgba(255,255,255,.05); margin-bottom: 16px;
-  }
-  .prop {
-    position: absolute; border-radius: 10px; background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.07); padding: 10px 12px; text-align: left;
-    transition: border-color .15s, background .15s, box-shadow .15s;
-  }
-  .prop.hot, .p-row.hot {
-    border-color: rgba(236,229,216,.55); background: rgba(236,229,216,.07);
-    box-shadow: 0 0 10px rgba(236,229,216,.12);
-  }
-  .prop .p-title { color: var(--text-1); font-size: 10.5px; font-weight: 700; margin-bottom: 7px; }
-  .prop .p-line { height: 8px; border-radius: 3px; background: rgba(255,255,255,.08); margin-bottom: 6px; }
-  .prop .p-line.short { width: 60%; }
-  .prop .p-btn {
-    display: inline-block; margin-top: 4px; font-size: 9px; font-weight: 600;
-    color: var(--text-1); background: rgba(255,255,255,.1);
-    border-radius: 10px; padding: 3px 9px;
-  }
-  .prop .p-row {
-    font-size: 9.5px; color: var(--text-2); padding: 4px 6px; border-radius: 5px;
-    border: 1px solid transparent; margin-bottom: 3px;
-    font-family: -apple-system, sans-serif;
-    transition: border-color .15s, background .15s;
-  }
-  .prop .p-chart { display: flex; align-items: flex-end; gap: 4px; height: 24px; margin-top: 4px; }
-  .prop .p-chart i { width: 14px; background: rgba(167,139,250,.35); border-radius: 2px 2px 0 0; }
-
-  /* the deliberately terrible design — every crime pointable */
-  .ugly {
-    position: absolute; width: 340px; padding: 12px;
-    background: linear-gradient(135deg, #ffe97a, #ff9ecd);
-    border: 3px dashed #e14eca; border-radius: 4px;
-    font-family: "Comic Sans MS", "Chalkboard SE", cursive;
-    transition: outline .15s, box-shadow .15s;
-  }
-  .ugly .u-head {
-    color: #ff1f8f; font-size: 17px; font-weight: 800; letter-spacing: 1px;
-    text-shadow: 2px 2px 0 #24ffd0; margin-bottom: 7px;
-    transition: outline .15s, box-shadow .15s;
-  }
-  .ugly .u-body {
-    color: #7326a8; font-size: 9px; line-height: 1.35; text-align: justify;
-    margin-bottom: 9px; transition: outline .15s, box-shadow .15s;
-  }
-  .ugly .u-row { display: flex; align-items: center; gap: 12px; }
-  .ugly .u-btn {
-    background: #1dff5e; color: #d40000; font-size: 12px; font-weight: 800;
-    padding: 5px 13px; border-radius: 2px; border: 2px solid #d40000;
-    transform: rotate(-2deg); transition: outline .15s, box-shadow .15s;
-  }
-  .ugly .u-burst {
-    color: #ff4d00; font-size: 11px; font-weight: 800;
-    transform: rotate(4deg); transition: outline .15s, box-shadow .15s;
-  }
-  .ugly.hot, .ugly .u-head.hot, .ugly .u-body.hot, .ugly .u-btn.hot, .ugly .u-burst.hot {
-    outline: 2px solid rgba(236,229,216,.85);
-    box-shadow: 0 0 12px rgba(236,229,216,.35);
-  }
-
-  /* observation pill (borrowed from the pills playground language) */
-  .obs-pill {
-    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-    display: flex; align-items: center; gap: 9px;
-    padding: 8px 14px; border-radius: 999px;
-    background: rgba(10,10,12, .82);
-    box-shadow: 0 2px 10px rgba(0,0,0,.26), 0 0 14px rgba(236,229,216, var(--pill-halo, .25));
-    border: 1px solid rgba(236,229,216,.35);
-    transition: opacity .3s; z-index: 4;
-  }
-  .obs-pill .skull { width: 20px; height: 20px; fill: var(--bone); }
-  .obs-pill .label { color: var(--bone); font-size: 10.5px; font-weight: 500; }
-  .obs-pill .eq { display: flex; align-items: flex-end; gap: 2px; height: 11px; }
-  .obs-pill .eq i { width: 2.5px; background: var(--bone); border-radius: 1px; animation: eq .5s infinite alternate; }
-  .obs-pill .eq i:nth-child(1) { height: 4px; animation-delay: 0s; }
-  .obs-pill .eq i:nth-child(2) { height: 8px; animation-delay: .12s; }
-  .obs-pill .eq i:nth-child(3) { height: 11px; animation-delay: .24s; }
-  .obs-pill .eq i:nth-child(4) { height: 6px; animation-delay: .36s; }
-  @keyframes eq { to { transform: scaleY(.4); } }
-
-  /* the card it blooms into */
-  .obs-card {
-    position: absolute; top: 12px; left: 50%; transform: translateX(-50%) scale(.9);
-    width: 330px; border-radius: 14px; text-align: left;
-    background: rgba(10,10,12,.9); border: 1px solid rgba(255,255,255,.16);
-    box-shadow: 0 6px 24px rgba(0,0,0,.4);
-    padding: 12px 14px; opacity: 0; transition: all .35s ease; z-index: 5;
-  }
-  .obs-card.show { opacity: 1; transform: translateX(-50%) scale(1); }
-  .obs-card .src { display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,.75);
-                   font-size: 9.5px; font-weight: 600; margin-bottom: 7px; }
-  .obs-card .src i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
-  .obs-card .words { color: var(--text-1); font-size: 11px; line-height: 1.5;
-                     font-family: -apple-system, sans-serif; margin-bottom: 8px; }
-  .obs-card .rb { display: flex; gap: 5px; color: var(--text-2); font-style: italic;
-                  font-size: 9.5px; margin-bottom: 8px; }
-  .obs-card .ctx { color: var(--text-3); font-size: 9.5px; margin-bottom: 9px; }
-  .obs-card .acts { display: flex; gap: 7px; }
-  .obs-card .acts span {
-    font-size: 9.5px; font-weight: 600; color: rgba(255,255,255,.85);
-    background: rgba(255,255,255,.12); border-radius: 999px; padding: 4px 9px;
-  }
-  .obs-card .acts .x { margin-left: auto; }
-
   /* ============ shared small bits ============ */
   .kbd-note { color: var(--text-3); font-size: 10px; margin-top: 14px; }
   .granted-line { color: var(--green); font-size: 12px; margin-bottom: 10px; }
@@ -318,44 +210,7 @@
     <div class="kbd-note">(mock of the already-built step, here for flow)</div>
   </section>
 
-  <!-- ============ 4 · NOW TRY IT OUTSIDE A FIELD (observe / save, interactive) ============ -->
-  <section class="step" data-step="3">
-    <h1>Now try it outside a field</h1>
-    <div class="lines" style="margin-bottom:12px">
-      Nothing focused this time. This design has problems.<br>
-      Hold the hotkey, point at what's wrong, and say so.<br>
-      <span class="dim">In this mock, SPACE stands in for the hotkey.</span>
-    </div>
-    <div class="obs-stage" id="obs-stage">
-      <!-- a deliberately terrible design, every offense pointable -->
-      <div class="ugly" data-prop="the whole card" style="left:110px; top:34px;">
-        <div class="u-head" data-prop="the headline">SYNERGY DASHBOARD PRO!!</div>
-        <div class="u-body" data-prop="the wall of text">Leverage holistic paradigms to empower
-          best-in-class stakeholder alignment across all verticals and unlock
-          world-class synergies going forward on a go-forward basis.</div>
-        <div class="u-row">
-          <div class="u-btn" data-prop="the button">CLICK NOW</div>
-          <div class="u-burst" data-prop="the starburst">★ 100% FREE ★</div>
-        </div>
-      </div>
-      <!-- the observation pill -->
-      <div class="obs-pill" id="obs-pill" style="opacity:0">
-        <svg class="skull" viewBox="0 0 24 24"><path fill="#ece5d8" d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.6 1.2 4.8 3 6.2v3.1c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-3.1c1.8-1.4 3-3.6 3-6.2C20.5 5.6 17 2 12 2zM9 12.4a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zm6 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zM11 15.5h2v2.6h-2z"/></svg>
-        <span class="label" id="obs-label">Observing</span>
-        <span class="eq" id="obs-eq"><i></i><i></i><i></i><i></i></span>
-      </div>
-      <!-- the card it becomes -->
-      <div class="obs-card" id="obs-card">
-        <div class="src"><i></i> This screen</div>
-        <div class="words">"…and your review lands here, word for word."</div>
-        <div class="ctx" id="obs-ctx">pointed at: nothing yet</div>
-        <div class="acts"><span>Copy</span><span>Copy with context</span><span class="x">✕</span></div>
-      </div>
-    </div>
-    <button class="btn" onclick="go(4)">Continue</button>
-  </section>
-
-  <!-- ============ 4 · HANDOFF (lives up here now) ============ -->
+  <!-- ============ 4 · HANDOFF ============ -->
   <section class="step" data-step="3">
     <div class="logo-circle">
       <svg viewBox="0 0 24 24"><path fill="#ece5d8" d="M12 2C7 2 3.5 5.6 3.5 10.2c0 2.6 1.2 4.8 3 6.2v3.1c0 .8.7 1.5 1.5 1.5h8c.8 0 1.5-.7 1.5-1.5v-3.1c1.8-1.4 3-3.6 3-6.2C20.5 5.6 17 2 12 2zM9 12.4a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zm6 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zM11 15.5h2v2.6h-2z"/></svg>
@@ -373,7 +228,7 @@
 
 <div class="helper">
   <b>←/→</b> switch steps · click dots · checklist items grant on click ·
-  the observe demo loops on its own · edit copy directly in this file
+  edit copy directly in this file
 </div>
 
 <script>
@@ -443,56 +298,6 @@
     });
   })();
 
-  // ---------- observe/save: hold SPACE, sweep, release, bloom ----------
-  const obsPill = document.getElementById('obs-pill');
-  const obsCard = document.getElementById('obs-card');
-  const obsLabel = document.getElementById('obs-label');
-  const obsEq = document.getElementById('obs-eq');
-  const obsCtx = document.getElementById('obs-ctx');
-  let observing = false;
-  let swept = [];
-
-  function obsReset() {
-    observing = false;
-    swept = [];
-    obsPill.style.opacity = 0;
-    obsCard.classList.remove('show');
-    document.querySelectorAll('#obs-stage .hot').forEach(p => p.classList.remove('hot'));
-  }
-
-  document.addEventListener('keydown', e => {
-    if (e.code !== 'Space' || current !== 3 || observing || e.repeat) return;
-    e.preventDefault();
-    obsReset();
-    observing = true;
-    obsLabel.textContent = 'Observing';
-    obsEq.style.display = 'flex';
-    obsPill.style.opacity = 1;
-  });
-
-  document.addEventListener('keyup', e => {
-    if (e.code !== 'Space' || current !== 3 || !observing) return;
-    e.preventDefault();
-    observing = false;
-    obsLabel.textContent = 'Summarizing…';
-    obsEq.style.display = 'none';
-    setTimeout(() => {
-      obsPill.style.opacity = 0;
-      obsCtx.textContent = swept.length
-        ? 'pointed at, in order: ' + swept.join(' · ')
-        : 'pointed at: nothing (sweep the cards next time)';
-      obsCard.classList.add('show');
-    }, 900);
-  });
-
-  document.getElementById('obs-stage').addEventListener('mouseover', e => {
-    if (!observing) return;
-    const target = e.target.closest('[data-prop]');
-    if (!target) return;
-    target.classList.add('hot');
-    const name = target.dataset.prop;
-    if (!swept.includes(name)) swept.push(name);
-  });
 </script>
 </body>
 </html>
