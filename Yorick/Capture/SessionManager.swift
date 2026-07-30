@@ -1103,101 +1103,16 @@ final class SessionManager {
         }
     }
 
-    // MARK: - Text Insertion (from DictationManager)
+    // MARK: - Text Insertion
 
-    private struct PasteboardSnapshot {
-        let items: [[NSPasteboard.PasteboardType: Data]]
-
-        init(from pasteboard: NSPasteboard, excluding excludedTypes: Set<NSPasteboard.PasteboardType> = []) {
-            items = (pasteboard.pasteboardItems ?? []).compactMap { item in
-                var savedItem: [NSPasteboard.PasteboardType: Data] = [:]
-                for type in item.types where !excludedTypes.contains(type) {
-                    if let data = item.data(forType: type) {
-                        savedItem[type] = data
-                    }
-                }
-                return savedItem.isEmpty ? nil : savedItem
-            }
-        }
-
-        func restore(to pasteboard: NSPasteboard) {
-            pasteboard.clearContents()
-            guard !items.isEmpty else { return }
-
-            let pasteboardItems = items.map { savedItem in
-                let item = NSPasteboardItem()
-                for (type, data) in savedItem {
-                    item.setData(data, forType: type)
-                }
-                return item
-            }
-            pasteboard.writeObjects(pasteboardItems)
-        }
-    }
-
-    private static let dictationPasteboardTokenType = NSPasteboard.PasteboardType("com.heyyorick.Yorick.dictation-token")
-    private static let pasteboardRestoreDelay: TimeInterval = 2.0
-    private static var pendingPasteboardSnapshot: PasteboardSnapshot?
-    private static var pendingPasteboardToken: String?
-    private static var pendingPasteboardRestore: DispatchWorkItem?
-
-    /// Insert text at the current cursor position via clipboard + ⌘V.
+    /// Insert text at the current cursor position via clipboard + ⌘V — the
+    /// clipboard mechanics (snapshot, token guard, early-flush triggers,
+    /// restore) live in PasteboardLease.
     private static func insertTextAtCursor(_ text: String) {
-        let pasteboard = NSPasteboard.general
-        let currentToken = pasteboard.string(forType: dictationPasteboardTokenType)
-
-        // If Yorick already owns the pasteboard from a recent dictation,
-        // keep the original snapshot so rapid follow-up dictations still restore
-        // the user's real clipboard. If the user changed the clipboard, start a
-        // new lease from that current content.
-        if pendingPasteboardSnapshot == nil || currentToken != pendingPasteboardToken {
-            pendingPasteboardSnapshot = PasteboardSnapshot(
-                from: pasteboard,
-                excluding: [dictationPasteboardTokenType]
-            )
-        }
-        pendingPasteboardRestore?.cancel()
-
-        let token = UUID().uuidString
-        pendingPasteboardToken = token
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        pasteboard.setString(token, forType: dictationPasteboardTokenType)
-
-        // Paste via ⌘V at session level
+        PasteboardLease.begin(text)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            let source = CGEventSource(stateID: .combinedSessionState)
-
-            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
-            keyDown?.flags = .maskCommand
-            keyDown?.post(tap: .cgSessionEventTap)
-
-            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
-            keyUp?.flags = .maskCommand
-            keyUp?.post(tap: .cgSessionEventTap)
-
-            // Keep the transcript on the clipboard long enough for busy target
-            // apps to process the paste event. Restore only if the pasteboard
-            // still contains our token; never overwrite a user's newer copy.
-            let restore = DispatchWorkItem {
-                guard pasteboard.string(forType: dictationPasteboardTokenType) == token else {
-                    print("[Session] Clipboard changed before restore; leaving user's clipboard intact")
-                    if pendingPasteboardToken == token {
-                        pendingPasteboardSnapshot = nil
-                        pendingPasteboardToken = nil
-                        pendingPasteboardRestore = nil
-                    }
-                    return
-                }
-
-                pendingPasteboardSnapshot?.restore(to: pasteboard)
-                pendingPasteboardSnapshot = nil
-                pendingPasteboardToken = nil
-                pendingPasteboardRestore = nil
-                print("[Session] Clipboard restored after dictation paste")
-            }
-            pendingPasteboardRestore = restore
-            DispatchQueue.main.asyncAfter(deadline: .now() + pasteboardRestoreDelay, execute: restore)
+            PasteboardLease.postPasteKeystroke()
+            PasteboardLease.scheduleRestore()
         }
     }
 

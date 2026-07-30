@@ -104,6 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Never quit still holding the clipboard — put the user's content
+        // back if a paste lease is mid-flight.
+        PasteboardLease.flushEarly(reason: "app terminating")
         // Don't leave an orphaned whisper-server behind — it would survive the
         // app and keep serving a stale model after an update.
         WhisperServer.shutdown()
