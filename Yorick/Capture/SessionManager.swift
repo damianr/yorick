@@ -826,11 +826,18 @@ final class SessionManager {
                 // before anything is pasted, so the field only ever shows
                 // final text — no window where provisional words invite a
                 // Return. Bounded by the wall clock; any miss inserts the
-                // words as spoken. Secure fields never touch the model, and
-                // the LIST always keeps the un-cleaned transcript as the
-                // recovery path.
+                // words as spoken, and the LIST always keeps the un-cleaned
+                // transcript as the recovery path. Cleanup is for PROSE:
+                // shaped fields (email/URL/search) receive exact content and
+                // secure fields never touch the model — and tiny utterances
+                // are skipped outright, both because there's nothing to
+                // clean and because near-empty inputs are where guided
+                // generation misbehaves (an address dictated into Mail's To
+                // field came back with the response schema appended,
+                // field-reported).
                 var polished = cleaned
-                if fieldProfile != .secure,
+                if fieldProfile == .standard,
+                   cleaned.split(separator: " ").count >= 4,
                    UserDefaults.standard.bool(forKey: Self.cleanupDictationKey),
                    LocalIntelligence.isCleanupAvailable {
                     cleanupRunning = true

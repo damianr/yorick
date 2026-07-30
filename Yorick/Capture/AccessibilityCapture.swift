@@ -298,6 +298,17 @@ enum AccessibilityCapture {
                r.height > 1 {
                 return r
             }
+            // Chromium/Electron editors (the Claude app's composer) answer a
+            // zero-length range with a degenerate rect — but a ONE-character
+            // range at the selection's start has real extent and lands
+            // within a glyph of the true insertion point (field-reported:
+            // Mail anchored, Claude didn't).
+            var firstChar = CFRange(location: selection.location, length: 1)
+            if let firstCharValue = AXValueCreate(.cfRange, &firstChar),
+               let r = boundsForRangeValue(element, firstCharValue),
+               r.height > 1 {
+                return r
+            }
         }
         return boundsForRangeValue(element, rangeRef as! AXValue)
     }

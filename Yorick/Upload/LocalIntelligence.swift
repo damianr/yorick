@@ -89,11 +89,47 @@ enum LocalIntelligence {
             let response = try await session.respond(to: transcript, generating: CleanedTranscript.self)
             let cleaned = response.content.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleaned.isEmpty else { throw LocalIntelligenceError.emptyResponse }
+            // Prompt asks; code ENFORCES: the output may contain only words
+            // that appeared in the input. A guided-generation miss on a
+            // short input echoed the response SCHEMA into the text field
+            // ("… response format in json. name: CleanedTranscript …",
+            // field-reported pasted into Mail). Any novel word means the
+            // edit is untrustworthy — throw, and the caller inserts the
+            // words exactly as spoken. Case and punctuation changes pass
+            // (that's cleanup's actual job).
+            let inputWords = Set(Self.words(of: transcript))
+            let novel = Self.words(of: cleaned).filter { word in
+                if inputWords.contains(word) { return false }
+                // Numerals for spelled numbers are a legitimate edit
+                // ("three PM" → "3 PM" — eval-measured false reject).
+                if let spelled = Self.spelledNumbers[word], inputWords.contains(spelled) { return false }
+                return true
+            }
+            guard novel.isEmpty else { throw LocalIntelligenceError.emptyResponse }
             return cleaned
         }
         #endif
         throw LocalIntelligenceError.unavailable
     }
+
+    /// Lowercased alphanumeric tokens — punctuation and capitalization are
+    /// cleanup's legitimate edits, so they never count as novel.
+    private static func words(of text: String) -> [String] {
+        text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+    }
+
+    /// Digit → spelled form, for the novel-word guard's numeral allowance.
+    private static let spelledNumbers: [String: String] = [
+        "0": "zero", "1": "one", "2": "two", "3": "three", "4": "four",
+        "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine",
+        "10": "ten", "11": "eleven", "12": "twelve", "13": "thirteen",
+        "14": "fourteen", "15": "fifteen", "16": "sixteen", "17": "seventeen",
+        "18": "eighteen", "19": "nineteen", "20": "twenty", "30": "thirty",
+        "40": "forty", "50": "fifty", "60": "sixty", "70": "seventy",
+        "80": "eighty", "90": "ninety", "100": "hundred", "1000": "thousand",
+    ]
 }
 
 #if canImport(FoundationModels)
