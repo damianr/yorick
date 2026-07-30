@@ -25,19 +25,28 @@ struct MenuBarPanelView: View {
             captureList
         }
         .frame(width: 420, height: 560)
+        // The pill's glass recipe, pinned (PillGlass): same frost + black
+        // 0.85 background, same bone rim 0.26→0.08 at 1pt — the panel and
+        // the pills read as one material. Drop shadow stays the system
+        // panel shadow (an NSPanel already casts one; doubling it up with
+        // the pill's SwiftUI shadows read as a smudge).
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Theme.bgPrimary.opacity(0.98))
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.black.opacity(0.85))
+            }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [.white.opacity(0.18), .white.opacity(0.05)],
+                        colors: [Theme.bone.opacity(0.26), Theme.bone.opacity(0.08)],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 0.75
+                    lineWidth: 1
                 )
         )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
