@@ -277,15 +277,35 @@ enum AccessibilityCapture {
         return field.insetBy(dx: -40, dy: -40).intersects(r)
     }
 
-    /// Caret from an element's own selected-text range (an empty range = the
-    /// insertion point; a non-empty one = the selection, whose top-left we use).
+    /// Caret from an element's own selected-text range. A NON-EMPTY selection
+    /// is about to be REPLACED by the paste, so the landing spot is the
+    /// selection's START — ask for the zero-length range there. (Asking for
+    /// the whole selection's bounds handed back a rect spanning the field on
+    /// multi-line selections, which isSaneCaret rightly rejected as "not a
+    /// caret" — and the pill went home instead of anchoring; field-reported.)
+    /// Falls back to the full selection's rect for apps that return
+    /// degenerate bounds for empty ranges.
     private static func boundsForSelectedRange(_ element: AXUIElement) -> CGRect? {
         var rangeRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
               let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
+        var selection = CFRange()
+        guard AXValueGetValue((rangeRef as! AXValue), .cfRange, &selection) else { return nil }
+        if selection.length > 0 {
+            var collapsed = CFRange(location: selection.location, length: 0)
+            if let collapsedValue = AXValueCreate(.cfRange, &collapsed),
+               let r = boundsForRangeValue(element, collapsedValue),
+               r.height > 1 {
+                return r
+            }
+        }
+        return boundsForRangeValue(element, rangeRef as! AXValue)
+    }
+
+    private static func boundsForRangeValue(_ element: AXUIElement, _ range: AXValue) -> CGRect? {
         var out: CFTypeRef?
         guard AXUIElementCopyParameterizedAttributeValue(
-            element, kAXBoundsForRangeParameterizedAttribute as CFString, rangeRef, &out
+            element, kAXBoundsForRangeParameterizedAttribute as CFString, range, &out
         ) == .success, let out, CFGetTypeID(out) == AXValueGetTypeID() else { return nil }
         var rect = CGRect.zero
         guard AXValueGetValue((out as! AXValue), .cgRect, &rect) else { return nil }
