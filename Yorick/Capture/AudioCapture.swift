@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import os
 
 // MARK: - WAV File Writer
 
@@ -103,8 +104,18 @@ final class AudioCapture: NSObject, @unchecked Sendable {
 
     var onLevelUpdate: (@Sendable (Float) -> Void)?
 
+    /// Spin-up diagnostics: speech between the hotkey and the FIRST sample
+    /// buffer is never captured — AVCaptureSession.startRunning is the
+    /// dominant cost and gets slower when the device renegotiates (voice
+    /// isolation re-engaging around app switches; field reports of swallowed
+    /// first words). Measure it in the field:
+    ///   log show --process Yorick --last 1h | grep audioSpinup
+    private static let spinupLog = Logger(subsystem: "com.heyyorick.Yorick", category: "audioSpinup")
+    private var spinupStart: ContinuousClock.Instant?
+
     func start(preferredDeviceUID: String? = nil) async throws -> URL {
         cleanStop()
+        spinupStart = ContinuousClock.now
 
         let granted: Bool
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -251,6 +262,13 @@ extension AudioCapture: AVCaptureAudioDataOutputSampleBufferDelegate {
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         guard isActive else { return }
+
+        if let started = spinupStart {
+            spinupStart = nil
+            let elapsed = (ContinuousClock.now - started).components
+            let ms = Double(elapsed.seconds) * 1000 + Double(elapsed.attoseconds) / 1e15
+            Self.spinupLog.notice("firstBuffer ms=\(String(format: "%.0f", ms), privacy: .public)")
+        }
 
         // Create WAV writer lazily from first sample's format
         if wavWriter == nil, let url = fileURL {
