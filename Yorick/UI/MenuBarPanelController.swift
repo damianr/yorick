@@ -63,8 +63,12 @@ final class MenuBarPanelController {
     /// Pre-rendered colored variants — contentTintColor on the template SVG
     /// rendered as EMPTY during recording (field report), so state colors
     /// are baked into non-template images and swapped whole.
-    private static let recordingImage = tinted(.systemRed)
-    private static let transcribingImage = tinted(.systemOrange)
+    /// Live states wear the pill's GLOW color (Theme.glow #d8c39c): red
+    /// read as an alarm, and the skull turning warm gold says "live" in the
+    /// same voice as the halo. Only error keeps an attention color.
+    private static let glowTint = NSColor(red: 0.847, green: 0.765, blue: 0.612, alpha: 1)
+    private static let recordingImage = tinted(glowTint)
+    private static let transcribingImage = tinted(glowTint)
     private static let errorImage = tinted(.systemYellow)
 
     private static func tinted(_ color: NSColor) -> NSImage {

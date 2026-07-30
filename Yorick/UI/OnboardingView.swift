@@ -262,7 +262,7 @@ struct OnboardingView: View {
                 Text("Click the box, then hold")
                     .font(Theme.mono(11.5))
                     .foregroundStyle(Theme.textSecondary)
-                keyChips
+                HotkeyChips()
                 Text("and say a sentence.")
                     .font(Theme.mono(11.5))
                     .foregroundStyle(Theme.textSecondary)
@@ -287,29 +287,9 @@ struct OnboardingView: View {
             }
             .buttonStyle(.plain)
             if showShortcutRecorder {
-                // The recorder, dressed as one of ours: pill container,
-                // explicit dismiss. It also auto-hides the moment a new
-                // combo lands — the chips and keyboard re-highlighting ARE
-                // the confirmation.
-                HStack(spacing: 8) {
-                    ShortcutRecorderView(name: .toggleSession, label: "", compact: true)
-                    Button {
-                        withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder = false }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(Theme.textTertiary)
-                            .frame(width: 18, height: 18)
-                            .background(Circle().fill(Color.white.opacity(0.08)))
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
+                CompactRecorderPill {
+                    withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder = false }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(Theme.bgElevated))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.75))
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
             practiceField
             if !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -329,32 +309,6 @@ struct OnboardingView: View {
             ]
         ) {
             primaryButton("Start using Yorick") { onDone() }
-        }
-    }
-
-    /// Chips for the current hotkey: "⌥ OPT" + "SPACE".
-    private var keyChips: some View {
-        HStack(spacing: 4) {
-            ForEach(Array(ShortcutLabel.chips.enumerated()), id: \.offset) { index, chip in
-                if index > 0 {
-                    Text("+")
-                        .font(Theme.mono(10))
-                        .foregroundStyle(Theme.textTertiary)
-                }
-                Text(chip)
-                    .font(Theme.mono(10.5, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(Theme.bgElevated)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.75)
-                    )
-            }
         }
     }
 

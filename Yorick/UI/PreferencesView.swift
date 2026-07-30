@@ -37,15 +37,19 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 sectionLabel("RECORDING")
-                settingsRow {
+                // The onboarding try-it's hotkey block, verbatim: chips, the
+                // live keyboard map, rebinding as a quiet link — teach by
+                // hands here too, not a bare recorder field.
+                VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         rowLabel("Hold to talk")
                         caption("Hold to record, release to finish. In a text field your words are typed; anywhere else they're saved.")
                     }
-                    Spacer(minLength: 16)
-                    ShortcutRecorderView(name: .toggleSession, label: "")
-                        .frame(maxWidth: 200)
+                    HotkeyEditorView()
+                        .environment(session)
+                        .padding(.vertical, 4)
                 }
+                .padding(.vertical, 10)
                 settingsRow {
                     VStack(alignment: .leading, spacing: 3) {
                         rowLabel("Clean up dictation before it types")
