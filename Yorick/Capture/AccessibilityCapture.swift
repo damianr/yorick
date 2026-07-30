@@ -258,14 +258,28 @@ enum AccessibilityCapture {
         // moved. Once the assistive tree is unlocked, focus lands on the real
         // text element (Pages → AXTextArea) whose selected-range bounds tracks
         // the caret; WebKit (Mail) exposes it via text markers instead.
-        if let r = boundsForSelectedRange(element), isSaneCaret(r, within: fieldFrame) { return r }
-        if let r = boundsForSelectedTextMarker(element), isSaneCaret(r, within: fieldFrame) { return r }
+        if let r = boundsForSelectedRange(element).map(collapsedToFirstLine), isSaneCaret(r, within: fieldFrame) { return r }
+        if let r = boundsForSelectedTextMarker(element).map(collapsedToFirstLine), isSaneCaret(r, within: fieldFrame) { return r }
         // Widen coverage: some editors expose the caret's LINE but not usable
         // selected-range bounds (or return garbage for them, like Terminal).
         // The line rectangle gives the right vertical position — enough to place
         // the pill on the caret's line rather than falling to bottom-center.
         if let r = boundsForInsertionLine(element), isSaneCaret(r, within: fieldFrame) { return r }
         return nil
+    }
+
+    /// A SELECTION's bounding box anchors the pill at its TOP-LEFT — the
+    /// paste replaces the selection, so the landing area begins there. Tall
+    /// (multi-line) boxes collapse to a caret-sized rect on their first
+    /// line: the raw box floated the pill into the selection's middle and,
+    /// past isSaneCaret's height cap, lost the anchor entirely. This is
+    /// also the ONLY selection-start source for Chromium (the Claude app):
+    /// its bounds-for-range answers are degenerate for every range and it
+    /// doesn't implement the marker-collapse API (probe-measured), so the
+    /// full marker-range box is all it ever gives us.
+    private static func collapsedToFirstLine(_ r: CGRect) -> CGRect {
+        guard r.height > 44 else { return r }
+        return CGRect(x: r.minX, y: r.minY, width: 2, height: 20)
     }
 
     /// A caret must be a thin, finite rectangle sitting inside (or barely
