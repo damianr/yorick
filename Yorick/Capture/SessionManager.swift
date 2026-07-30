@@ -35,22 +35,6 @@ struct TransientNotice: Equatable, Identifiable {
     var sticky: Bool = false
 }
 
-/// A just-completed insertion, shown as an actionable pill next to the field:
-/// Cleanup re-inserts a disfluency-free version; Undo removes the paste.
-struct InsertionReceipt: Identifiable, Equatable {
-    let id = UUID()
-    /// The async ⌘V paste lands ~50–200ms after the receipt appears — the
-    /// text-still-present check must not run before the text has arrived.
-    let createdAt = Date()
-    let captureID: UUID
-    /// Exactly what was inserted (transcript + trailing space).
-    let insertedText: String
-    /// App that received the paste — actions bail if focus has moved elsewhere.
-    let targetApp: String?
-    /// Flip-key hint line.
-    let hint: String?
-}
-
 /// Where the pill sits relative to its anchor, driving both window origin
 /// and how the pill aligns inside the fixed-size transparent window.
 /// Anchored placements are LEADING-aligned — the pill sits at the field's
@@ -77,38 +61,10 @@ final class SessionManager {
     var captureMode: CaptureMode = .contextual
     var lastSavedCapture: Capture?  // For toast display
     var transientNotice: TransientNotice?  // For dropped-capture HUD notice
-    /// Actionable pill after a dictation lands: Cleanup / Undo at the field.
-    var insertionReceipt: InsertionReceipt?
-    /// The receipt is attached to its field: hidden while the field isn't
-    /// focused (blur, window/tab switch), shown again on refocus.
-    var receiptHidden = false
-    /// Hover is intent — the fade clock and deadline stand down while the
-    /// pointer is on the receipt.
-    private var receiptPillHovered = false
-    var cleanupInProgress = false
-    /// Absolute end of the receipt's life — survives hide/show cycles.
-    private var receiptDeadline: Date?
-    /// Snapshot of the field's content taken once the paste has landed. The
-    /// receipt lives only while the field still matches it: any edit, delete,
-    /// or Return-to-send makes Cleanup/Undo stale, so the receipt retires.
-    private var receiptContentSignature: AccessibilityCapture.ContentSignature?
-    /// The field's content signature from JUST BEFORE the paste. If the first
-    /// readable signature after the grace window equals this (or is empty),
-    /// Return already fired inside the grace window and the text is gone —
-    /// that state must be dismissed, never adopted as the baseline.
-    private var receiptPreInsertSignature: AccessibilityCapture.ContentSignature?
-    /// Geometry fallback for fields exposing no content info: a send snaps an
-    /// autogrown composer back toward its single-line height.
-    private var receiptBaselineFieldHeight: CGFloat?
-    /// The words as spoken, kept so auto-cleanup can be reverted.
-    private(set) var rawTranscriptForRevert: String?
-    /// Whether auto-cleanup actually changed the text — the receipt only has a
-    /// reason to exist (and offer Revert) when it did.
-    private(set) var cleanupApplied = false
-    /// Caret position just after the paste, for content-blind fields (Mail's
-    /// WebKit body): any later caret movement means the user typed or edited, so
-    /// the receipt retires — ⌘Z/Cleanup no longer map cleanly to our insertion.
-    private var receiptBaselineCaret: CGRect?
+    /// True while the opt-in pre-insert cleanup pass is running — the pill
+    /// says "Cleaning up…" so the wait between release and landing is
+    /// announced, never a silent stall.
+    var cleanupRunning = false
     /// Where the pill sits relative to its anchor (see HUDPillPlacement).
     var hudPillPlacement: HUDPillPlacement = .bottomCenter
     let captureStore = CaptureStore()
@@ -118,7 +74,6 @@ final class SessionManager {
     /// feel attached: when this exact element stops being focused (window or
     /// tab switch), the pill leaves with it.
     private var hudAnchor: AccessibilityCapture.FieldTarget?
-    private var receiptDismissTask: Task<Void, Never>?
 
     private(set) var startedAt: Date?
     private(set) var appName: String?
@@ -187,13 +142,14 @@ final class SessionManager {
         captureMode = forcedMode ?? .contextual
         startConfidence = .low
         modeDecisionSummary = "mode=\(captureMode.rawValue), forced=\(modeWasForced), resolving"
-        // A new utterance supersedes any lingering receipt — and it must be
-        // cleared BEFORE the anchor is chosen: setHUDAnchor routes to the
-        // receipt's gutter dock while a receipt exists, which parked the
-        // RECORDING pill at the field's left edge when dictations came
-        // back-to-back.
-        dismissInsertionReceipt(reason: "superseded by new utterance")
         startCapture()
+
+        // Pre-insert cleanup pays its model load NOW, while the user is
+        // talking — by release the session is warm and the pass costs only
+        // generation.
+        if UserDefaults.standard.bool(forKey: Self.cleanupDictationKey) {
+            LocalIntelligence.prewarmCleanup()
+        }
 
         // DICTATION LEADS. Before the pill's first paint, a fast field
         // probe (direct role match, no heuristics) races an 80ms clock:
@@ -318,6 +274,7 @@ final class SessionManager {
         // state or save anything for a session the user already abandoned.
         processingGeneration &+= 1
         state = .idle
+        cleanupRunning = false
         print("[Session] Transcription cancelled by user")
     }
 
@@ -358,16 +315,6 @@ final class SessionManager {
             return
         }
         startAnchorTracking()
-
-        // The receipt has its own placement rule: the gutter dock (left margin of
-        // the field), which by construction never covers the inserted text and is
-        // reflow-stable in bottom-anchored composers. Only once the skull is
-        // actually on screen, though — while cleanup runs the transcribing pill is
-        // showing and belongs at the caret like every other live pill.
-        if insertionReceipt != nil {
-            setReceiptGutterAnchor(target)
-            return
-        }
 
         // Placement tiers: the pill sits at the CARET when the app exposes it.
         // When it doesn't, ONE narrow exception before honest bottom-center:
@@ -455,73 +402,6 @@ final class SessionManager {
         )
     }
 
-    /// Diameter of the receipt's skull circle (HUDContentView.receiptPillHeight)
-    /// and its clearance from the field's edge.
-    private static let receiptSkullSize: CGFloat = 30
-    private static let receiptGutterGap: CGFloat = 6
-
-    /// The receipt's gutter dock: the skull sits in the margin just OUTSIDE the
-    /// field's left edge — marginalia, like a Docs comment or an editor gutter.
-    /// Vertically it rides the caret line when the app exposes one; otherwise it
-    /// aligns with the field's bottom-left corner, which in a bottom-anchored
-    /// composer (every chat/messaging app) is exactly where the cursor lives —
-    /// and, because those composers grow UPWARD, the bottom edge never moves, so
-    /// this dock is naturally reflow-stable. Outside the field means it can never
-    /// cover the inserted text. No margin room → honest bottom-center.
-    private func setReceiptGutterAnchor(_ target: AccessibilityCapture.FieldTarget) {
-        let fieldAX = target.frame
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-
-        // Skull center in AX coords: outside-left, at caret line or bottom corner.
-        let skullCenterX = fieldAX.minX - Self.receiptGutterGap - Self.receiptSkullSize / 2
-        let skullCenterYAX = target.caret?.midY ?? (fieldAX.maxY - Self.receiptSkullSize / 2)
-
-        // Flip to Cocoa and find the screen via the field's flipped rect.
-        let flippedField = NSRect(
-            x: fieldAX.minX,
-            y: primaryHeight - fieldAX.maxY,
-            width: fieldAX.width,
-            height: fieldAX.height
-        )
-        let skullCenterY = primaryHeight - skullCenterYAX
-        guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(flippedField) }) ?? NSScreen.main else {
-            hudPillPlacement = .bottomCenter
-            NotificationCenter.default.post(name: .hudReposition, object: nil)
-            return
-        }
-        let visible = screen.visibleFrame
-
-        // The dock must fit: skull fully on-screen in the margin. A field flush
-        // against the screen edge has no gutter — fall home rather than cover text.
-        let skullLeft = skullCenterX - Self.receiptSkullSize / 2
-        guard skullLeft >= visible.minX + 2,
-              skullCenterY - Self.receiptSkullSize / 2 >= visible.minY,
-              skullCenterY + Self.receiptSkullSize / 2 <= visible.maxY else {
-            Self.placementLog.info("gutter: no margin room → bottom-center (field=\(NSStringFromRect(fieldAX), privacy: .public))")
-            hudPillPlacement = .bottomCenter
-            NotificationCenter.default.post(name: .hudReposition, object: nil)
-            return
-        }
-
-        // Window carries the pill at its bottom-leading corner (content padding
-        // 6pt horizontal, 8pt vertical) and the hover stack grows up/rightward.
-        hudPillPlacement = .aboveField
-        let origin = NSPoint(
-            x: skullLeft - 6,
-            y: (skullCenterY - Self.receiptSkullSize / 2) - 8
-        )
-        Self.placementLog.info("""
-            gutter placement: fieldAX=\(NSStringFromRect(fieldAX), privacy: .public) \
-            caret=\(target.caret.map(NSStringFromRect) ?? "nil", privacy: .public) \
-            origin=\(NSStringFromPoint(origin), privacy: .public)
-            """)
-        NotificationCenter.default.post(
-            name: .hudReposition,
-            object: nil,
-            userInfo: ["origin": NSValue(point: origin)]
-        )
-    }
-
     // MARK: - Anchor tracking (follow a growing field)
 
     /// While the pill is anchored, follow the field: autogrowing composers
@@ -566,7 +446,7 @@ final class SessionManager {
         // the exit animation (~0.3s) first: repositioning the window while the
         // pill is mid-fade flashed a ghost of it at the new spot.
         let pillVisible = state == .recording || state == .transcribing
-            || insertionReceipt != nil || transientNotice != nil
+            || transientNotice != nil
         guard pillVisible else {
             pillGoneTicks += 1
             if pillGoneTicks >= 2 { // ≥500ms at 4 Hz — fade is long done
@@ -577,101 +457,6 @@ final class SessionManager {
         pillGoneTicks = 0
 
         let current = AccessibilityCapture.focusedEditableFieldTarget()
-
-        if let receipt = insertionReceipt {
-            // Receipt phase: attached to the EXACT field the text landed in.
-            // Focus elsewhere (window/tab switch, blur) HIDES the pill; focus
-            // returning to that element brings it back with a fresh fade
-            // window. A hard deadline bounds the receipt's total life —
-            // ⌘Z semantics drift as the field accumulates other edits — but
-            // a hovered receipt is about to be clicked; let it be.
-            if let deadline = receiptDeadline, Date() > deadline, !receiptPillHovered {
-                dismissInsertionReceipt(reason: "90s deadline")
-                return
-            }
-            // Mid-cleanup, visibility is owned by the cleanup task's own
-            // focus re-verification — don't fight it from the tracker.
-            guard !cleanupInProgress else { return }
-
-            if let current, current.isSameField(as: anchor) {
-                anchorMissTicks = 0
-                // The receipt is attached to the TEXT, not just the field:
-                // the first readable tick after the paste lands snapshots the
-                // field's content signature, and ANY change to it afterward —
-                // Return-to-send, delete, cut, edits — retires the receipt
-                // for good. (Grace period: the ⌘V paste is asynchronous.)
-                if Date().timeIntervalSince(receipt.createdAt) > 1.0 {
-                    if let signature = AccessibilityCapture.fieldContentSignature(current.element) {
-                        if let baseline = receiptContentSignature {
-                            if signature != baseline {
-                                dismissInsertionReceipt(reason: "content changed \(baseline.raw) → \(signature.raw)")
-                                return
-                            }
-                        } else if signature.length == 0 || signature == receiptPreInsertSignature {
-                            // Return fired INSIDE the grace window: the field
-                            // is already empty / back to its pre-insert state.
-                            // The text shipped before we could baseline —
-                            // dismiss; never adopt this as the baseline.
-                            dismissInsertionReceipt(reason: "text gone before baseline, sig=\(signature.raw)")
-                            return
-                        } else {
-                            Self.receiptLog.info("baseline adopted \(signature.raw, privacy: .public)")
-                            receiptContentSignature = signature
-                        }
-                    } else {
-                        // No content attributes at all (Mail's WebKit body). The
-                        // caret is the edit tell: it sits at the end of the paste,
-                        // and any movement means the user typed or clicked away —
-                        // retire the receipt. Geometry (a composer collapsing on
-                        // send) is the backstop.
-                        if let baseCaret = receiptBaselineCaret {
-                            if let c = current.caret,
-                               hypot(c.midX - baseCaret.midX, c.midY - baseCaret.midY) > 6 {
-                                dismissInsertionReceipt(reason: "caret moved — manual edit")
-                                return
-                            }
-                        } else if let c = current.caret {
-                            receiptBaselineCaret = c
-                        }
-                        let height = current.frame.height
-                        if let baseline = receiptBaselineFieldHeight {
-                            if height < baseline * 0.55, baseline - height > 20 {
-                                dismissInsertionReceipt(reason: "field height collapsed \(Int(baseline)) → \(Int(height))")
-                                return
-                            }
-                        } else {
-                            Self.receiptLog.info("no content attributes — geometry fallback, h=\(Int(height), privacy: .public)")
-                            receiptBaselineFieldHeight = height
-                        }
-                    }
-                }
-                if receiptHidden {
-                    Self.receiptLog.info("shown again (field refocused)")
-                    receiptHidden = false
-                    scheduleReceiptAutoDismiss(receipt)
-                }
-                // Follow the LIVE cursor. A fixed pin drifts badly in composers
-                // that grow/reflow after the paste (every chat + messaging app:
-                // the text slides up through the pinned screen point). Tracking
-                // lets the receipt settle at the cursor once the reflow finishes
-                // and hold there. The dismiss checks above run FIRST, so a genuine
-                // user edit still retires it before this repositions — only the
-                // post-paste settle (inside the grace window) moves the pill.
-                followAnchorGeometry(current)
-            } else if current != nil {
-                // A single tick resolving a DIFFERENT element is usually WebKit/AX
-                // identity flapping (Mail's compose body hands back non-equal
-                // element refs across ticks), not a real focus change. Require
-                // sustained evidence before hiding — the same grace a missed read
-                // gets — so the receipt stops vanishing a beat after it appears.
-                anchorMissTicks += 1
-                if anchorMissTicks >= 2 { hideReceipt() }
-            } else {
-                anchorMissTicks += 1
-                if anchorMissTicks >= 2 { hideReceipt() }
-            }
-            return
-        }
 
         // Recording/transcribing: the pill previews wherever the dictation
         // would land NOW, so it follows focus freely — and goes home when no
@@ -688,18 +473,6 @@ final class SessionManager {
         }
     }
 
-    /// Hide (not dismiss) the receipt: the pill leaves with its field but the
-    /// receipt state survives until the deadline, so refocusing the field
-    /// brings Cleanup/Undo back. The fade clock stops while hidden.
-    private func hideReceipt() {
-        guard !receiptHidden else { return }
-        Self.receiptLog.info("hidden (field lost focus)")
-        receiptHidden = true
-        receiptPillHovered = false
-        receiptDismissTask?.cancel()
-        receiptDismissTask = nil
-    }
-
     /// Reposition only on real movement — AX geometry jitters by a pixel —
     /// but always refresh the stored identity.
     private func followAnchorGeometry(_ target: AccessibilityCapture.FieldTarget) {
@@ -711,8 +484,8 @@ final class SessionManager {
         let newCaret = target.caret
         switch (oldCaret, newCaret) {
         case (nil, nil):
-            // No caret either side — but the FIELD may have moved (window drag,
-            // composer reflow), and the receipt's gutter dock derives from it.
+            // No caret either side — but the FIELD may have moved (window
+            // drag, composer reflow); keep the tracked identity fresh.
             let old = hudAnchor?.frame ?? .zero
             let f = target.frame
             if abs(f.minX - old.minX) > 1 || abs(f.minY - old.minY) > 1 ||
@@ -734,182 +507,39 @@ final class SessionManager {
         }
     }
 
-    // MARK: - Post-insertion actions (Cleanup / Undo)
+    // MARK: - Pre-insert cleanup
 
-    /// Receipt lifecycle diagnostics — intermittent "pill didn't dismiss on
-    /// Return" reports need the decision path visible after the fact:
-    /// `log show --process Yorick --last 5m | grep receipt`
-    /// (print() is lost for apps launched via Finder/open).
-    private static let receiptLog = Logger(subsystem: "com.heyyorick.Yorick", category: "receipt")
     /// HUD placement diagnostics: `log show --process Yorick --info | grep placement`.
     private static let placementLog = Logger(subsystem: "com.heyyorick.Yorick", category: "placement")
 
-    /// The post-insertion receipt (Cleanup/Undo pill) is opt-in: the inserted
-    /// words appearing at the cursor are their own confirmation, and with flip
-    /// gone the receipt's real payload is just Cleanup. Off by default.
-    static let showInsertionReceiptKey = "showInsertionReceipt"
+    /// Opt-in: run the on-device disfluency pass BETWEEN transcription and
+    /// the paste, so the field only ever shows final text. This replaced the
+    /// post-insert receipt (skull-in-the-gutter offering Cleanup): while
+    /// that pass ran, the raw text sat in the field with no strong
+    /// in-progress tell, and a Return during the window sent the message —
+    /// then the finished cleanup pasted into the emptied composer. The
+    /// focus check couldn't catch it (chat apps keep the same field focused
+    /// after send). Editing a live field is a read-modify-write against the
+    /// user; editing before the paste has no such race. Off by default.
+    static let cleanupDictationKey = "cleanupDictation"
 
-    private func presentInsertionReceipt(captureID: UUID, insertedText: String, targetApp: String?) {
-        guard UserDefaults.standard.bool(forKey: Self.showInsertionReceiptKey) else { return }
-        let receipt = InsertionReceipt(
-            captureID: captureID,
-            insertedText: insertedText,
-            targetApp: targetApp,
-            hint: nil
-        )
-        insertionReceipt = receipt
-        receiptHidden = false
-        receiptDeadline = Date().addingTimeInterval(90)
-        receiptContentSignature = nil
-        receiptBaselineFieldHeight = nil
-        receiptBaselineCaret = nil
-        rawTranscriptForRevert = nil
-        cleanupApplied = false
-        // Deliberately no re-anchor here: the pill stays where dictation left it
-        // (at the caret) so the transcribing spinner can carry straight through
-        // cleanup. It moves to the gutter dock only once the skull replaces the
-        // spinner — see autoCleanupLastInsertion.
-        // receiptPreInsertSignature is NOT reset here — the insert paths
-        // capture it right before pasting, just ahead of this call.
-        Self.receiptLog.info("presented target=\(targetApp ?? "nil", privacy: .public) preInsert=\(self.receiptPreInsertSignature?.raw ?? "nil", privacy: .public)")
-        scheduleReceiptAutoDismiss(receipt)
-        // Cleanup is offered, not applied. Auto-applying was tried and the timing
-        // never felt right: the text visibly rewrote itself a beat after landing.
-        // The skull sits in the gutter and waits to be asked.
-        if let anchor = hudAnchor { setHUDAnchor(anchor) }
-    }
-
-    /// Each VISIBLE stretch gets 10s before the receipt fades — the clock
-    /// pauses while the receipt is hidden (field unfocused) so returning to
-    /// the tab brings it back with a fresh window.
-    private func scheduleReceiptAutoDismiss(_ receipt: InsertionReceipt) {
-        receiptDismissTask?.cancel()
-        receiptDismissTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            guard !Task.isCancelled, let self, self.insertionReceipt?.id == receipt.id,
-                  !self.cleanupInProgress, !self.receiptHidden, !self.receiptPillHovered else { return }
-            self.dismissInsertionReceipt(reason: "faded after 10s visible")
-        }
-    }
-
-    /// Pointer on the receipt suspends the fade clock; leaving restarts a
-    /// fresh 10s window.
-    func receiptHoverChanged(_ hovering: Bool) {
-        receiptPillHovered = hovering
-        guard let receipt = insertionReceipt, !receiptHidden else { return }
-        if hovering {
-            receiptDismissTask?.cancel()
-            receiptDismissTask = nil
-        } else {
-            scheduleReceiptAutoDismiss(receipt)
-        }
-    }
-
-    func dismissInsertionReceipt(reason: String = "user action") {
-        if insertionReceipt != nil {
-            Self.receiptLog.info("dismissed: \(reason, privacy: .public)")
-        }
-        receiptDismissTask?.cancel()
-        receiptDismissTask = nil
-        insertionReceipt = nil
-        receiptHidden = false
-        receiptPillHovered = false
-        receiptDeadline = nil
-        receiptContentSignature = nil
-        receiptPreInsertSignature = nil
-        receiptBaselineFieldHeight = nil
-        cleanupInProgress = false
-        // The pill's job at the field is done — go home to bottom-center.
-        setHUDAnchor(nil)
-    }
-
-    /// The target field must still own focus for ⌘Z / re-paste to hit the
-    /// right field — bail loudly rather than undo someone else's edit. With
-    /// an anchor this is exact (same AX element); otherwise fall back to
-    /// app-name + any-editable-focus.
-    private func insertionTargetStillFocused(_ receipt: InsertionReceipt) -> Bool {
-        guard let current = AccessibilityCapture.focusedEditableFieldTarget() else { return false }
-        if let anchor = hudAnchor {
-            return current.isSameField(as: anchor)
-        }
-        let front = NSWorkspace.shared.frontmostApplication?.localizedName
-        return receipt.targetApp == nil || front == receipt.targetApp
-    }
-
-    /// Clean up the inserted text, on request. The user clicks Clean up on the
-    /// receipt; the raw words stay put until the on-device pass actually returns
-    /// something different, so a guardrail refusal or a moved focus just leaves
-    /// what was said. Afterwards the receipt's single action becomes Revert.
-    func cleanupLastInsertion() {
-        guard let receipt = insertionReceipt, !cleanupInProgress else { return }
-        guard LocalIntelligence.isCleanupAvailable else {
-            transientNotice = TransientNotice(message: "Cleanup needs Apple Intelligence — not available on this Mac")
-            return
-        }
-        guard insertionTargetStillFocused(receipt) else {
-            dismissInsertionReceipt()
-            transientNotice = TransientNotice(message: "Focus moved — cleanup skipped to avoid editing the wrong app")
-            return
-        }
-        cleanupInProgress = true
-        receiptDismissTask?.cancel()
-        Task { [weak self] in
-            defer { Task { @MainActor in self?.cleanupInProgress = false } }
-            do {
-                let cleaned = try await LocalIntelligence.cleanupTranscript(receipt.insertedText)
-                guard let self, self.insertionReceipt?.id == receipt.id else { return }
-                let original = receipt.insertedText.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard cleaned.trimmingCharacters(in: .whitespacesAndNewlines) != original else {
-                    Self.receiptLog.info("cleanup: no change")
-                    self.transientNotice = TransientNotice(message: "Already clean", style: .receipt)
-                    self.dismissInsertionReceipt(reason: "cleanup made no change")
-                    return
-                }
-                guard self.insertionTargetStillFocused(receipt) else {
-                    self.transientNotice = TransientNotice(message: "Focus moved — cleanup cancelled, original text kept")
-                    return
-                }
-                Self.sendUndoKeystroke()
-                try? await Task.sleep(nanoseconds: 250_000_000)
-                Self.insertTextAtCursor(cleaned + " ")
-                self.rawTranscriptForRevert = receipt.insertedText
-                self.cleanupApplied = true
-                self.scheduleReceiptAutoDismiss(receipt)
-                Self.receiptLog.info("cleanup applied")
-            } catch {
-                guard let self, self.insertionReceipt?.id == receipt.id else { return }
-                Self.receiptLog.info("cleanup failed: \(error.localizedDescription, privacy: .public)")
-                self.transientNotice = TransientNotice(message: "Cleanup didn't run — your words are unchanged")
-                self.dismissInsertionReceipt(reason: "cleanup failed")
+    /// Cleanup raced against a wall clock, same shape as every other bound
+    /// in this file: the model gets `capSeconds` and then the raw words
+    /// win. Any failure — timeout, guardrail refusal, empty result — means
+    /// nil, and the caller inserts what was said.
+    private static func boundedCleanup(_ text: String, capSeconds: Double) async -> String? {
+        await withTaskGroup(of: String?.self) { group in
+            group.addTask {
+                try? await LocalIntelligence.cleanupTranscript(text)
             }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(capSeconds * 1_000_000_000))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
-    }
-
-    /// Put back exactly what was said, undoing the cleanup edit.
-    func revertCleanup() {
-        guard let receipt = insertionReceipt, let raw = rawTranscriptForRevert else { return }
-        guard insertionTargetStillFocused(receipt) else {
-            dismissInsertionReceipt()
-            transientNotice = TransientNotice(message: "Focus moved — revert skipped")
-            return
-        }
-        Self.sendUndoKeystroke()
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            Self.insertTextAtCursor(raw)
-            self.dismissInsertionReceipt(reason: "reverted to raw transcript")
-        }
-    }
-
-    /// ⌘Z at session level — same mechanism as the ⌘V paste.
-    private static func sendUndoKeystroke() {
-        let source = CGEventSource(stateID: .combinedSessionState)
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x06, keyDown: true)
-        keyDown?.flags = .maskCommand
-        keyDown?.post(tap: .cgSessionEventTap)
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x06, keyDown: false)
-        keyUp?.flags = .maskCommand
-        keyUp?.post(tap: .cgSessionEventTap)
     }
 
     // MARK: - Recording
@@ -918,11 +548,6 @@ final class SessionManager {
         elapsedSeconds = 0
         startedAt = Date()
         transientNotice = nil
-        // A new utterance supersedes the last receipt — clear it without
-        // resetting the anchor startIfIdle just chose for this session.
-        receiptDismissTask?.cancel()
-        insertionReceipt = nil
-        cleanupInProgress = false
         state = .recording
 
         if let frontApp = NSWorkspace.shared.frontmostApplication {
@@ -1187,7 +812,30 @@ final class SessionManager {
                 // behavior byte-for-byte.
                 let fieldProfile = AccessibilityCapture.focusedFieldShapingSignals()
                     .map(FieldProfiler.profile) ?? .standard
-                let shaped = TranscriptShaper.shape(normalized: cleaned, raw: spoken, profile: fieldProfile)
+                // Pre-insert cleanup (opt-in): the disfluency pass runs HERE,
+                // before anything is pasted, so the field only ever shows
+                // final text — no window where provisional words invite a
+                // Return. Bounded by the wall clock; any miss inserts the
+                // words as spoken. Secure fields never touch the model, and
+                // the LIST always keeps the un-cleaned transcript as the
+                // recovery path.
+                var polished = cleaned
+                if fieldProfile != .secure,
+                   UserDefaults.standard.bool(forKey: Self.cleanupDictationKey),
+                   LocalIntelligence.isCleanupAvailable {
+                    cleanupRunning = true
+                    if let result = await Self.boundedCleanup(cleaned, capSeconds: 2.5) {
+                        polished = result
+                        if polished != cleaned {
+                            print("[Session] Pre-insert cleanup edited the transcript")
+                        }
+                    } else {
+                        print("[Session] Pre-insert cleanup missed its window — raw words inserted")
+                    }
+                    cleanupRunning = false
+                    guard isLive() else { return }
+                }
+                let shaped = TranscriptShaper.shape(normalized: polished, raw: spoken, profile: fieldProfile)
                 if fieldProfile != .standard {
                     print("[Session] Field profile=\(fieldProfile.rawValue) shaped the insertion")
                 }
@@ -1195,16 +843,8 @@ final class SessionManager {
                     // Focus may have moved since record start — re-anchor the
                     // pill to the field actually receiving the paste.
                     setHUDAnchor(AccessibilityCapture.focusedEditableFieldTarget() ?? hudAnchor)
-                    receiptPreInsertSignature = hudAnchor.flatMap {
-                        AccessibilityCapture.fieldContentSignature($0.element)
-                    }
                     Self.insertTextAtCursor(shaped.outbound)
                     effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
-                    presentInsertionReceipt(
-                        captureID: captureID,
-                        insertedText: shaped.outbound,
-                        targetApp: targetApp
-                    )
                     print("[Session] Text inserted at cursor")
                 } else if AccessibilityCapture.hasAnyFocusedElement() {
                     // Detection couldn't confirm a field, but SOMETHING is focused
@@ -1214,11 +854,6 @@ final class SessionManager {
                     setHUDAnchor(nil)
                     Self.insertTextAtCursor(shaped.outbound)
                     effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
-                    presentInsertionReceipt(
-                        captureID: captureID,
-                        insertedText: shaped.outbound,
-                        targetApp: targetApp
-                    )
                     print("[Session] Text pasted into unclassified focused element")
                 } else {
                     // Nothing focused at all — genuine no-field. Keep it in the

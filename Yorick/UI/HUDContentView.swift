@@ -2,11 +2,6 @@ import SwiftUI
 
 struct HUDContentView: View {
     @Environment(SessionManager.self) private var session
-    /// Which receipt action the pointer is on — its label renders inline in
-    /// the pill (`.help()` tooltips are unreliable on non-activating panels).
-    /// The receipt rests as a bare skull and expands to its actions on hover —
-    /// a quiet marker that doesn't sit over the text it just inserted.
-    @State private var receiptHovering = false
     /// The recording pill reveals its stop button only on hover — the EQ already
     /// signals "recording," and push-to-talk means release is the usual stop.
     @State private var recordingHovering = false
@@ -21,8 +16,7 @@ struct HUDContentView: View {
         (session.state == .recording && session.hudReady) ||
         session.state == .transcribing ||
         session.lastSavedCapture != nil ||
-        session.transientNotice != nil ||
-        (session.insertionReceipt != nil && !session.receiptHidden)
+        session.transientNotice != nil
     }
 
     /// Growth direction: content hugs its anchored edge and grows away from it.
@@ -63,13 +57,6 @@ struct HUDContentView: View {
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
 
-                    // Post-insertion receipt: the skull sits in the gutter beside
-                    // the inserted text whenever Cleanup is enabled, offering it.
-                    if let receipt = session.insertionReceipt, !session.receiptHidden {
-                        insertionReceiptPill(receipt)
-                            .transition(.opacity.combined(with: .move(edge: pillEdge)))
-                    }
-
                     if session.state == .recording || session.state == .transcribing {
                         sessionPill
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
@@ -85,9 +72,6 @@ struct HUDContentView: View {
         }
         .animation(.spring(duration: 0.3), value: session.lastSavedCapture?.id)
         .animation(.spring(duration: 0.3), value: session.transientNotice?.id)
-        .animation(.spring(duration: 0.3), value: session.insertionReceipt?.id)
-        .animation(.spring(duration: 0.3), value: session.receiptHidden)
-        .animation(.spring(duration: 0.3), value: session.cleanupInProgress)
         .frame(
             maxWidth: .infinity,
             maxHeight: .infinity,
@@ -95,89 +79,6 @@ struct HUDContentView: View {
         )
         .padding(.vertical, 8)
         .padding(.horizontal, 6)
-    }
-
-    // MARK: - Insertion Receipt (Cleanup / Undo at the field)
-    //
-    // Icon-only actions, same footprint as the recording pill. The hovered
-    // action's label renders inline (system tooltips don't reliably appear
-    // on non-activating panels), and hover suspends the fade clock.
-
-    // The receipt is a composite: a fixed skull circle that never moves, and —
-    // on hover — a column of labeled action pills to its right. The column is
-    // bottom-aligned to the circle, so the LAST action (Dismiss) lines up with
-    // the skull and earlier actions stack upward, left-aligned.
-    private static let receiptPillHeight: CGFloat = 30
-
-    private func insertionReceiptPill(_ receipt: InsertionReceipt) -> some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            skullCircle
-            // Exactly one action, whichever one applies: Clean up before, Revert
-            // after. Never both, and never while the pass is running.
-            if receiptHovering, !session.cleanupInProgress {
-                if session.cleanupApplied {
-                    receiptOption("arrow.uturn.backward", "Revert to what I said") {
-                        session.revertCleanup()
-                    }
-                    .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottomLeading)))
-                } else {
-                    receiptOption("wand.and.stars", "Clean up") {
-                        session.cleanupLastInsertion()
-                    }
-                    .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottomLeading)))
-                }
-            }
-        }
-        .onHover { hovering in
-            receiptHovering = hovering
-            session.receiptHoverChanged(hovering)
-        }
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: receiptHovering)
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: session.cleanupInProgress)
-    }
-
-    /// The skull marker, in the gutter beside the inserted text. While cleanup
-    /// runs it becomes a spinner IN PLACE — progress without the pill moving or
-    /// growing over the text, which is what made the earlier versions feel wrong.
-    private var skullCircle: some View {
-        ZStack {
-            if session.cleanupInProgress {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(.white)
-            } else {
-                skullMark(16, templateOpacity: 0.9)
-            }
-        }
-        .frame(width: Self.receiptPillHeight, height: Self.receiptPillHeight)
-        .pillGlass()
-    }
-
-    /// One labeled action as its own pill. Fixed height so the bottom pill
-    /// aligns cleanly with the skull circle.
-    private func receiptOption(
-        _ systemImage: String,
-        _ label: String,
-        dim: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(dim ? 0.6 : 0.9))
-                    .frame(width: 14)
-                Text(label)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .fixedSize()
-            }
-            .padding(.horizontal, 11)
-            .frame(height: Self.receiptPillHeight)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .pillGlass()
     }
 
     // MARK: - Transient Notice (warnings + past-tense receipts)
@@ -390,7 +291,9 @@ struct HUDContentView: View {
                         }
                 }
                 if unanchored {
-                    Text(transcribing ? "Transcribing…" : "Listening…")
+                    Text(transcribing
+                         ? (session.cleanupRunning ? "Cleaning up…" : "Transcribing…")
+                         : "Listening…")
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(Theme.bone)
                         .lineLimit(1)

@@ -29,7 +29,7 @@ struct SettingsView: View {
     @State private var activeMicrophoneMode = SettingsView.currentMicrophoneModeName()
     @State private var whisperDownloading = false
     @AppStorage(AudioDebugSettings.keepAudioKey) private var keepDebugAudio = AudioDebugSettings.defaultKeepAudio
-    @AppStorage(SessionManager.showInsertionReceiptKey) private var showInsertionReceipt = false
+    @AppStorage(SessionManager.cleanupDictationKey) private var cleanupDictation = false
     @AppStorage(HUDPlacement.unanchoredAtTopKey) private var unanchoredPillAtTop = true
     @State private var opensAtLogin = LoginItem.isEnabled
     /// Sparkle reads this key straight from UserDefaults, so binding to it is
@@ -60,11 +60,11 @@ struct SettingsView: View {
                 }
                 settingsRow {
                     VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Offer cleanup after dictation")
-                        caption("A small skull appears beside your inserted text for a few seconds. Hover it to clean up filler words and false starts, on this Mac. Nothing is rewritten unless you ask.")
+                        rowLabel("Clean up dictation before it types")
+                        caption("Removes filler words and false starts on this Mac, then types the result — adds a beat before the text lands. If cleanup can't run, your words are typed exactly as spoken. Your list always keeps the original.")
                     }
                     Spacer(minLength: 16)
-                    Toggle("", isOn: $showInsertionReceipt)
+                    Toggle("", isOn: $cleanupDictation)
                         .toggleStyle(.switch)
                         .labelsHidden()
                         .controlSize(.small)

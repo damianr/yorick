@@ -348,37 +348,6 @@ enum AccessibilityCapture {
         return rect
     }
 
-    /// A cheap signature of a field's content, for change detection — not the
-    /// content itself. Prefers the full value; falls back to the character
-    /// count, which Chromium/Electron fields (Claude's composer) expose even
-    /// when they won't hand over the string. Return-to-send, edits, deletes
-    /// all change it. Nil when the app exposes neither.
-    struct ContentSignature: Equatable {
-        let raw: String
-        /// Content length — lets callers recognize an emptied field even
-        /// when they never saw its full state.
-        let length: Int
-    }
-
-    static func fieldContentSignature(_ element: AXUIElement) -> ContentSignature? {
-        // An EMPTY value string is not a reliable signal: WebKit (Mail's compose
-        // body) always reports kAXValue as "" no matter what's typed, so trusting
-        // it made the receipt read "length 0" right after inserting and dismiss
-        // itself as "text gone." Only a non-empty value counts; otherwise fall
-        // through to the character count, then to geometry-based tracking.
-        if let value = attribute(element, kAXValueAttribute) as? String, !value.isEmpty {
-            return ContentSignature(raw: "v:\(value.count):\(value.hashValue)", length: value.count)
-        }
-        // Character count (Chromium/Electron expose this even when they won't hand
-        // over the string). A count of 0 IS meaningful here — a native field going
-        // empty is a send/delete we should retire the receipt on — so it's kept,
-        // unlike the always-empty WebKit value string above.
-        if let count = attribute(element, "AXNumberOfCharacters") as? Int {
-            return ContentSignature(raw: "n:\(count)", length: count)
-        }
-        return nil
-    }
-
     /// Return both the mode decision and the evidence used to make it.
     static func editabilityDecisionAtCursor() -> EditabilityDecision {
         // Check 1: is the element directly under the cursor an editable field?
