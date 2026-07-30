@@ -42,6 +42,11 @@ enum LocalIntelligence {
         Your output must contain only words that appeared in the input. If \
         you are unsure, return the input unchanged rather than writing \
         anything new.
+
+        Disfluencies are SINGLE words or short stutters. Never delete whole \
+        phrases, clauses, greetings, or opening statements — "all right, \
+        let's give this a try" is content the speaker chose to say, not \
+        filler.
         """
 
     /// A session created and prewarmed at hotkey-DOWN, consumed by the next
@@ -106,6 +111,18 @@ enum LocalIntelligence {
                 return true
             }
             guard novel.isEmpty else { throw LocalIntelligenceError.emptyResponse }
+            // DELETION guard — the counterpart to the novel-word guard,
+            // which is blind to removals. Field-reported: "All right, let's
+            // give this a try, empty fuel" pasted as just "empty fuel" —
+            // the model deleted the whole opening clause as filler. Content
+            // words = input minus bare fillers and immediate repeats;
+            // keeping under half of them is a rewrite, not a cleanup
+            // (eval: 0/5 false rejects, legit corrections pass).
+            let inputContent = Self.contentWordCount(of: transcript)
+            let outputCount = Self.words(of: cleaned).count
+            guard outputCount >= max(2, Int((Double(inputContent) * 0.5).rounded(.up))) else {
+                throw LocalIntelligenceError.emptyResponse
+            }
             return cleaned
         }
         #endif
@@ -118,6 +135,21 @@ enum LocalIntelligence {
         text.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
+    }
+
+    /// What the deletion guard counts as legitimate removals: bare fillers
+    /// and immediate repeats. Everything else the speaker said is content.
+    private static let bareFillers: Set<String> = ["um", "uh", "er", "uhm", "ah"]
+
+    private static func contentWordCount(of text: String) -> Int {
+        var last = ""
+        var count = 0
+        for word in words(of: text) where !bareFillers.contains(word) {
+            if word == last { continue }
+            last = word
+            count += 1
+        }
+        return count
     }
 
     /// Digit → spelled form, for the novel-word guard's numeral allowance.
