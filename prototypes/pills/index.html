@@ -6,6 +6,7 @@
 <style>
   :root {
     --bone: #ece5d8; --bone-rgb: 236, 229, 216;
+    --glow: #ece5d8; --glow-rgb: 236, 229, 216;
     --glass-black: 0.78;
     --frost: 20px;
     --rim-top: 0.30;
@@ -92,7 +93,7 @@
     backdrop-filter: blur(var(--frost)) saturate(1.6);
     box-shadow: 0 var(--sh1y) var(--sh1b) rgba(0,0,0,var(--sh1o)),
                 0 var(--sh2y) var(--sh2b) rgba(0,0,0,var(--sh2o)),
-                0 0 var(--halo-b) rgba(var(--bone-rgb), var(--halo-o));
+                0 0 var(--halo-b) rgba(var(--glow-rgb), var(--halo-o));
   }
   .pill.capsule { border-radius: var(--full,999px); }
   .pill.pointer { border-radius: var(--tl) var(--full,14.5px) var(--full,14.5px) var(--bl); }
@@ -140,10 +141,10 @@
   .silence { font-size: 10px; color: #ff9f0a; display: none; }
   .silence.on { display: block; }
 
-  /* EQ — dots tinted bone to match the halo */
+  /* EQ — dots tinted the GLOW color (pinned to the halo, never the text) */
   #eq { display: flex; gap: var(--gap); }
   #eq .col2 { display: flex; flex-direction: column; gap: var(--gap); }
-  #eq .d { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--bone);
+  #eq .d { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--glow);
     opacity: var(--dim); transition: opacity var(--dot-ms) ease-out; }
 
   /* stop button, revealed on hover: pill grows rightward */
@@ -339,11 +340,11 @@
   </div></details>
 
   <details open><summary>Bone accent (rim + breathing halo)</summary><div class="grp" id="ctl-accent"></div>
-    <div class="note">One glass identity: every session pill wears the accent — background, rim, and shadow/halo are identical at a field and at the screen edge. Recording: halo breathes with the live level. Transcribing/cleaning: fixed intensity.</div>
+    <div class="note">One glass identity: every session pill wears the accent — background, rim, and shadow/halo are identical at a field and at the screen edge. Recording: halo breathes with the live level. Transcribing/cleaning: fixed intensity. Two colors: the GLOW color drives the halo and the equalizer (pinned together); the rim &amp; text color touches nothing but the rim gradient and the status text.</div>
   </details>
 
   <details open><summary>Dot equalizer</summary><div class="grp" id="ctl-eq"></div>
-    <div class="note">shimmer = base + depth·(sin(col·phase + level·freq)·0.5+0.5); column lights ⌈level·profile·shimmer·rows⌉ dots from the bottom. Dots are tinted bone to match the halo.</div>
+    <div class="note">shimmer = base + depth·(sin(col·phase + level·freq)·0.5+0.5); column lights ⌈level·profile·shimmer·rows⌉ dots from the bottom. Dots are tinted the glow color, pinned to the halo.</div>
   </details>
 
   <details><summary>Level pipeline (AudioCapture.swift)</summary><div class="grp" id="ctl-level"></div>
@@ -410,7 +411,8 @@ const DEFAULTS = {
   zoom: 1,
 };
 const P = { ...DEFAULTS };
-let bone = '#ece5d8';   // Theme.bone
+let bone = '#ece5d8';   // Theme.bone — rim + status text
+let glow = '#ece5d8';   // halo + equalizer tint, pinned together
 const PROFILE8 = [0.5, 0.72, 0.9, 1.0, 1.0, 0.9, 0.72, 0.5];
 
 /* session pill state (one pill, states within) */
@@ -436,10 +438,20 @@ const f1 = v => (+v).toFixed(1), f2 = v => (+v).toFixed(2);
 slider($('ctl-source'), 'tickMs', 'tick interval ms', 10, 80, 1);
 
 const A = $('ctl-accent');
-{ // accent color: hex field + Theme.swift presets (no native picker — it
-  // misbehaves in the embedded pane)
+{ // GLOW color: halo + equalizer, pinned together — never the rim or text.
   const row = document.createElement('div'); row.className = 'ctl';
-  row.innerHTML = '<label>accent color</label>';
+  row.innerHTML = '<label>glow color (halo + EQ)</label>';
+  const pick = document.createElement('input'); pick.type = 'color'; pick.value = glow;
+  pick.style.cssText = 'width:44px;height:24px;border:1px solid #3a3a42;border-radius:6px;background:#2a2a30;padding:1px';
+  const hex = document.createElement('output'); hex.textContent = glow;
+  pick.oninput = () => { glow = pick.value; hex.textContent = glow; apply(); };
+  window._glowPicker = pick;
+  row.append(pick, hex); A.appendChild(row);
+}
+{ // rim + text color: hex field + Theme.swift presets (kept as a hex field —
+  // the native picker is reserved for the glow row above)
+  const row = document.createElement('div'); row.className = 'ctl';
+  row.innerHTML = '<label>rim &amp; text color</label>';
   const inp = document.createElement('input'); inp.type = 'text'; inp.value = bone;
   inp.style.cssText = 'background:#2a2a30;color:#ddd;border:1px solid #3a3a42;border-radius:6px;font-size:11px;padding:3px 6px;width:100%;font-family:ui-monospace,monospace';
   const sw = document.createElement('output');
@@ -634,6 +646,8 @@ function apply() {
   const R = document.documentElement.style;
   R.setProperty('--bone', bone);
   R.setProperty('--bone-rgb', hexToRgb(bone));
+  R.setProperty('--glow', glow);
+  R.setProperty('--glow-rgb', hexToRgb(glow));
   R.setProperty('--glass-black', P.glassBlack);
   R.setProperty('--frost', P.frost + 'px');
   R.setProperty('--rim-top', P.rimTop);
@@ -826,11 +840,12 @@ function copy(text) {
   const ta = $('copyout'); ta.value = text;
   navigator.clipboard?.writeText(text).catch(() => { ta.select(); document.execCommand('copy'); });
 }
-$('copyJson').onclick = () => copy(JSON.stringify({ ...P, bone }, null, 2));
+$('copyJson').onclick = () => copy(JSON.stringify({ ...P, bone, glow }, null, 2));
 $('copySwift').onclick = () => {
   copy(`// Yorick pill tuning — from prototypes/pills playground
 // Theme.swift
-static let bone = Color(hex: "${bone}")  // was #ece5d8
+static let bone = Color(hex: "${bone}")  // rim + status text (was #ece5d8)
+static let glow = Color(hex: "${glow}")  // halo + equalizer tint, pinned
 
 // AudioCapture.swift (level pipeline)
 let floor: Float = ${P.floorDb}
@@ -865,6 +880,11 @@ shape.fill(Color.black.opacity(${P.glassBlack}))
 $('resetAll').onclick = () => {
   Object.assign(P, DEFAULTS);
   bone = '#ece5d8';
+  glow = '#ece5d8';
+  if (window._glowPicker) {
+    window._glowPicker.value = glow;
+    window._glowPicker.dispatchEvent(new Event('input')); // syncs hex readout + apply
+  }
   sliders.forEach(s => s._sync && s._sync());
   window._colorField && window._colorField._syncColor();
   apply();
