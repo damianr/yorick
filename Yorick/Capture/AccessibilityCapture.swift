@@ -125,6 +125,12 @@ enum AccessibilityCapture {
         /// exposes it — Pages, Mail, and native text views do once their
         /// assistive tree is unlocked. Nil for AX-opaque targets.
         var caret: CGRect? = nil
+        /// True when the field has a non-empty text selection. With a
+        /// selection live, the FIELD itself becomes an honest anchor even
+        /// when caret geometry is unreadable: the highlight already marks
+        /// the exact landing spot on screen, so the pill only needs to
+        /// claim the field (capsule, never the pointer corner).
+        var hasSelection: Bool = false
 
         /// Whether this is the same field as `other`. Element identity is the
         /// strong signal, but WebKit (Mail's compose body) and some Electron
@@ -185,7 +191,23 @@ enum AccessibilityCapture {
             isRichEditor: isRich,
             fieldFrame: frame
         )
-        return FieldTarget(frame: frame, element: element, pid: frontApp.processIdentifier, role: role, caret: caret)
+        var hasSelection = false
+        var rangeRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+           let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() {
+            var range = CFRange()
+            if AXValueGetValue((rangeRef as! AXValue), .cfRange, &range) {
+                hasSelection = range.length > 0
+            }
+        }
+        return FieldTarget(
+            frame: frame,
+            element: element,
+            pid: frontApp.processIdentifier,
+            role: role,
+            caret: caret,
+            hasSelection: hasSelection
+        )
     }
 
     // MARK: - Field shaping signals

@@ -330,10 +330,22 @@ final class SessionManager {
         // multi-line composer must never get the leading-edge tier. Height
         // stays only as a sanity clamp against mis-reported frames.
         let singleLineRoles: Set<String> = ["AXTextField", "AXSearchField"]
-        let singleLineEdge: CGRect? = singleLineRoles.contains(target.role)
+        let roleEdge: CGRect? = singleLineRoles.contains(target.role)
             && target.frame.height <= 44 && target.frame.width > 0
             ? CGRect(x: target.frame.minX + 4, y: target.frame.minY, width: 0, height: target.frame.height)
             : nil
+        // A live SELECTION opens the leading-edge tier at ANY height — the
+        // GENERALIZED answer to per-app selection-geometry quirks (Chromium
+        // answers every range query with a degenerate rect; ChatGPT's
+        // composer exposes even less). The selection highlight already marks
+        // the exact landing spot on screen, so the pill only needs to claim
+        // the right field — seated at its top-leading corner, as a capsule,
+        // never the pointer corner. Exact selection-start geometry still
+        // wins wherever the app provides it (native fields, Mail).
+        let selectionEdge: CGRect? = target.hasSelection && target.frame.width > 0
+            ? CGRect(x: target.frame.minX + 4, y: target.frame.minY, width: 0, height: min(target.frame.height, 24))
+            : nil
+        let singleLineEdge = roleEdge ?? selectionEdge
         guard let caret = exactCaret ?? singleLineEdge else {
             Self.placementLog.info("no caret → bottom-center (frame=\(NSStringFromRect(target.frame), privacy: .public))")
             hudPillPlacement = .bottomCenter
