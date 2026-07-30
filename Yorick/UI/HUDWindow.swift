@@ -9,6 +9,14 @@ enum HUDPlacement {
             ? true
             : UserDefaults.standard.bool(forKey: unanchoredAtTopKey)
     }
+
+    /// Transparent margin between the HUD content and the window edge. The
+    /// glow halo blurs out to ~2× its max radius (10 + 4.5×level → ~29pt);
+    /// the old 6–8pt margin clipped it into hard lines at the window's
+    /// leading/bottom edges. Every anchor calculation offsets by this so
+    /// the PILL's visual position is unchanged — only the invisible window
+    /// around it grew.
+    static let contentPadding: CGFloat = 30
 }
 import SwiftUI
 
@@ -69,9 +77,13 @@ final class HUDWindow: NSPanel {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - (frame.width / 2)
+        // The pill's outer edge sits 48pt from the screen edge (the tuned
+        // look); the window edge is contentPadding closer so the glow has
+        // room to fade instead of clipping.
+        let windowInset = 48 - HUDPlacement.contentPadding
         let y = HUDPlacement.unanchoredAtTop
-            ? screenFrame.maxY - frame.height - 40
-            : screenFrame.minY + 40
+            ? screenFrame.maxY - frame.height - windowInset
+            : screenFrame.minY + windowInset
         setFrameOrigin(NSPoint(x: x, y: y))
     }
 

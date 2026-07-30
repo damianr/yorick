@@ -364,24 +364,34 @@ final class SessionManager {
         let size = Self.hudWindowSize
 
         // Pill left edge lines up with the field's left edge (leading-aligned
-        // content sits at the window's left, inset by the content padding).
-        var x = field.minX - 6
+        // content sits at the window's left, inset by the content padding —
+        // the padding exists so the glow can fade without clipping).
+        var x = field.minX - HUDPlacement.contentPadding
         x = min(max(x, visible.minX), visible.maxX - size.width)
 
         // The pill hovers just ABOVE the caret line (8px off its midline) —
         // tried directly on the caret and it covered the landing text; tried
         // fully above the line and it floated into toolbars. This is the tuned
         // middle. Falls below the caret only when there's no room above.
+        // The window origin compensates for the glow padding: the PILL's
+        // visual offset from the caret is unchanged (it was tuned when the
+        // content padding was 8pt — hence the +8/−8 terms).
         let caretMidY = field.midY
         let fitsAbove = caretMidY + Self.hudPillClearance <= visible.maxY
         let fitsBelow = caretMidY - Self.hudPillClearance >= visible.minY
         let origin: NSPoint
         if fitsAbove {
             hudPillPlacement = .aboveField
-            origin = NSPoint(x: x, y: caretMidY + Self.hudCaretGap)
+            origin = NSPoint(
+                x: x,
+                y: caretMidY + Self.hudCaretGap + 8 - HUDPlacement.contentPadding
+            )
         } else if fitsBelow {
             hudPillPlacement = .belowField
-            origin = NSPoint(x: x, y: caretMidY - size.height - Self.hudCaretGap)
+            origin = NSPoint(
+                x: x,
+                y: caretMidY - size.height - Self.hudCaretGap - 8 + HUDPlacement.contentPadding
+            )
         } else {
             hudPillPlacement = .bottomCenter
             NotificationCenter.default.post(name: .hudReposition, object: nil)

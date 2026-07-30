@@ -69,8 +69,9 @@ struct HUDContentView: View {
             maxHeight: .infinity,
             alignment: pillAlignment
         )
-        .padding(.vertical, 8)
-        .padding(.horizontal, 6)
+        // Glow headroom: the halo must fade out inside the transparent
+        // window, never hit its edge (see HUDPlacement.contentPadding).
+        .padding(HUDPlacement.contentPadding)
     }
 
     // MARK: - Transient Notice (warnings + past-tense receipts)
