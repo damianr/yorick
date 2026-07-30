@@ -38,7 +38,6 @@
 		A957EB88DFD7D005E9D45C79 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28302C5A969B4E66966DBB8 /* OnboardingView.swift */; };
 		AC36DBF389D722369C68760E /* UtteranceRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3956B1F5059C9796A3016FD3 /* UtteranceRouter.swift */; };
 		ADC8B8995481E9F1FDBB6D3E /* YorickApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB8F71B3FB8F2A899FA8638B /* YorickApp.swift */; };
-		B0187927594908ECBF6F686F /* TitlebarButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF8AB714ADB53F38BC27D4A /* TitlebarButtons.swift */; };
 		B111C360CA38C6CEF5E87E20 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = AEA076117CAB6BC4B6F74431 /* KeyboardShortcuts */; };
 		B126E650385A2E63BA4A7532 /* FocusClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC5D45E53DCBF0E30B307567 /* FocusClassifier.swift */; };
 		BF7EFA35441C308FC7521956 /* MenuBarPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C255E175C0826AB7EA2D8175 /* MenuBarPanelController.swift */; };
@@ -49,7 +48,6 @@
 		CF95ECA12953ED4FC0AFA4C3 /* AppIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6100D199344098CC50AB411D /* AppIdentifier.swift */; };
 		DA6EEAFAB95E78E24F215A7F /* MicrophoneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */; };
 		DEAE4E20CE687BB5866E6387 /* LocalIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 813E2EEDBADFF07063F688D3 /* LocalIntelligence.swift */; };
-		DEC06EE9DF9E9D1DFECDDAE5 /* StreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B9810D94D0CD31393F67AF /* StreamView.swift */; };
 		DFA546D3EDB08D812550DDBD /* LoginItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D3C0B62573CB6B00A999CE /* LoginItem.swift */; };
 		E1C160A45632D6D84926A30C /* SpokenFormNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 490B06CED22F61CD387460A4 /* SpokenFormNormalizer.swift */; };
 		E826DF35A5F759FC624218CC /* SpokenFormNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 490B06CED22F61CD387460A4 /* SpokenFormNormalizer.swift */; };
@@ -75,7 +73,6 @@
 		2E7B4957DCF515111706FAEC /* AudioDiagnosticsAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDiagnosticsAnalyzer.swift; sourceTree = "<group>"; };
 		36D04D4D581F947FDD13AD5A /* Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capture.swift; sourceTree = "<group>"; };
 		3956B1F5059C9796A3016FD3 /* UtteranceRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtteranceRouter.swift; sourceTree = "<group>"; };
-		3BF8AB714ADB53F38BC27D4A /* TitlebarButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitlebarButtons.swift; sourceTree = "<group>"; };
 		43BE47F86B9BB05696F03D32 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		490B06CED22F61CD387460A4 /* SpokenFormNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenFormNormalizer.swift; sourceTree = "<group>"; };
 		49C618076D702087B0DDE731 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
@@ -107,7 +104,6 @@
 		D28302C5A969B4E66966DBB8 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		D83B4AFCF23F7B482C5B7689 /* ClipboardOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardOutput.swift; sourceTree = "<group>"; };
 		DC5D45E53DCBF0E30B307567 /* FocusClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusClassifier.swift; sourceTree = "<group>"; };
-		E1B9810D94D0CD31393F67AF /* StreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamView.swift; sourceTree = "<group>"; };
 		E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F5F87DAB8FBCF6EC788ABBBC /* FieldProfiler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldProfiler.swift; sourceTree = "<group>"; };
 		FB8F71B3FB8F2A899FA8638B /* YorickApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YorickApp.swift; sourceTree = "<group>"; };
@@ -199,9 +195,7 @@
 				D28302C5A969B4E66966DBB8 /* OnboardingView.swift */,
 				7A47ABE579672A11EBF68F05 /* PreferencesView.swift */,
 				9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */,
-				E1B9810D94D0CD31393F67AF /* StreamView.swift */,
 				BFDADD63A711A33CB1DAFC49 /* Theme.swift */,
-				3BF8AB714ADB53F38BC27D4A /* TitlebarButtons.swift */,
 				BA1FC90D1A3F584F7F795AAC /* ToolbarBackdrop.swift */,
 			);
 			path = UI;
@@ -422,9 +416,7 @@
 				007FEC1B6F73F8F3A223852B /* SessionUploader.swift in Sources */,
 				EF12E5AC1C7B78D778526C1D /* ShortcutRecorderView.swift in Sources */,
 				E1C160A45632D6D84926A30C /* SpokenFormNormalizer.swift in Sources */,
-				DEC06EE9DF9E9D1DFECDDAE5 /* StreamView.swift in Sources */,
 				2E2AFAFEEFD172F632EA9E32 /* Theme.swift in Sources */,
-				B0187927594908ECBF6F686F /* TitlebarButtons.swift in Sources */,
 				16D8C2E4F65531ED0E8FC8A6 /* ToolbarBackdrop.swift in Sources */,
 				C613A4D66858655E5F98A1D8 /* TranscriptQuality.swift in Sources */,
 				AC36DBF389D722369C68760E /* UtteranceRouter.swift in Sources */,

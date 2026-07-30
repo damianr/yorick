@@ -4,18 +4,6 @@ import AVFoundation
 import SwiftUI
 import KeyboardShortcuts
 
-/// Hide the window toolbar background when supported. `.toolbarBackgroundVisibility`
-/// is macOS 15+, so the modifier is a no-op on macOS 14.
-struct HiddenWindowToolbarBackground: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        } else {
-            content
-        }
-    }
-}
-
 /// Settings in the stream's language: quiet rows, eyebrow section labels,
 /// three disclosure styles — always-visible caption for the row that defines
 /// the product, in-card copy for the engine choice, tooltip for trivia.
@@ -228,9 +216,8 @@ struct SettingsView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 20)
         }
-        .background(Theme.bgPrimary)
-        .navigationTitle("Settings")
-        .modifier(HiddenWindowToolbarBackground())
+        // No opaque background: settings render as a page of the menu bar
+        // panel, whose glass shows through.
         .onAppear {
             session.microphoneManager.refresh()
             refreshPermissionState()

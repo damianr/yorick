@@ -18,16 +18,18 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-<key>NSMicrophoneUsageDescription</key>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
 	<string>Yorick records your voice during capture sessions to transcribe and structure your feedback.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Yorick uses on-device speech recognition to transcribe your voice recordings.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/damianr/yorick/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>N+0Un+ZU/MsWNDM+9d7x5Opyi6oVWLUpMb7VcYl5M+Q=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>

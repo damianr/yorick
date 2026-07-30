@@ -9,6 +9,8 @@ struct MenuBarPanelView: View {
     unowned let controller: MenuBarPanelController
     @Environment(SessionManager.self) private var session
     @State private var pinned = false
+    /// The panel IS the app: settings live here as a page, not a window.
+    @State private var showingSettings = false
 
     private var shortcutLabel: String {
         KeyboardShortcuts.getShortcut(for: .toggleSession).map(String.init(describing:)) ?? "⌥Space"
@@ -17,12 +19,20 @@ struct MenuBarPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            statusLine
-            Rectangle()
-                .fill(Color.white.opacity(0.08))
-                .frame(height: 1)
-                .padding(.horizontal, 14)
-            captureList
+            if showingSettings {
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: 1)
+                    .padding(.horizontal, 14)
+                SettingsView(session: session)
+            } else {
+                statusLine
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: 1)
+                    .padding(.horizontal, 14)
+                captureList
+            }
         }
         .frame(width: 420, height: 560)
         // The pill's glass recipe, pinned (PillGlass): same frost + black
@@ -78,9 +88,23 @@ struct MenuBarPanelView: View {
             }
             .buttonStyle(.plain)
             .help(pinned ? "Unpin — close when clicking away" : "Pin — stay open while you work")
+            // Settings is a PAGE of the panel, not a window — the gear
+            // toggles between the stream and settings in place.
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { showingSettings.toggle() }
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(showingSettings ? Theme.bone : Theme.textTertiary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(showingSettings ? "Back to your saved items" : "Settings")
             Menu {
-                Button("Open Yorick") { openMainWindow() }
-                Button("Settings…") { openSettings() }
+                Button(showingSettings ? "Saved Items" : "Settings…") {
+                    withAnimation(.easeOut(duration: 0.15)) { showingSettings.toggle() }
+                }
                 Button("Check for Updates…") {
                     NotificationCenter.default.post(name: .checkForUpdates, object: nil)
                 }
@@ -194,24 +218,4 @@ struct MenuBarPanelView: View {
         }
     }
 
-    // MARK: - Actions
-
-    private func openMainWindow() {
-        controller.hide()
-        NSApp.activate(ignoringOtherApps: true)
-        // Reuse the existing window — openWindow(id:) spawns duplicates
-        // (same behaviour as AppDelegate.applicationShouldHandleReopen).
-        if let existing = NSApp.windows.first(where: { !($0 is NSPanel) && $0.canBecomeMain }) {
-            existing.makeKeyAndOrderFront(nil)
-        }
-    }
-
-    private func openSettings() {
-        controller.hide()
-        NSApp.activate(ignoringOtherApps: true)
-        if let existing = NSApp.windows.first(where: { !($0 is NSPanel) && $0.canBecomeMain }) {
-            existing.makeKeyAndOrderFront(nil)
-        }
-        NotificationCenter.default.post(name: .openSettings, object: nil)
-    }
 }

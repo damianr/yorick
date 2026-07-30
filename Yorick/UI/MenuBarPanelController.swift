@@ -133,8 +133,16 @@ final class MenuBarPanelController {
         isPinned = pinned
     }
 
+    /// Borderless panels refuse key status by default, which made every
+    /// text-input control inside the panel dead — the settings page's
+    /// shortcut recorder needs key events. Non-activating stays: becoming
+    /// key never activates the app or steals the user's frontmost app.
+    private final class KeyablePanel: NSPanel {
+        override var canBecomeKey: Bool { true }
+    }
+
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(
+        let panel = KeyablePanel(
             contentRect: NSRect(origin: .zero, size: Self.panelSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
