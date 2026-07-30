@@ -305,15 +305,15 @@ struct HUDContentView: View {
         .padding(.horizontal, unanchored ? 14 : 11)
         .padding(.vertical, unanchored ? 8 : 5)
         // Bone rim + halo — the skull's own color glowing like moonlight
-        // (amber read as a warning). On the unanchored pill always (nothing
-        // else announces it on a dark backdrop), on any pill while
-        // summarizing; while recording, the halo BREATHES with the voice —
-        // same signal as the equalizer, so meter and glow move together.
-        // The field-anchored recording pill stays plain: it sits at your
-        // caret, where you're already looking.
+        // (amber read as a warning). ONE glass identity: background, rim,
+        // and shadow/halo are identical whether the pill sits at a field or
+        // at the screen edge — the accent is the pill's look, not the
+        // unanchored pill's look. While recording the halo BREATHES with
+        // the voice — same signal as the equalizer, so meter and glow move
+        // together; while transcribing it holds at fixed intensity.
         .pillGlass(
             corners: recordingCorners,
-            accent: (unanchored || transcribing) ? Theme.bone : nil,
+            accent: Theme.bone,
             accentIntensity: transcribing ? 0.5 : Double(min(max(session.audioLevel, 0), 1))
         )
         .onHover { recordingHovering = $0 }

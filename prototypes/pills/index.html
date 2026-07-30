@@ -339,7 +339,7 @@
   </div></details>
 
   <details open><summary>Bone accent (rim + breathing halo)</summary><div class="grp" id="ctl-accent"></div>
-    <div class="note">Unanchored pill: always accented, halo scales with the live level (“breathes with the voice”). Any pill while summarizing: accent at fixed intensity. Field-anchored recording pill: plain.</div>
+    <div class="note">One glass identity: every session pill wears the accent — background, rim, and shadow/halo are identical at a field and at the screen edge. Recording: halo breathes with the live level. Transcribing/cleaning: fixed intensity.</div>
   </details>
 
   <details open><summary>Dot equalizer</summary><div class="grp" id="ctl-eq"></div>
@@ -575,9 +575,9 @@ function springCurve(response, damping) {
 }
 
 /* ---------------- session pill state machine ---------------- */
-/* Accent rules from sessionPill/pillGlass:
-   unanchored || transcribing → accent bone; intensity = transcribing ? 0.5 : live level.
-   Field-anchored recording pill stays plain. */
+/* ONE glass identity: background, rim, and shadow/halo are identical whether
+   the pill sits at a field or at the screen edge. Intensity = transcribing
+   ? 0.5 : live level. */
 function applySession() {
   const pill = $('sessionPill');
   const unanchored = state.placement === 'top' || state.placement === 'bottom';
@@ -586,7 +586,7 @@ function applySession() {
   const transcribing = state.session === 'transcribing' || state.session === 'cleaning';
   pill.classList.toggle('unanchored', unanchored);
   pill.classList.toggle('transcribing', transcribing);
-  pill.classList.toggle('accented', unanchored || transcribing);
+  pill.classList.add('accented');
   // corners: capsule when unanchored, pointer above / pointerBelow below
   pill.classList.remove('capsule', 'pointer', 'pointerBelow');
   pill.classList.add(unanchored ? 'capsule' : (state.placement === 'above' ? 'pointer' : 'pointerBelow'));
@@ -598,9 +598,7 @@ function applySession() {
 
 function updateHalo(level) {
   const pill = $('sessionPill');
-  const unanchored = state.placement === 'top' || state.placement === 'bottom';
-  const transcribing = state.session === 'transcribing';
-  if (!(unanchored || transcribing)) { pill.style.setProperty('--halo-o', 0); return; }
+  const transcribing = state.session === 'transcribing' || state.session === 'cleaning';
   const I = transcribing ? P.trIntensity : Math.min(Math.max(level, 0), 1);
   pill.style.setProperty('--halo-o', (P.haloBaseO + P.haloGainO * I).toFixed(3));
   pill.style.setProperty('--halo-b', (2 * (P.haloBaseR + P.haloGainR * I)).toFixed(1) + 'px');
