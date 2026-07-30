@@ -78,6 +78,7 @@
     position: absolute; display: flex; flex-direction: column; gap: 8px;
     padding: 8px 6px; pointer-events: auto;
   }
+  #stack.place-top    { left: 50%; top: 0; transform: translateX(-50%) scale(var(--zoom,1)); align-items: center; transform-origin: top center; }
   #stack.place-bottom { left: 50%; bottom: 0; transform: translateX(-50%) scale(var(--zoom,1)); align-items: center; transform-origin: bottom center; }
   #stack.place-above  { align-items: flex-start; transform: scale(var(--zoom,1)); transform-origin: bottom left; }
   #stack.place-below  { align-items: flex-start; transform: scale(var(--zoom,1)); transform-origin: top left; }
@@ -128,14 +129,6 @@
   .logo { width: 16px; height: 16px; opacity: .75; display: flex; align-items: center; }
   .logo.seat { height: 19px; }  /* seated at button height — no vertical jump on hover */
   .logo svg { width: 16px; height: 16px; display: block; }
-  /* 3D gaze skull: the real skull.usdz (decimated), WebGL, SkullGazeView math.
-     Falls back to the flat mark leaning toward the pointer if skull-data.js is absent. */
-  .gaze { width: var(--gaze-size, 30px); height: var(--gaze-size, 30px); display: none;
-    align-items: center; justify-content: center; }
-  .gaze canvas { width: 100%; height: 100%; display: block; }
-  .gaze svg { width: 86%; height: 86%; transition: transform 120ms ease-out; }
-  #sessionPill.unanchored.gazeOn .gaze { display: flex; }
-  #sessionPill.unanchored.gazeOn .logo { display: none; }
   .status { display: none; font-size: 11.5px; font-weight: 500; color: var(--bone);
     white-space: nowrap; }
   #sessionPill.unanchored .status { display: block; }
@@ -266,7 +259,7 @@
   <div id="mockfield" class="hidden">Meeting notes: the quarterly numbers came in above <span class="caret"></span></div>
 
   <div id="pillzone">
-    <div id="stack" class="place-bottom">
+    <div id="stack" class="place-top">
 
       <!-- Saved-capture card (grows out of the pill's spot) -->
       <div class="holder grow" id="h-card"><div class="pillwrap">
@@ -297,7 +290,6 @@
         <div class="pill capsule unanchored accented" id="sessionPill">
           <div class="col">
             <div class="row">
-              <span class="gaze" id="gazeSkull"><canvas id="gazeCanvas" width="256" height="256"></canvas></span>
               <span class="logo seat"></span>
               <span class="status" id="statusText">Listening…</span>
               <span class="eqzone"><div id="eq"></div></span>
@@ -350,10 +342,6 @@
     <div class="note">Unanchored pill: always accented, halo scales with the live level (“breathes with the voice”). Any pill while summarizing: accent at fixed intensity. Field-anchored recording pill: plain.</div>
   </details>
 
-  <details open><summary>3D gaze skull</summary><div class="grp" id="ctl-gaze"></div>
-    <div class="note">The real skull.usdz (decimated to ~118k tris), orthographic camera + camera-aligned key light like the SceneKit scene. Constants map 1:1 to SkullGazeView.Coordinator.tick: yaw = clamp(atan2(dx, reach)), pitch likewise, EMA smoothing per tick.</div>
-  </details>
-
   <details open><summary>Dot equalizer</summary><div class="grp" id="ctl-eq"></div>
     <div class="note">shimmer = base + depth·(sin(col·phase + level·freq)·0.5+0.5); column lights ⌈level·profile·shimmer·rows⌉ dots from the bottom. Dots are tinted bone to match the halo.</div>
   </details>
@@ -383,15 +371,10 @@
 
 <textarea id="copyout"></textarea>
 
-<script src="skull-data.js"></script>
 <script>
 /* ---------------- skull logo (real asset: MenuBarIcon) ---------------- */
 const SKULL = `<svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.46517 0.933002C7.10651 0.114865 8.96091 -0.175319 10.7738 0.101947C11.364 0.19538 11.7907 0.311984 12.349 0.498432C14.3037 1.15205 16.0775 2.60745 16.9925 4.4623C18.1224 6.7532 18.5184 10.4789 15.8001 11.8305C15.5818 11.9386 15.3535 12.0271 15.1195 12.0951C14.9462 12.1268 14.7451 12.209 14.6058 12.3178C14.3782 12.5267 14.2563 12.7508 14.2503 13.0658C14.2453 13.3317 14.2483 13.5977 14.2484 13.8637V15.3646C14.2484 15.6236 14.26 15.8994 14.2386 16.1566C14.1905 16.733 13.7112 17.0688 13.1605 17.0307C13.0259 17.0022 12.932 16.9794 12.8099 16.9105C12.5671 16.7744 12.3959 16.5384 12.3431 16.265C12.3117 16.0947 12.3325 15.8769 12.1429 15.7836C12.0583 15.7421 11.923 15.7421 11.8402 15.7894C11.6412 15.9063 11.6839 16.1247 11.6751 16.309C11.6582 16.6679 11.7361 17.1182 11.5833 17.4467C11.4754 17.6799 11.2774 17.8594 11.0345 17.9437C10.7909 18.0296 10.5232 18.0154 10.2904 17.9037C9.94586 17.7374 9.75356 17.4031 9.74837 17.0258C9.74151 16.8846 9.76615 16.7339 9.72103 16.598C9.66157 16.4193 9.44953 16.3487 9.28548 16.4262C9.04257 16.5414 9.11173 16.8489 9.10287 17.0717C9.09943 17.1696 9.0804 17.2665 9.0472 17.3588C8.96129 17.5997 8.7839 17.7976 8.55306 17.9076C8.32052 18.0165 8.05377 18.0288 7.81185 17.9428C7.49586 17.8299 7.26273 17.559 7.19759 17.2299C7.14456 16.9558 7.19123 16.5891 7.17708 16.3051C7.16733 16.1089 7.21088 15.8458 6.95736 15.768C6.87073 15.7407 6.77642 15.75 6.69662 15.7934C6.48299 15.9078 6.55461 16.1503 6.48568 16.3646C6.40732 16.6097 6.23435 16.814 6.00521 16.931C5.77279 17.0492 5.50192 17.0681 5.25521 16.9838C4.98237 16.8907 4.74898 16.6654 4.65755 16.393C4.58207 16.1678 4.60285 15.7697 4.60287 15.5219L4.60384 13.8402C4.60382 13.5525 4.61046 13.2448 4.59212 12.9584C4.58555 12.8558 4.54845 12.7294 4.50033 12.6391C4.2652 12.1979 3.97753 12.1772 3.5638 12.0414C2.64883 11.7411 1.89174 11.1161 1.45931 10.2523C0.755132 8.84558 0.954548 6.93206 1.43099 5.48867C2.0973 3.47026 3.5716 1.87739 5.46517 0.933002ZM9.39193 10.933C8.85529 11.0106 8.3641 11.9231 8.47494 12.4301C8.5006 12.5475 8.52649 12.6638 8.63607 12.7377C8.83475 12.8709 9.23313 12.8567 9.47005 12.8568C10.0272 12.8464 10.4021 12.8789 10.388 12.1937C10.3791 11.7593 9.87424 10.8853 9.39193 10.933ZM13.7103 4.8666C13.3691 4.79049 12.9601 4.81684 12.6273 4.9164C11.6627 5.20512 10.9943 6.0671 10.7865 7.02773C10.6057 7.84876 10.7579 8.7081 11.2093 9.41738C11.577 9.98607 12.1439 10.4157 12.8119 10.556C13.0887 10.6143 13.4218 10.6269 13.6986 10.56C13.7476 10.5613 13.8429 10.5386 13.8919 10.5238C16.3582 9.78038 16.5267 6.08138 14.2249 5.01992C14.0722 4.94951 13.8781 4.88423 13.7103 4.8666ZM5.52376 4.82363C4.31004 4.84296 3.38976 5.7866 3.09798 6.90663C2.88628 7.72086 3.00471 8.58626 3.42708 9.31386C3.77634 9.90256 4.3316 10.366 5.00228 10.5346C5.32283 10.6179 5.65817 10.6269 5.98275 10.5609C6.03517 10.5606 6.14577 10.5322 6.19662 10.518C6.56077 10.4122 6.89554 10.2234 7.17513 9.96718C8.38838 8.87639 8.45444 6.85341 7.36849 5.65078C7.08476 5.33268 6.72489 5.09031 6.32357 4.94667C6.22338 4.91127 6.0999 4.87397 5.99349 4.86855C5.83272 4.82591 5.68852 4.82101 5.52376 4.82363Z" fill="currentColor"/></svg>`;
 document.querySelectorAll('.logo').forEach(el => el.innerHTML = SKULL);
-
-/* mouse position, tracked for the gaze */
-let mouseX = innerWidth / 2, mouseY = innerHeight / 2;
-document.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
 
 /* spinner blades */
 const spin = document.getElementById('spin');
@@ -419,9 +402,6 @@ const DEFAULTS = {
   // bone accent — PillGlass(accent:)
   rimATop: 0.45, rimABot: 0.08, rimAW: 1,
   haloBaseO: 0.12, haloGainO: 0.28, haloBaseR: 8, haloGainR: 6, trIntensity: 0.5,
-  // gaze skull — SkullGazeView.Coordinator.tick
-  reach: 260, yawClamp: 0.55, pitchClamp: 0.45, gazeSmooth: 0.25, gazeTick: 33,
-  gazeSize: 30, gazeFill: 0.9,
   // shadow (CSS blur = 2× SwiftUI radius)
   sh1o: 0.26, sh1b: 10, sh1y: 2, sh2o: 0.14, sh2b: 2, sh2y: 0.5,
   // motion
@@ -434,7 +414,7 @@ let bone = '#ece5d8';   // Theme.bone
 const PROFILE8 = [0.5, 0.72, 0.9, 1.0, 1.0, 0.9, 0.72, 0.5];
 
 /* session pill state (one pill, states within) */
-const state = { session: 'recording', placement: 'bottom', gaze: true };
+const state = { session: 'recording', placement: 'top' };
 
 /* ---------------- control builder ---------------- */
 function slider(host, key, label, min, max, step, fmt) {
@@ -490,15 +470,6 @@ slider(A, 'haloGainO', 'halo opacity ×level', 0, 0.8, 0.01, f2);
 slider(A, 'haloBaseR', 'halo base radius', 0, 24, 0.5, f1);
 slider(A, 'haloGainR', 'halo radius ×level', 0, 24, 0.5, f1);
 slider(A, 'trIntensity', 'summarizing intensity', 0, 1, 0.05, f2);
-
-const GZ = $('ctl-gaze');
-slider(GZ, 'reach', 'reach (virtual dist)', 80, 600, 10);
-slider(GZ, 'yawClamp', 'yaw clamp rad', 0.1, 1.2, 0.01, f2);
-slider(GZ, 'pitchClamp', 'pitch clamp rad', 0.1, 1.2, 0.01, f2);
-slider(GZ, 'gazeSmooth', 'smoothing α', 0.05, 1, 0.01, f2);
-slider(GZ, 'gazeTick', 'tick ms', 16, 100, 1);
-slider(GZ, 'gazeSize', 'frame size pt', 20, 48, 1);
-slider(GZ, 'gazeFill', 'skull fill', 0.5, 1.3, 0.01, f2);
 
 const E = $('ctl-eq');
 slider(E, 'cols', 'columns', 3, 16, 1);
@@ -558,17 +529,13 @@ slider(ST, 'zoom', 'zoom', 1, 4, 0.5, f1);
   const r2 = document.createElement('div'); r2.className = 'ctl';
   r2.innerHTML = '<label>placement</label>';
   const sel2 = document.createElement('select');
-  [['bottom','Unanchored (observing)'],['above','Above field (dictation)'],['below','Below field (dictation)']]
+  // Unanchored placement mirrors the app's "Saved-note position" setting
+  // (HUDPlacement.unanchoredAtTop) — top center is the app default.
+  [['top','Unanchored · top center'],['bottom','Unanchored · bottom center'],
+   ['above','Above field (dictation)'],['below','Below field (dictation)']]
     .forEach(([v,t]) => sel2.add(new Option(t, v)));
   sel2.onchange = () => { state.placement = sel2.value; setPlacement(sel2.value); applySession(); };
   r2.appendChild(sel2); r2.appendChild(document.createElement('span')); ST.appendChild(r2);
-
-  const r3 = document.createElement('div'); r3.className = 'ctl';
-  r3.innerHTML = '<label>3D gaze skull</label>';
-  const cb = document.createElement('input'); cb.type = 'checkbox';
-  cb.checked = state.gaze;
-  cb.onchange = () => { state.gaze = cb.checked; applySession(); };
-  r3.appendChild(cb); r3.appendChild(document.createElement('span')); ST.appendChild(r3);
 
   const r4 = document.createElement('div'); r4.className = 'ctl';
   r4.innerHTML = '<label>silence warning</label>';
@@ -579,11 +546,12 @@ slider(ST, 'zoom', 'zoom', 1, 4, 0.5, f1);
 
 function setPlacement(mode) {
   const stack = $('stack'), field = $('mockfield');
+  const unanchored = mode === 'top' || mode === 'bottom';
   stack.className = 'place-' + mode;
-  // grow direction: below-field pills enter from above; everything else from below
-  stack.style.setProperty('--enter-dy', mode === 'below' ? '-10px' : '10px');
-  field.classList.toggle('hidden', mode === 'bottom');
-  if (mode === 'bottom') { stack.style.left = ''; stack.style.top = ''; stack.style.bottom = ''; return; }
+  // grow direction: top-edge pills enter from above; bottom-edge from below
+  stack.style.setProperty('--enter-dy', (mode === 'below' || mode === 'top') ? '-10px' : '10px');
+  field.classList.toggle('hidden', unanchored);
+  if (unanchored) { stack.style.left = ''; stack.style.top = ''; stack.style.bottom = ''; return; }
   const fr = field.getBoundingClientRect(), sr = $('stage').getBoundingClientRect();
   stack.style.left = (fr.left - sr.left - 6) + 'px';
   if (mode === 'above') { stack.style.bottom = (sr.bottom - fr.top) + 'px'; stack.style.top = ''; }
@@ -612,13 +580,12 @@ function springCurve(response, damping) {
    Field-anchored recording pill stays plain. */
 function applySession() {
   const pill = $('sessionPill');
-  const unanchored = state.placement === 'bottom';
+  const unanchored = state.placement === 'top' || state.placement === 'bottom';
   // "cleaning" is the transcribing visual with a different label — the app's
   // pre-insert cleanup pass swaps the text, nothing else.
   const transcribing = state.session === 'transcribing' || state.session === 'cleaning';
   pill.classList.toggle('unanchored', unanchored);
   pill.classList.toggle('transcribing', transcribing);
-  pill.classList.toggle('gazeOn', state.gaze && unanchored);
   pill.classList.toggle('accented', unanchored || transcribing);
   // corners: capsule when unanchored, pointer above / pointerBelow below
   pill.classList.remove('capsule', 'pointer', 'pointerBelow');
@@ -631,7 +598,7 @@ function applySession() {
 
 function updateHalo(level) {
   const pill = $('sessionPill');
-  const unanchored = state.placement === 'bottom';
+  const unanchored = state.placement === 'top' || state.placement === 'bottom';
   const transcribing = state.session === 'transcribing';
   if (!(unanchored || transcribing)) { pill.style.setProperty('--halo-o', 0); return; }
   const I = transcribing ? P.trIntensity : Math.min(Math.max(level, 0), 1);
@@ -683,7 +650,6 @@ function apply() {
   R.setProperty('--dot-ms', P.dotMs + 'ms');
   R.setProperty('--lit', P.lit); R.setProperty('--dim', P.dim);
   R.setProperty('--tl', P.tl + 'px'); R.setProperty('--bl', P.bl + 'px');
-  R.setProperty('--gaze-size', P.gazeSize + 'px');
   R.setProperty('--zoom', P.zoom);
   const h = springCurve(P.hovResp, P.hovDamp);
   R.setProperty('--hover-ease', h.easing); R.setProperty('--hover-ms', h.ms + 'ms');
@@ -792,7 +758,6 @@ function startLoop() {
 }
 setInterval(() => { /* cheap: rebuild intervals if changed */
   if (timer && timer._ms !== P.tickMs) { startLoop(); timer._ms = P.tickMs; }
-  if (gazeTimer && gazeTimer._ms !== P.gazeTick) startGazeLoop();
 }, 300);
 
 function updateEq(level) {
@@ -807,117 +772,6 @@ function updateEq(level) {
       col[r].style.opacity = rowFromBottom < lit ? P.lit : P.dim;
     }
   }
-}
-
-/* ---------------- 3D gaze skull (WebGL; math from SkullGazeView.Coordinator) ---------------- */
-const gaze = { gl: null, count: 0, ex: 0, ey: 0, uR: null, uFill: null, uColor: null };
-
-/* column-major 3x3 helpers */
-function rotX(a) { const c = Math.cos(a), s = Math.sin(a); return [1,0,0, 0,c,s, 0,-s,c]; }
-function rotY(a) { const c = Math.cos(a), s = Math.sin(a); return [c,0,-s, 0,1,0, s,0,c]; }
-function mul3(A, B) {
-  const C = new Array(9);
-  for (let c = 0; c < 3; c++) for (let r = 0; r < 3; r++) {
-    C[c*3+r] = A[r] * B[c*3] + A[3+r] * B[c*3+1] + A[6+r] * B[c*3+2];
-  }
-  return C;
-}
-
-function initGaze() {
-  const host = $('gazeSkull');
-  if (!window.SKULL_DATA) {   // no mesh payload beside the html: flat mark leans instead
-    host.innerHTML = SKULL;
-    setInterval(() => {
-      const g = host.querySelector('svg');
-      if (!g || !host.closest('.gazeOn')) return;
-      const r = host.getBoundingClientRect();
-      const dx = mouseX - (r.left + r.width / 2), dy = mouseY - (r.top + r.height / 2);
-      const a = Math.atan2(dy, dx), m = Math.min(1, Math.hypot(dx, dy) / 400) * 3;
-      g.style.transform = `translate(${Math.cos(a)*m}px,${Math.sin(a)*m}px) rotate(${Math.cos(a)*m*2}deg)`;
-    }, 33);
-    return;
-  }
-  const canvas = $('gazeCanvas');
-  const gl = canvas.getContext('webgl2', { antialias: true, alpha: true });
-  if (!gl) { host.innerHTML = SKULL; return; }
-  /* decode payload: [u32 nv][u32 nf][f32 pos ×3nv][f32 nrm ×3nv][u32 idx ×3nf] */
-  const s = atob(window.SKULL_DATA);
-  const buf = new ArrayBuffer(s.length);
-  const u8 = new Uint8Array(buf);
-  for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
-  const [nv, nf] = new Uint32Array(buf, 0, 2);
-  const pos = new Float32Array(buf, 8, nv * 3);
-  const nrm = new Float32Array(buf, 8 + nv * 12, nv * 3);
-  const idx = new Uint32Array(buf, 8 + nv * 24, nf * 3);
-
-  const vs = `#version 300 es
-  layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNrm;
-  uniform mat3 uR; uniform float uFill; out vec3 vN;
-  void main(){ vec3 p = uR*aPos; vN = uR*aNrm; gl_Position = vec4(p.xy*uFill, -p.z*0.3, 1.0); }`;
-  const fs = `#version 300 es
-  precision mediump float; in vec3 vN; uniform vec3 uColor; out vec4 o;
-  void main(){ vec3 n = normalize(vN); float d = max(n.z, 0.0);
-    float spec = pow(d, 24.0) * 0.18;
-    o = vec4(uColor*(0.16 + 0.84*d) + spec, 1.0); }`;   // key light from the camera + ambient floor
-  const mk = (type, src) => {
-    const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
-    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(sh));
-    return sh;
-  };
-  const prog = gl.createProgram();
-  gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs));
-  gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
-  gl.linkProgram(prog); gl.useProgram(prog);
-
-  const bind = (loc, data) => {
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
-  };
-  bind(0, pos); bind(1, nrm);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
-
-  gaze.gl = gl; gaze.count = nf * 3;
-  gaze.uR = gl.getUniformLocation(prog, 'uR');
-  gaze.uFill = gl.getUniformLocation(prog, 'uFill');
-  gaze.uColor = gl.getUniformLocation(prog, 'uColor');
-  gl.enable(gl.DEPTH_TEST);
-  gl.clearColor(0, 0, 0, 0);
-  drawSkull();
-}
-
-function drawSkull() {
-  if (!gaze.gl) return;
-  const gl = gaze.gl;
-  /* USDZ is Z-up: base -90° about X (like makeScene), then gaze pitch+yaw on top.
-     SceneKit euler = Ry(yaw)·Rx(pitch), so total = Ry(ey)·Rx(ex − π/2). */
-  const R = mul3(rotY(gaze.ey), rotX(gaze.ex - Math.PI / 2));
-  gl.uniformMatrix3fv(gaze.uR, false, R);
-  gl.uniform1f(gaze.uFill, P.gazeFill);
-  gl.uniform3f(gaze.uColor, 0.84, 0.81, 0.77);   // bone-gray, near the sculpt's read
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.drawElements(gl.TRIANGLES, gaze.count, gl.UNSIGNED_INT, 0);
-}
-
-let gazeTimer = null;
-function startGazeLoop() {
-  if (gazeTimer) clearInterval(gazeTimer);
-  gazeTimer = setInterval(() => {
-    if (!gaze.gl || !$('sessionPill').classList.contains('gazeOn')) return;
-    const r = $('gazeSkull').getBoundingClientRect();
-    if (!r.width) return;
-    /* Coordinator.tick verbatim: dx/dy from the view's center, AppKit y-up */
-    const dx = mouseX - (r.left + r.width / 2);
-    const dyUp = (r.top + r.height / 2) - mouseY;
-    const yaw = Math.max(-P.yawClamp, Math.min(P.yawClamp, Math.atan2(dx, P.reach)));
-    const pitch = Math.max(-P.pitchClamp, Math.min(P.pitchClamp, Math.atan2(dyUp, P.reach)));
-    gaze.ex += (-pitch - gaze.ex) * P.gazeSmooth;
-    gaze.ey += (yaw - gaze.ey) * P.gazeSmooth;
-    drawSkull();
-  }, P.gazeTick);
-  gazeTimer._ms = P.gazeTick;
 }
 
 /* ---------------- UI wiring ---------------- */
@@ -1006,13 +860,6 @@ shape.fill(Color.black.opacity(${P.glassBlack}))
 // summarizing intensity: ${P.trIntensity}
 // pointer corners: round ${P.tl}, seated ${P.bl} (pointerBelow mirrors)
 
-// SkullGazeView.swift — Coordinator.tick
-let reach: CGFloat = ${P.reach}
-let yaw = Float(max(-${P.yawClamp}, min(${P.yawClamp}, atan2(dx, reach))))
-let pitch = Float(max(-${P.pitchClamp}, min(${P.pitchClamp}, atan2(dy, reach))))
-// smoothing: current + (target - current) * ${P.gazeSmooth}, tick ${P.gazeTick}ms
-// frame: ${P.gazeSize}×${P.gazeSize}pt; orthographicScale tuned so skull fills ~${Math.round(P.gazeFill * 100)}%
-
 // springs
 .animation(.spring(response: ${P.hovResp}, dampingFraction: ${P.hovDamp}))  // hover reveals
 .animation(.spring(response: ${P.trResp}, dampingFraction: ${P.trDamp}))  // pill transitions`);
@@ -1056,7 +903,7 @@ $('resetAll').onclick = () => {
 }
 
 /* go */
-apply(); buildEq(); applySession(); startLoop(); initGaze(); startGazeLoop();
+apply(); buildEq(); applySession(); startLoop(); setPlacement(state.placement);
 </script>
 </body>
 </html>

@@ -8,9 +8,6 @@ struct HUDContentView: View {
     /// The saved-capture card's fade clock, cancelled while hovered.
     @State private var cardDismissTask: Task<Void, Never>?
     @State private var cardHovering = false
-    /// Whether the 3D gaze skull has been upgraded INTO the recording pill.
-    /// Reset per recording: the pill always starts flat and instant.
-    @State private var gazeMounted = false
 
     private var isVisible: Bool {
         (session.state == .recording && session.hudReady) ||
@@ -65,11 +62,6 @@ struct HUDContentView: View {
             }
         }
         .animation(.spring(duration: 0.3), value: session.state)
-        .onChange(of: session.state) { _, state in
-            // The skull stays through transcribing (one continuous presence)
-            // and re-earns its slot on the next recording.
-            if state != .recording, state != .transcribing { gazeMounted = false }
-        }
         .animation(.spring(duration: 0.3), value: session.lastSavedCapture?.id)
         .animation(.spring(duration: 0.3), value: session.transientNotice?.id)
         .frame(
@@ -232,13 +224,6 @@ struct HUDContentView: View {
             .foregroundStyle(.white.opacity(templateOpacity))
     }
 
-    /// The ONE eligibility predicate for the 3D gaze skull: a contextual
-    /// recording in progress. Mounting additionally requires the warm view
-    /// (checked once at mount time — readiness is monotonic).
-    private var gazeEligible: Bool {
-        session.state == .recording && session.hudPillPlacement == .bottomCenter
-    }
-
     /// The squared corner means "seated at your insertion point," so only a
     /// field-anchored pill gets to wear it — with the seated corner facing
     /// the caret. Bottom-center (saving, or an opaque field) is a full
@@ -270,26 +255,8 @@ struct HUDContentView: View {
         let unanchored = session.hudPillPlacement == .bottomCenter
         return VStack(spacing: 4) {
             HStack(spacing: unanchored ? 10 : 9) {
-                // The 3D skull watches the cursor — pure delight, no claim —
-                // and keeps watching through "Transcribing…": one
-                // continuous presence. BULLETPROOF ORDERING: always launch
-                // with the flat mark (instant, depends on nothing); the 3D
-                // guy is an upgrade that fades in only when fully GPU-warm.
-                if unanchored, gazeMounted {
-                    SkullGazeView()
-                        .frame(width: 30, height: 30)
-                        .transition(.opacity)
-                } else {
-                    skullMark(16)
-                        .frame(height: 19) // seat at button height so hover adds no vertical jump
-                        .onAppear {
-                            Task { @MainActor in
-                                try? await Task.sleep(nanoseconds: 300_000_000)
-                                guard gazeEligible, SkullGazeView.isReady else { return }
-                                withAnimation(.easeIn(duration: 0.2)) { gazeMounted = true }
-                            }
-                        }
-                }
+                skullMark(16)
+                    .frame(height: 19) // seat at button height so hover adds no vertical jump
                 if unanchored {
                     Text(transcribing
                          ? (session.cleanupRunning ? "Cleaning up…" : "Transcribing…")
