@@ -304,17 +304,13 @@ struct HUDContentView: View {
         // append on the right, the pill grows rightward.
         .padding(.horizontal, unanchored ? 14 : 11)
         .padding(.vertical, unanchored ? 8 : 5)
-        // Bone rim + halo — the skull's own color glowing like moonlight
-        // (amber read as a warning). ONE glass identity: background, rim,
-        // and shadow/halo are identical whether the pill sits at a field or
-        // at the screen edge — the accent is the pill's look, not the
-        // unanchored pill's look. While recording the halo BREATHES with
-        // the voice — same signal as the equalizer, so meter and glow move
-        // together; while transcribing it holds at fixed intensity.
+        // The halo BREATHES with the voice while recording — same signal as
+        // the equalizer, both in Theme.glow, so meter and glow move
+        // together; while transcribing it holds at fixed intensity. Glass
+        // (background, rim, shadows) is the shared recipe in PillGlass.
         .pillGlass(
             corners: recordingCorners,
-            accent: Theme.bone,
-            accentIntensity: transcribing ? 0.5 : Double(min(max(session.audioLevel, 0), 1))
+            haloIntensity: transcribing ? 0.5 : Double(min(max(session.audioLevel, 0), 1))
         )
         .onHover { recordingHovering = $0 }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
@@ -373,41 +369,42 @@ private struct PillShape: InsettableShape {
 }
 
 /// Dark capsule with a gradient rim light and a lifted shadow, so the pill
-/// separates from whatever busy UI it happens to float over. An optional
-/// `accent` warms the rim and adds a faint glow — the unanchored pill's
-/// answer to vanishing against dark-mode backdrops (a dark pill on a dark
-/// page had nothing but a white hairline to announce it). Kept deliberately
-/// quiet: tinted edge and halo, never a filled color.
+/// separates from whatever busy UI it happens to float over. ONE recipe for
+/// every surface — session pill, capture card, notices: same background
+/// opacity, same bone rim, same shadows (playground-tuned 2026-07-30). The
+/// only per-surface option is the HALO: pass `haloIntensity` to add the
+/// Theme.glow ring (the session pill breathes it with the voice); nil means
+/// no halo, everything else identical.
 private struct PillGlass: ViewModifier {
     var corners: PillCorners = .capsule
-    var accent: Color?
-    /// 0…1 — scales the halo with the live audio level so the glow
-    /// breathes with the voice. Constant while summarizing.
-    var accentIntensity: Double = 1
+    /// 0…1 scales the glow halo with the live audio level; nil = no halo.
+    var haloIntensity: Double?
     private var shape: PillShape { PillShape(corners: corners) }
 
     func body(content: Content) -> some View {
-        glassed(content)
+        let intensity = min(max(haloIntensity ?? 0, 0), 1)
+        return glassed(content)
             .overlay(
                 shape.strokeBorder(
                     LinearGradient(
-                        colors: accent.map { [$0.opacity(0.45), $0.opacity(0.08)] }
-                            ?? [.white.opacity(0.30), .white.opacity(0.06)],
+                        colors: [Theme.bone.opacity(0.26), Theme.bone.opacity(0.08)],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: accent == nil ? 0.75 : 1
+                    lineWidth: 1
                 )
             )
             .compositingGroup()
             // Tight, defined shadow — the old radius-11 cloud smudged badly on
             // white backgrounds (Pages, a white webpage). Two layers: a soft
             // lift plus a crisp contact edge that reads on any backdrop.
-            .shadow(color: .black.opacity(0.26), radius: 5, y: 2)
-            .shadow(color: .black.opacity(0.14), radius: 1, y: 0.5)
+            .shadow(color: .black.opacity(0.21), radius: 5, y: 0)
+            .shadow(color: .black.opacity(0.16), radius: 1.25, y: 0.5)
             .shadow(
-                color: (accent ?? .clear).opacity(accent == nil ? 0 : 0.12 + 0.28 * min(max(accentIntensity, 0), 1)),
-                radius: 8 + 6 * min(max(accentIntensity, 0), 1)
+                color: haloIntensity == nil
+                    ? .clear
+                    : Theme.glow.opacity(0.16 + 0.52 * intensity),
+                radius: 10 + 4.5 * intensity
             )
     }
 
@@ -421,7 +418,7 @@ private struct PillGlass: ViewModifier {
             .background {
                 ZStack {
                     shape.fill(.ultraThinMaterial)
-                    shape.fill(Color.black.opacity(0.78))
+                    shape.fill(Color.black.opacity(0.85))
                 }
             }
             .clipShape(shape)
@@ -429,8 +426,8 @@ private struct PillGlass: ViewModifier {
 }
 
 private extension View {
-    func pillGlass(corners: PillCorners = .capsule, accent: Color? = nil, accentIntensity: Double = 1) -> some View {
-        modifier(PillGlass(corners: corners, accent: accent, accentIntensity: accentIntensity))
+    func pillGlass(corners: PillCorners = .capsule, haloIntensity: Double? = nil) -> some View {
+        modifier(PillGlass(corners: corners, haloIntensity: haloIntensity))
     }
 }
 
@@ -441,14 +438,16 @@ private extension View {
 /// dance independently, so it reads as an equalizer rather than a meter.
 private struct DotEqualizer: View {
     let level: Float
-    /// Bone to match the pill's glow — the voice meter and the halo speak
-    /// the same color.
-    var tint: Color = Theme.bone
+    /// Theme.glow, pinned to the halo — the voice meter and the glow speak
+    /// the same color, and that color never touches text.
+    var tint: Color = Theme.glow
     private let rows = 4
-    private let cols = 8
+    private let cols = 6
     private let dot: CGFloat = 2.5
     private let gap: CGFloat = 2
-    private static let profile: [Double] = [0.5, 0.72, 0.9, 1.0, 1.0, 0.9, 0.72, 0.5]
+    /// Center-weighted profile, resampled for 6 columns from the original
+    /// 8-wide curve (playground-tuned).
+    private static let profile: [Double] = [0.5, 0.79, 0.98, 0.98, 0.79, 0.5]
 
     var body: some View {
         HStack(spacing: gap) {
