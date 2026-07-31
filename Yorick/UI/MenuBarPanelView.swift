@@ -66,12 +66,10 @@ struct MenuBarPanelView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image("MenuBarIcon")
+            Image("SkullLogo")
                 .resizable()
-                .renderingMode(.template)
                 .scaledToFit()
-                .frame(width: 15, height: 15)
-                .foregroundStyle(Theme.bone)
+                .frame(width: 17, height: 17)
             Text("yorick")
                 .font(Theme.mono(13, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
@@ -179,12 +177,11 @@ struct MenuBarPanelView: View {
     private var captureList: some View {
         if session.captureStore.captures.isEmpty {
             VStack(spacing: 8) {
-                Image("MenuBarIcon")
+                Image("SkullLogo")
                     .resizable()
-                    .renderingMode(.template)
                     .scaledToFit()
-                    .frame(width: 28, height: 28)
-                    .foregroundStyle(Theme.textTertiary)
+                    .frame(width: 34, height: 34)
+                    .opacity(0.85)
                 Text("Nothing waiting.")
                     .font(Theme.mono(12))
                     .foregroundStyle(Theme.textSecondary)

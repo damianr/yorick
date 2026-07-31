@@ -423,11 +423,10 @@ struct OnboardingView: View {
             Circle()
                 .fill(Theme.bgElevated)
                 .frame(width: 72, height: 72)
-            Image("MenuBarIcon")
+            Image("SkullLogo")
                 .resizable()
-                .renderingMode(.template)
-                .frame(width: 32, height: 32)
-                .foregroundStyle(Theme.textPrimary)
+                .scaledToFit()
+                .frame(width: 40, height: 40)
         }
     }
 
