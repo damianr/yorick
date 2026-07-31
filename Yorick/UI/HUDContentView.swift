@@ -302,8 +302,15 @@ struct HUDContentView: View {
             }
         }
         // Constant padding so the mark + EQ never shift on hover — buttons
-        // append on the right, the pill grows rightward.
-        .padding(.horizontal, unanchored ? 14 : 11)
+        // append on the right, the pill grows rightward. CROOK GEOMETRY:
+        // the circular buttons (stop, cancel) are 19pt in a 19pt content
+        // row, so they sit concentric in the capsule's round end exactly
+        // when trailing padding EQUALS vertical padding — more trailing
+        // than vertical reads as the button floating shy of the crook
+        // (field-reported). Leading is a touch looser for the mark's
+        // optical seat.
+        .padding(.leading, unanchored ? 10 : 7)
+        .padding(.trailing, unanchored ? 8 : 5)
         .padding(.vertical, unanchored ? 8 : 5)
         // The halo BREATHES with the voice while recording — same signal as
         // the equalizer, both in Theme.glow, so meter and glow move
