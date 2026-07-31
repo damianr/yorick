@@ -136,7 +136,10 @@
   .status { display: none; font-size: 11.5px; font-weight: 500; color: var(--bone);
     white-space: nowrap; }
   #sessionPill.unanchored .status { display: block; }
-  .eqzone { display: flex; }
+  /* Flat-ended EQ needs optical air as the trailing element; the extra
+     vanishes when the stop button appends (crook stays concentric). */
+  .eqzone { display: flex; padding-right: 6px; transition: padding var(--hover-ms) var(--hover-ease); }
+  #sessionPill:hover .eqzone { padding-right: 0; }
   .tzone { display: none; align-items: center; gap: 9px; }
   #sessionPill.transcribing .eqzone { display: none; }
   #sessionPill.transcribing .tzone { display: flex; }

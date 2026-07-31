@@ -275,6 +275,12 @@ struct HUDContentView: View {
                     .help("Cancel transcription")
                 } else {
                     DotEqualizer(level: session.audioLevel)
+                        // The EQ is flat-ended, not round: as the TRAILING
+                        // element it needs optical air the crook padding
+                        // doesn't give (field-reported "way too tight").
+                        // The extra vanishes when the stop button appends,
+                        // so the button keeps its concentric seat.
+                        .padding(.trailing, recordingHovering ? 0 : 6)
                     if recordingHovering {
                         Button(action: { session.stopIfRecording() }) {
                             Image(systemName: "stop.fill")
