@@ -208,21 +208,14 @@ struct HUDContentView: View {
     // on hover. No timer, no mode word, no mode color — the EQ says "recording"
     // and the pill's POSITION says dictation vs observation.
 
-    /// The skull mark — the new logo as a template vector (single evenodd
-    /// path, so the eyes and nose are true cutouts and the face survives
-    /// tinting), white like every pill glyph, slightly larger than the old
-    /// 12pt mark so the face actually reads at pill size. Falls back to the
-    /// legacy glyph if the asset is ever missing. The full-color 3D version
-    /// takes over this slot when the look-around skull lands.
-    private func skullMark(_ size: CGFloat, templateOpacity: Double = 0.75) -> some View {
-        // ONE mark asset app-wide: MenuBarIcon carries the skull for the
-        // menu bar, titlebar, onboarding, and these pills alike.
-        Image("MenuBarIcon")
+    /// The skull mark — the full-color 3D logo. The MENU BAR keeps the
+    /// template SVG (it must adapt to menu bar appearance and take the
+    /// state tints); everywhere else the 3D face is the brand.
+    private func skullMark(_ size: CGFloat) -> some View {
+        Image("SkullLogo")
             .resizable()
-            .renderingMode(.template)
             .scaledToFit()
             .frame(width: size, height: size)
-            .foregroundStyle(.white.opacity(templateOpacity))
     }
 
     /// The squared corner means "seated at your insertion point," so only a
@@ -302,8 +295,15 @@ struct HUDContentView: View {
             }
         }
         // Constant padding so the mark + EQ never shift on hover — buttons
-        // append on the right, the pill grows rightward.
-        .padding(.horizontal, unanchored ? 14 : 11)
+        // append on the right, the pill grows rightward. CROOK GEOMETRY:
+        // the circular buttons (stop, cancel) are 19pt in a 19pt content
+        // row, so they sit concentric in the capsule's round end exactly
+        // when trailing padding EQUALS vertical padding — more trailing
+        // than vertical reads as the button floating shy of the crook
+        // (field-reported). Leading is a touch looser for the mark's
+        // optical seat.
+        .padding(.leading, unanchored ? 10 : 7)
+        .padding(.trailing, unanchored ? 8 : 5)
         .padding(.vertical, unanchored ? 8 : 5)
         // The halo BREATHES with the voice while recording — same signal as
         // the equalizer, both in Theme.glow, so meter and glow move
