@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import CoreGraphics
 import os
 
@@ -34,6 +35,10 @@ enum PasteboardLease {
     /// Stamped on our synthesized key events so the user-paste tap can tell
     /// them apart from a real keystroke. ("YORI")
     nonisolated static let syntheticEventTag: Int64 = 0x594F_5249
+    /// The layout-resolved "v" keycode, cached when the tap is armed so the
+    /// C callback compares against the user's real paste key (benign race:
+    /// worst case one lease compares against a just-switched layout).
+    nonisolated(unsafe) private static var armedPasteKeyCode: Int64 = 9
 
     private static var snapshot: Snapshot?
     private static var token: String?
@@ -102,14 +107,50 @@ enum PasteboardLease {
         pasteboard.setString("", forType: concealedType)
     }
 
-    /// Synthesize ⌘V at session level, tagged as ours.
+    /// Synthesize ⌘V at session level, tagged as ours — with the keycode
+    /// resolved against the user's ACTUAL layout, not the ANSI position.
     static func postPasteKeystroke() {
         let source = CGEventSource(stateID: .combinedSessionState)
+        let keyCode = currentPasteKeyCode()
         for keyDown in [true, false] {
-            let event = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: keyDown)
+            let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown)
             event?.flags = .maskCommand
             event?.setIntegerValueField(.eventSourceUserData, value: syntheticEventTag)
             event?.post(tap: .cgSessionEventTap)
+        }
+    }
+
+    /// The virtual keycode that types "v" under the CURRENT keyboard layout.
+    /// Keycodes are POSITIONAL: the hardcoded 0x09 is V only on QWERTY —
+    /// on Dvorak that position types "k", so the synthesized "⌘V" arrived
+    /// in apps as ⌘K: Slack opened its jump bar and Terminal cleared the
+    /// scrollback instead of pasting (the first outside user's first field
+    /// report). Reverse-map through UCKeyTranslate against the current
+    /// ASCII-capable layout — the same table macOS resolves ⌘-shortcuts
+    /// with. Falls back to 0x09 if the layout is unreadable.
+    nonisolated static func currentPasteKeyCode() -> CGKeyCode {
+        guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let layoutDataRef = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+        else { return 0x09 }
+        let layoutData = Unmanaged<CFData>.fromOpaque(layoutDataRef).takeUnretainedValue() as Data
+        return layoutData.withUnsafeBytes { buffer -> CGKeyCode in
+            guard let layout = buffer.bindMemory(to: UCKeyboardLayout.self).baseAddress else {
+                return 0x09
+            }
+            for code: UInt16 in 0..<128 {
+                var deadKeys: UInt32 = 0
+                var chars = [UniChar](repeating: 0, count: 4)
+                var length = 0
+                let err = UCKeyTranslate(
+                    layout, code, UInt16(kUCKeyActionDown), 0,
+                    UInt32(LMGetKbdType()), UInt32(kUCKeyTranslateNoDeadKeysBit),
+                    &deadKeys, chars.count, &length, &chars
+                )
+                if err == noErr, length == 1, chars[0] == UniChar(UInt8(ascii: "v")) {
+                    return CGKeyCode(code)
+                }
+            }
+            return 0x09
         }
     }
 
@@ -159,8 +200,7 @@ enum PasteboardLease {
         // which Yorick must already be to dictate at all. Head-inserted so
         // the restore happens BEFORE the user's paste reaches its app. If
         // creation ever fails, the wall clock still bounds the lease.
-        // (Keycode 9 is the ANSI V position — a non-ANSI layout's ⌘V may
-        // not match, and then simply falls through to the clock.)
+        armedPasteKeyCode = Int64(currentPasteKeyCode())
         let mask: CGEventMask = 1 << CGEventType.keyDown.rawValue
         if let newTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -170,7 +210,7 @@ enum PasteboardLease {
             callback: { _, type, event, _ in
                 if type == .keyDown,
                    event.getIntegerValueField(.eventSourceUserData) != PasteboardLease.syntheticEventTag,
-                   event.getIntegerValueField(.keyboardEventKeycode) == 9,
+                   event.getIntegerValueField(.keyboardEventKeycode) == PasteboardLease.armedPasteKeyCode,
                    event.flags.contains(.maskCommand) {
                     // The tap's run-loop source lives on the main loop, so
                     // the callback runs on the main thread.
