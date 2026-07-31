@@ -3,6 +3,14 @@
     <channel>
         <title>Yorick</title>
         <item>
+            <title>0.2.1</title>
+            <pubDate>Fri, 31 Jul 2026 10:56:21 -0700</pubDate>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/damianr/yorick/releases/download/v0.2.1/Yorick-0.2.1.dmg" length="5581239" type="application/octet-stream" sparkle:edSignature="D6YFjhPnljxAcfZiEPoAh5GV8fk1ElmyKWdnnJZ6nWM6FrEScziycAxHVJ4q9emDIGTpUAakLPfeYAaGpHRHBQ=="/>
+        </item>
+        <item>
             <title>0.2.0</title>
             <pubDate>Thu, 30 Jul 2026 17:57:25 -0700</pubDate>
             <sparkle:version>6</sparkle:version>
