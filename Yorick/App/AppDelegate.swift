@@ -7,6 +7,7 @@ import Sparkle
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let sessionManager = SessionManager()
+    private var menuBarPanel: MenuBarPanelController?
     private var hudWindow: HUDWindow?
 
     /// Sparkle auto-updates. Checks the appcast on a schedule and on demand
@@ -18,6 +19,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         registerHotkeys()
+        // The menu bar surface: custom status item + card-styled panel.
+        menuBarPanel = MenuBarPanelController(session: sessionManager)
+
+        // Yorick launches as an accessory (LSUIElement) and STAYS one —
+        // except while onboarding runs, which needs a real, activated
+        // window. Existing installs (captures already on disk) predate
+        // onboarding and never see the flow.
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: "hasCompletedOnboarding"),
+           !sessionManager.captureStore.captures.isEmpty {
+            defaults.set(true, forKey: "hasCompletedOnboarding")
+        }
+        let needsOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
+            || defaults.bool(forKey: "forceOnboarding")
+        if needsOnboarding {
+            NSApp.setActivationPolicy(.regular)
+            DispatchQueue.main.async {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
 
         let trusted = AXIsProcessTrusted()
         print("[AppDelegate] Accessibility trusted: \(trusted)")
@@ -83,6 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Never quit still holding the clipboard — put the user's content
+        // back if a paste lease is mid-flight.
+        PasteboardLease.flushEarly(reason: "app terminating")
         // Don't leave an orphaned whisper-server behind — it would survive the
         // app and keep serving a stale model after an update.
         WhisperServer.shutdown()
@@ -111,16 +135,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         [.banner, .sound]
     }
 
-    // Re-open the main window when the user clicks the Dock icon with no visible windows
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            NSApp.windows
-                .first { !($0 is NSPanel) && $0.canBecomeMain }?
-                .makeKeyAndOrderFront(nil)
-        }
-        return true
-    }
-
     // Handle notification click — open main window
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -130,4 +144,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             NSApp.activate(ignoringOtherApps: true)
         }
     }
+}
+
+extension Notification.Name {
+    /// Open the menu bar panel (onboarding's final handoff step).
+    static let showMenuBarPanel = Notification.Name("showMenuBarPanel")
+    /// Ask Sparkle to check for updates now (panel ⋯ menu).
+    static let checkForUpdates = Notification.Name("checkForUpdates")
 }

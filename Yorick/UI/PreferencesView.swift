@@ -4,18 +4,6 @@ import AVFoundation
 import SwiftUI
 import KeyboardShortcuts
 
-/// Hide the window toolbar background when supported. `.toolbarBackgroundVisibility`
-/// is macOS 15+, so the modifier is a no-op on macOS 14.
-struct HiddenWindowToolbarBackground: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        } else {
-            content
-        }
-    }
-}
-
 /// Settings in the stream's language: quiet rows, eyebrow section labels,
 /// three disclosure styles — always-visible caption for the row that defines
 /// the product, in-card copy for the engine choice, tooltip for trivia.
@@ -29,7 +17,8 @@ struct SettingsView: View {
     @State private var activeMicrophoneMode = SettingsView.currentMicrophoneModeName()
     @State private var whisperDownloading = false
     @AppStorage(AudioDebugSettings.keepAudioKey) private var keepDebugAudio = AudioDebugSettings.defaultKeepAudio
-    @AppStorage(SessionManager.showInsertionReceiptKey) private var showInsertionReceipt = false
+    @AppStorage(SessionManager.cleanupDictationKey) private var cleanupDictation = false
+    @AppStorage(HUDPlacement.unanchoredAtTopKey) private var unanchoredPillAtTop = true
     @State private var opensAtLogin = LoginItem.isEnabled
     /// Sparkle reads this key straight from UserDefaults, so binding to it is
     /// enough to turn scheduled checks on and off.
@@ -48,25 +37,46 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 sectionLabel("RECORDING")
-                settingsRow {
+                // The onboarding try-it's hotkey block, verbatim: chips, the
+                // live keyboard map, rebinding as a quiet link — teach by
+                // hands here too, not a bare recorder field.
+                VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         rowLabel("Hold to talk")
                         caption("Hold to record, release to finish. In a text field your words are typed; anywhere else they're saved.")
                     }
-                    Spacer(minLength: 16)
-                    ShortcutRecorderView(name: .toggleSession, label: "")
-                        .frame(maxWidth: 200)
+                    HotkeyEditorView()
+                        .environment(session)
+                        .padding(.vertical, 4)
                 }
+                .padding(.vertical, 10)
                 settingsRow {
                     VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Offer cleanup after dictation")
-                        caption("A small skull appears beside your inserted text for a few seconds. Hover it to clean up filler words and false starts, on this Mac. Nothing is rewritten unless you ask.")
+                        rowLabel("Clean up dictation before it types")
+                        caption("Removes filler words and false starts on this Mac, then types the result — adds a beat before the text lands. If cleanup can't run, your words are typed exactly as spoken. Your list always keeps the original.")
                     }
                     Spacer(minLength: 16)
-                    Toggle("", isOn: $showInsertionReceipt)
+                    Toggle("", isOn: $cleanupDictation)
                         .toggleStyle(.switch)
                         .labelsHidden()
                         .controlSize(.small)
+                }
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        rowLabel("Saved-note position")
+                        caption("Where the recording pill and saved-note card appear when you're not in a text field. Dictation into a field always shows the pill at the field.")
+                    }
+                    Spacer(minLength: 16)
+                    Picker("", selection: $unanchoredPillAtTop) {
+                        Text("Top center").tag(true)
+                        Text("Bottom center").tag(false)
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 140)
+                    .onChange(of: unanchoredPillAtTop) {
+                        // Move the live HUD immediately — no relaunch to see it.
+                        NotificationCenter.default.post(name: .hudReposition, object: nil)
+                    }
                 }
 
                 sectionLabel("MICROPHONE")
@@ -210,9 +220,8 @@ struct SettingsView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 20)
         }
-        .background(Theme.bgPrimary)
-        .navigationTitle("Settings")
-        .modifier(HiddenWindowToolbarBackground())
+        // No opaque background: settings render as a page of the menu bar
+        // panel, whose glass shows through.
         .onAppear {
             session.microphoneManager.refresh()
             refreshPermissionState()

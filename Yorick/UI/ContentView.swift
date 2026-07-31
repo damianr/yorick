@@ -1,50 +1,54 @@
 import SwiftUI
 
-/// One view: the stream. No selection mode, no bulk actions, no lifecycle —
-/// the interaction inventory is click-to-copy, one filter toggle, scroll.
+/// The window's ONLY job is onboarding. An onboarded launch renders nothing
+/// and closes the window before it can paint; everything else in the product
+/// lives in the menu bar panel and the HUD.
 struct ContentView: View {
     @Environment(SessionManager.self) private var session
-    @State private var showSettings = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     /// Preview escape hatch: `defaults write com.heyyorick.Yorick forceOnboarding
     /// -bool true` replays the first-run flow on an install that has already
     /// completed (or auto-skipped) it. Cleared when the flow finishes.
     @AppStorage("forceOnboarding") private var forceOnboarding = false
 
+    private var needsOnboarding: Bool { !hasCompletedOnboarding || forceOnboarding }
+
     var body: some View {
         ZStack {
-            Theme.bgPrimary.ignoresSafeArea()
-
-            if !hasCompletedOnboarding || forceOnboarding {
+            if needsOnboarding {
+                Theme.bgPrimary.ignoresSafeArea()
                 OnboardingView(onDone: {
                     hasCompletedOnboarding = true
                     forceOnboarding = false
+                    // The conduit handoff: the window's job ends with
+                    // onboarding. Close it, drop out of the Dock/⌘Tab for
+                    // good, then open the menu bar panel so "Yorick lives
+                    // up here now" is shown, not described.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        Self.closeMainWindow()
+                        NSApp.setActivationPolicy(.accessory)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            NotificationCenter.default.post(name: .showMenuBarPanel, object: nil)
+                        }
+                    }
                 })
             } else {
-                StreamView()
+                // Nothing to show — keep the frame invisible and close it
+                // before it draws (the alpha guard covers the frames between
+                // appearance and close).
+                Color.clear
+                    .onAppear {
+                        NSApp.windows
+                            .first(where: { !($0 is NSPanel) && $0.canBecomeMain })?
+                            .alphaValue = 0
+                        DispatchQueue.main.async { Self.closeMainWindow() }
+                    }
             }
         }
         .frame(minWidth: 560, minHeight: 480)
-        .navigationTitle("")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Color.clear.frame(width: 0, height: 0)
-            }
-        }
-        .modifier(HiddenWindowToolbarBackground())
-        .toolbar(.visible, for: .windowToolbar)
-        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
-            showSettings = true
-        }
-        .navigationDestination(isPresented: $showSettings) {
-            SettingsView(session: session)
-        }
-        .onAppear {
-            // Existing installs (captures already on disk) predate onboarding —
-            // never show them the first-run flow.
-            if !hasCompletedOnboarding, !session.captureStore.captures.isEmpty {
-                hasCompletedOnboarding = true
-            }
-        }
+    }
+
+    private static func closeMainWindow() {
+        NSApp.windows.first(where: { !($0 is NSPanel) && $0.canBecomeMain })?.close()
     }
 }

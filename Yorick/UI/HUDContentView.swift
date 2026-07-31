@@ -2,32 +2,34 @@ import SwiftUI
 
 struct HUDContentView: View {
     @Environment(SessionManager.self) private var session
-    /// Which receipt action the pointer is on — its label renders inline in
-    /// the pill (`.help()` tooltips are unreliable on non-activating panels).
-    /// The receipt rests as a bare skull and expands to its actions on hover —
-    /// a quiet marker that doesn't sit over the text it just inserted.
-    @State private var receiptHovering = false
     /// The recording pill reveals its stop button only on hover — the EQ already
     /// signals "recording," and push-to-talk means release is the usual stop.
     @State private var recordingHovering = false
+    /// The saved-capture card's fade clock, cancelled while hovered.
+    @State private var cardDismissTask: Task<Void, Never>?
+    @State private var cardHovering = false
 
     private var isVisible: Bool {
-        session.state == .recording ||
+        (session.state == .recording && session.hudReady) ||
         session.state == .transcribing ||
         session.lastSavedCapture != nil ||
-        session.transientNotice != nil ||
-        (session.insertionReceipt != nil && !session.receiptHidden)
+        session.transientNotice != nil
     }
 
-    /// Growth direction: below a field the pill hugs the window's top edge and
-    /// grows downward, away from the field; otherwise it grows upward.
-    private var pillEdge: Edge { session.hudPillPlacement == .belowField ? .top : .bottom }
+    /// Growth direction: content hugs its anchored edge and grows away from it.
+    private var pillEdge: Edge {
+        switch session.hudPillPlacement {
+        case .belowField: return .top
+        case .bottomCenter: return HUDPlacement.unanchoredAtTop ? .top : .bottom
+        case .aboveField: return .bottom
+        }
+    }
 
     /// Anchored placements are leading-aligned — the pill sits at the field's
-    /// top-left corner; bottom-center stays centered.
+    /// top-left corner; the unanchored pill centers on its trial edge.
     private var pillAlignment: Alignment {
         switch session.hudPillPlacement {
-        case .bottomCenter: return .bottom
+        case .bottomCenter: return HUDPlacement.unanchoredAtTop ? .top : .bottom
         case .aboveField: return .bottomLeading
         case .belowField: return .topLeading
         }
@@ -40,7 +42,10 @@ struct HUDContentView: View {
                     // Toast for saved contextual capture
                     if let capture = session.lastSavedCapture {
                         captureSavedToast(capture)
-                            .transition(.opacity.combined(with: .move(edge: pillEdge)))
+                            // The card GROWS out of the pill's spot rather
+                            // than arriving from off-edge — pill becomes card.
+                            .transition(.scale(scale: 0.85, anchor: pillEdge == .top ? .top : .bottom)
+                                .combined(with: .opacity))
                     }
 
                     // Notice for a dropped capture (no speech / hallucination)
@@ -49,18 +54,8 @@ struct HUDContentView: View {
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
 
-                    // Post-insertion receipt: the skull sits in the gutter beside
-                    // the inserted text whenever Cleanup is enabled, offering it.
-                    if let receipt = session.insertionReceipt, !session.receiptHidden {
-                        insertionReceiptPill(receipt)
-                            .transition(.opacity.combined(with: .move(edge: pillEdge)))
-                    }
-
-                    if session.state == .transcribing {
-                        transcribingPill
-                            .transition(.opacity.combined(with: .move(edge: pillEdge)))
-                    } else if session.state == .recording {
-                        recordingPill
+                    if session.state == .recording || session.state == .transcribing {
+                        sessionPill
                             .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
                 }
@@ -69,103 +64,14 @@ struct HUDContentView: View {
         .animation(.spring(duration: 0.3), value: session.state)
         .animation(.spring(duration: 0.3), value: session.lastSavedCapture?.id)
         .animation(.spring(duration: 0.3), value: session.transientNotice?.id)
-        .animation(.spring(duration: 0.3), value: session.insertionReceipt?.id)
-        .animation(.spring(duration: 0.3), value: session.receiptHidden)
-        .animation(.spring(duration: 0.3), value: session.cleanupInProgress)
         .frame(
             maxWidth: .infinity,
             maxHeight: .infinity,
             alignment: pillAlignment
         )
-        .padding(.vertical, 8)
-        .padding(.horizontal, 6)
-    }
-
-    // MARK: - Insertion Receipt (Cleanup / Undo at the field)
-    //
-    // Icon-only actions, same footprint as the recording pill. The hovered
-    // action's label renders inline (system tooltips don't reliably appear
-    // on non-activating panels), and hover suspends the fade clock.
-
-    // The receipt is a composite: a fixed skull circle that never moves, and —
-    // on hover — a column of labeled action pills to its right. The column is
-    // bottom-aligned to the circle, so the LAST action (Dismiss) lines up with
-    // the skull and earlier actions stack upward, left-aligned.
-    private static let receiptPillHeight: CGFloat = 30
-
-    private func insertionReceiptPill(_ receipt: InsertionReceipt) -> some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            skullCircle
-            // Exactly one action, whichever one applies: Clean up before, Revert
-            // after. Never both, and never while the pass is running.
-            if receiptHovering, !session.cleanupInProgress {
-                if session.cleanupApplied {
-                    receiptOption("arrow.uturn.backward", "Revert to what I said") {
-                        session.revertCleanup()
-                    }
-                    .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottomLeading)))
-                } else {
-                    receiptOption("wand.and.stars", "Clean up") {
-                        session.cleanupLastInsertion()
-                    }
-                    .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottomLeading)))
-                }
-            }
-        }
-        .onHover { hovering in
-            receiptHovering = hovering
-            session.receiptHoverChanged(hovering)
-        }
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: receiptHovering)
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: session.cleanupInProgress)
-    }
-
-    /// The skull marker, in the gutter beside the inserted text. While cleanup
-    /// runs it becomes a spinner IN PLACE — progress without the pill moving or
-    /// growing over the text, which is what made the earlier versions feel wrong.
-    private var skullCircle: some View {
-        ZStack {
-            if session.cleanupInProgress {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(.white)
-            } else {
-                Image("MenuBarIcon")
-                    .resizable()
-                    .renderingMode(.template)
-                    .frame(width: 14, height: 14)
-                    .foregroundStyle(.white.opacity(0.9))
-            }
-        }
-        .frame(width: Self.receiptPillHeight, height: Self.receiptPillHeight)
-        .pillGlass()
-    }
-
-    /// One labeled action as its own pill. Fixed height so the bottom pill
-    /// aligns cleanly with the skull circle.
-    private func receiptOption(
-        _ systemImage: String,
-        _ label: String,
-        dim: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(dim ? 0.6 : 0.9))
-                    .frame(width: 14)
-                Text(label)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .fixedSize()
-            }
-            .padding(.horizontal, 11)
-            .frame(height: Self.receiptPillHeight)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .pillGlass()
+        // Glow headroom: the halo must fade out inside the transparent
+        // window, never hit its edge (see HUDPlacement.contentPadding).
+        .padding(HUDPlacement.contentPadding)
     }
 
     // MARK: - Transient Notice (warnings + past-tense receipts)
@@ -218,70 +124,81 @@ struct HUDContentView: View {
         }
     }
 
-    // MARK: - Capture Saved Toast
+    // MARK: - Saved-Capture Card
+    //
+    // Card v1 of the enrichment plan: the saved toast grown into an exit
+    // ramp — the words worth reading, where they were spoken, and the exits.
+    // Offer, never demand: it fades on its own, hover holds it, a newer
+    // capture replaces it (no queue), and it never takes keyboard focus.
+    // Dismiss always means "it's in the list; later" — nothing is lost.
 
     private func captureSavedToast(_ capture: Capture) -> some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(.green)
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(capture.appName)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text(capture.transcriptPreview)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.7))
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 7, height: 7)
+                Text(capture.sourceLine)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
+                Spacer(minLength: 12)
             }
-            Spacer()
-            // Copy is the recovery path: a dictation that wasn't typed lands here,
-            // one obvious click from the clipboard — no hidden keystroke to learn.
-            Button(action: {
-                ClipboardOutput.copy(capture.transcript)
-                session.lastSavedCapture = nil
-            }) {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.8))
-                    .frame(width: 20, height: 20)
-                    .background(.white.opacity(0.12))
-                    .clipShape(Circle())
+            // Shared presentation with the saved list: the words, exactly
+            // as spoken.
+            CaptureCardBody(
+                transcript: capture.transcript,
+                transcriptLineLimit: 4
+            )
+            HStack(spacing: 8) {
+                // Copy is the recovery path: a dictation that wasn't typed
+                // lands here, one obvious click from the clipboard.
+                CardActionButton(icon: "doc.on.doc", label: "Copy") {
+                    ClipboardOutput.copy(capture.transcript)
+                    session.lastSavedCapture = nil
+                }
+                Spacer()
+                CardActionButton(icon: "xmark", label: "Dismiss") {
+                    session.lastSavedCapture = nil
+                }
             }
-            .buttonStyle(.plain)
-            .help("Copy transcript")
-            Button(action: {
-                session.lastSavedCapture = nil
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.4))
-                    .frame(width: 20, height: 20)
-                    .background(.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .pillGlass()
+        .padding(.vertical, 11)
+        .pillGlass(corners: .uniform(14))
         .frame(maxWidth: 400)
-        .contentShape(Capsule())
+        .contentShape(Rectangle())
         .onTapGesture {
-            // Click toast to open Yorick and show the capture
+            // Click anywhere else on the card to open Yorick at the list.
             session.lastSavedCapture = nil
             NSApp.activate(ignoringOtherApps: true)
         }
-        .onAppear {
-            // Auto-dismiss after 3 seconds
-            let captureId = capture.id
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                withAnimation {
-                    if session.lastSavedCapture?.id == captureId {
-                        session.lastSavedCapture = nil
-                    }
-                }
+        .onHover { hovering in
+            // Hover holds the card (the skull's pattern); leaving restarts a
+            // short clock so it never lingers after you've looked away.
+            cardHovering = hovering
+            if hovering {
+                cardDismissTask?.cancel()
+            } else {
+                scheduleCardDismiss(capture.id, after: 2.5)
             }
+        }
+        .onAppear {
+            scheduleCardDismiss(capture.id, after: 6)
+        }
+        // New identity per capture, so a replacing card restarts its own clock.
+        .id(capture.id)
+    }
+
+
+
+
+    private func scheduleCardDismiss(_ captureId: UUID, after seconds: Double) {
+        cardDismissTask?.cancel()
+        cardDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled, session.lastSavedCapture?.id == captureId else { return }
+            withAnimation { session.lastSavedCapture = nil }
         }
     }
 
@@ -291,70 +208,115 @@ struct HUDContentView: View {
     // on hover. No timer, no mode word, no mode color — the EQ says "recording"
     // and the pill's POSITION says dictation vs observation.
 
-    private var recordingPill: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 9) {
-                Image("MenuBarIcon")
-                    .resizable()
-                    .renderingMode(.template)
-                    .frame(width: 12, height: 12)
-                    .foregroundStyle(.white.opacity(0.75))
+    /// The skull mark — the new logo as a template vector (single evenodd
+    /// path, so the eyes and nose are true cutouts and the face survives
+    /// tinting), white like every pill glyph, slightly larger than the old
+    /// 12pt mark so the face actually reads at pill size. Falls back to the
+    /// legacy glyph if the asset is ever missing. The full-color 3D version
+    /// takes over this slot when the look-around skull lands.
+    private func skullMark(_ size: CGFloat, templateOpacity: Double = 0.75) -> some View {
+        // ONE mark asset app-wide: MenuBarIcon carries the skull for the
+        // menu bar, titlebar, onboarding, and these pills alike.
+        Image("MenuBarIcon")
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .foregroundStyle(.white.opacity(templateOpacity))
+    }
+
+    /// The squared corner means "seated at your insertion point," so only a
+    /// field-anchored pill gets to wear it — with the seated corner facing
+    /// the caret. Bottom-center (saving, or an opaque field) is a full
+    /// capsule: shape differentiates the two futures the same way position
+    /// already does.
+    private var recordingCorners: PillCorners {
+        // An approximate anchor (single-line leading edge) never wears the
+        // pointer corner — that corner claims the exact insertion point.
+        guard !session.hudAnchorApproximate else { return .capsule }
+        switch session.hudPillPlacement {
+        case .bottomCenter: return .capsule
+        case .aboveField: return .pointer
+        case .belowField: return .pointerBelow
+        }
+    }
+
+    // MARK: - Session Pill (recording + transcribing, one identity)
+    //
+    // One pill, states within: recording (skull · status · EQ) crossfades
+    // into transcribing ("Transcribing…" · spinner) with no view swap — the
+    // old two-pill handoff read as a glitch. The unanchored pill is
+    // deliberately LOUDER than the field pill: bigger skull and bone status
+    // text — it sits at a screen edge with no caret to mark, so it has to
+    // earn the glance. The field-anchored pill stays compact; near a caret,
+    // small is right.
+
+    private var sessionPill: some View {
+        let transcribing = session.state == .transcribing
+        let unanchored = session.hudPillPlacement == .bottomCenter
+        return VStack(spacing: 4) {
+            HStack(spacing: unanchored ? 10 : 9) {
+                skullMark(16)
                     .frame(height: 19) // seat at button height so hover adds no vertical jump
-                DotEqualizer(level: session.audioLevel)
-                if recordingHovering {
-                    Button(action: { session.stopIfRecording() }) {
-                        Image(systemName: "stop.fill")
+                if unanchored {
+                    Text(transcribing
+                         ? (session.cleanupRunning ? "Cleaning up…" : "Transcribing…")
+                         : "Listening…")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Theme.bone)
+                        .lineLimit(1)
+                }
+                if transcribing {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(.white)
+                    Button(action: { session.cancelProcessing() }) {
+                        Image(systemName: "xmark")
                             .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.85))
+                            .foregroundStyle(.white.opacity(0.7))
                             .frame(width: 19, height: 19)
-                            .background(.white.opacity(0.15))
+                            .background(.white.opacity(0.12))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .help("Cancel transcription")
+                } else {
+                    DotEqualizer(level: session.audioLevel)
+                    if recordingHovering {
+                        Button(action: { session.stopIfRecording() }) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .frame(width: 19, height: 19)
+                                .background(.white.opacity(0.15))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
-            if session.showSilenceWarning {
+            if session.showSilenceWarning, !transcribing {
                 Text("No audio detected — check your microphone")
                     .font(.system(size: 10))
                     .foregroundStyle(.orange)
             }
         }
-        // Constant padding so the logo + EQ never shift on hover — the stop
-        // button simply appends on the right, the pill grows rightward.
-        .padding(.horizontal, 11)
-        .padding(.vertical, 5)
-        .pillGlass(corners: .pointer)
+        // Constant padding so the mark + EQ never shift on hover — buttons
+        // append on the right, the pill grows rightward.
+        .padding(.horizontal, unanchored ? 14 : 11)
+        .padding(.vertical, unanchored ? 8 : 5)
+        // The halo BREATHES with the voice while recording — same signal as
+        // the equalizer, both in Theme.glow, so meter and glow move
+        // together; while transcribing it holds at fixed intensity. Glass
+        // (background, rim, shadows) is the shared recipe in PillGlass.
+        .pillGlass(
+            corners: recordingCorners,
+            haloIntensity: transcribing ? 0.5 : Double(min(max(session.audioLevel, 0), 1))
+        )
         .onHover { recordingHovering = $0 }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: recordingHovering)
+        .animation(.spring(duration: 0.3), value: transcribing)
         .animation(.easeOut(duration: 0.15), value: session.showSilenceWarning)
-    }
-
-    // MARK: - Transcribing Pill
-
-    private var transcribingPill: some View {
-        HStack(spacing: 9) {
-            Image("MenuBarIcon")
-                .resizable()
-                .renderingMode(.template)
-                .frame(width: 12, height: 12)
-                .foregroundStyle(.white.opacity(0.75))
-            ProgressView()
-                .controlSize(.mini)
-                .tint(.white)
-            Button(action: { session.cancelProcessing() }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 19, height: 19)
-                    .background(.white.opacity(0.12))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Cancel transcription")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .pillGlass(corners: .pointer)
     }
 }
 
@@ -372,6 +334,9 @@ enum PillCorners {
     /// an oversized value and let SwiftUI clamp it, which handed the top-left
     /// whatever space was left over and made the left edge look lopsided.
     case pointer
+    /// Mirror of `pointer` for a pill sitting BELOW its field: the seated
+    /// (near-square) corner is the top-left, pointing up at the caret.
+    case pointerBelow
 }
 
 private struct PillShape: InsettableShape {
@@ -392,6 +357,9 @@ private struct PillShape: InsettableShape {
         case .pointer:
             radii = .init(topLeading: min(12, full), bottomLeading: min(4, full),
                           bottomTrailing: full, topTrailing: full)
+        case .pointerBelow:
+            radii = .init(topLeading: min(4, full), bottomLeading: min(12, full),
+                          bottomTrailing: full, topTrailing: full)
         }
         return UnevenRoundedRectangle(cornerRadii: radii, style: .continuous).path(in: r)
     }
@@ -402,29 +370,43 @@ private struct PillShape: InsettableShape {
 }
 
 /// Dark capsule with a gradient rim light and a lifted shadow, so the pill
-/// separates from whatever busy UI it happens to float over.
+/// separates from whatever busy UI it happens to float over. ONE recipe for
+/// every surface — session pill, capture card, notices: same background
+/// opacity, same bone rim, same shadows (playground-tuned 2026-07-30). The
+/// only per-surface option is the HALO: pass `haloIntensity` to add the
+/// Theme.glow ring (the session pill breathes it with the voice); nil means
+/// no halo, everything else identical.
 private struct PillGlass: ViewModifier {
     var corners: PillCorners = .capsule
+    /// 0…1 scales the glow halo with the live audio level; nil = no halo.
+    var haloIntensity: Double?
     private var shape: PillShape { PillShape(corners: corners) }
 
     func body(content: Content) -> some View {
-        glassed(content)
+        let intensity = min(max(haloIntensity ?? 0, 0), 1)
+        return glassed(content)
             .overlay(
                 shape.strokeBorder(
                     LinearGradient(
-                        colors: [.white.opacity(0.30), .white.opacity(0.06)],
+                        colors: [Theme.bone.opacity(0.26), Theme.bone.opacity(0.08)],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 0.75
+                    lineWidth: 1
                 )
             )
             .compositingGroup()
             // Tight, defined shadow — the old radius-11 cloud smudged badly on
             // white backgrounds (Pages, a white webpage). Two layers: a soft
             // lift plus a crisp contact edge that reads on any backdrop.
-            .shadow(color: .black.opacity(0.26), radius: 5, y: 2)
-            .shadow(color: .black.opacity(0.14), radius: 1, y: 0.5)
+            .shadow(color: .black.opacity(0.21), radius: 5, y: 0)
+            .shadow(color: .black.opacity(0.16), radius: 1.25, y: 0.5)
+            .shadow(
+                color: haloIntensity == nil
+                    ? .clear
+                    : Theme.glow.opacity(0.16 + 0.52 * intensity),
+                radius: 10 + 4.5 * intensity
+            )
     }
 
     /// A DARK capsule, not light glass — and explicitly NOT Liquid Glass, whose
@@ -437,7 +419,7 @@ private struct PillGlass: ViewModifier {
             .background {
                 ZStack {
                     shape.fill(.ultraThinMaterial)
-                    shape.fill(Color.black.opacity(0.78))
+                    shape.fill(Color.black.opacity(0.85))
                 }
             }
             .clipShape(shape)
@@ -445,8 +427,8 @@ private struct PillGlass: ViewModifier {
 }
 
 private extension View {
-    func pillGlass(corners: PillCorners = .capsule) -> some View {
-        modifier(PillGlass(corners: corners))
+    func pillGlass(corners: PillCorners = .capsule, haloIntensity: Double? = nil) -> some View {
+        modifier(PillGlass(corners: corners, haloIntensity: haloIntensity))
     }
 }
 
@@ -457,11 +439,16 @@ private extension View {
 /// dance independently, so it reads as an equalizer rather than a meter.
 private struct DotEqualizer: View {
     let level: Float
+    /// Theme.glow, pinned to the halo — the voice meter and the glow speak
+    /// the same color, and that color never touches text.
+    var tint: Color = Theme.glow
     private let rows = 4
-    private let cols = 8
+    private let cols = 6
     private let dot: CGFloat = 2.5
     private let gap: CGFloat = 2
-    private static let profile: [Double] = [0.5, 0.72, 0.9, 1.0, 1.0, 0.9, 0.72, 0.5]
+    /// Center-weighted profile, resampled for 6 columns from the original
+    /// 8-wide curve (playground-tuned).
+    private static let profile: [Double] = [0.5, 0.79, 0.98, 0.98, 0.79, 0.5]
 
     var body: some View {
         HStack(spacing: gap) {
@@ -469,7 +456,7 @@ private struct DotEqualizer: View {
                 VStack(spacing: gap) {
                     ForEach(0..<rows, id: \.self) { row in
                         Circle()
-                            .fill(.white)
+                            .fill(tint)
                             .opacity(dotOpacity(col: col, row: row))
                             .frame(width: dot, height: dot)
                     }

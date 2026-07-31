@@ -12,10 +12,9 @@ struct OnboardingView: View {
 
     private enum Step: Int, CaseIterable {
         case welcome
-        case microphone
-        case accessibility
-        case autostart
+        case setup
         case tryIt
+        case done
     }
 
     @State private var step: Step = .welcome
@@ -28,8 +27,11 @@ struct OnboardingView: View {
     /// it hasn't after a while, the likeliest cause is another app already owning
     /// the shortcut (⌥Space is Raycast's default, and Handy's), which otherwise
     /// looks exactly like "Yorick is broken".
-    @State private var hotkeyFired = false
-    @State private var showConflictHelp = false
+    @State private var showShortcutRecorder = false
+    @State private var setupHintLit = false
+    /// Bumped when the shortcut is rebound — recording a new combo changes
+    /// no SwiftUI state, so chips and keyboard highlights went stale.
+    @State private var shortcutGeneration = 0
 
     private let axPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -62,23 +64,33 @@ struct OnboardingView: View {
 
             switch step {
             case .welcome: welcome
-            case .microphone: microphone
-            case .accessibility: accessibility
-            case .autostart: autostart
+            case .setup: setup
             case .tryIt: tryIt
+            case .done: done
             }
 
             Spacer()
 
-            // Progress dots
+            // Progress dots — clickable BACKWARD only. Revisiting a passed
+            // step is harmless; jumping ahead would hop the permission
+            // gates and finish onboarding into a broken install.
             HStack(spacing: 6) {
                 ForEach(Step.allCases, id: \.rawValue) { s in
-                    Circle()
-                        .fill(s == step ? Theme.accentPurple : Theme.bgElevated)
-                        .frame(width: 6, height: 6)
+                    Button {
+                        guard s.rawValue < step.rawValue else { return }
+                        withAnimation(.easeOut(duration: 0.2)) { step = s }
+                    } label: {
+                        Circle()
+                            .fill(s == step ? Theme.accentPurple : Theme.bgElevated)
+                            .frame(width: 6, height: 6)
+                            .padding(4) // comfortable hit target
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .allowsHitTesting(s.rawValue < step.rawValue)
                 }
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bgPrimary)
@@ -87,110 +99,151 @@ struct OnboardingView: View {
             // step advances the moment the toggle flips, no relaunch needed.
             accessibilityTrusted = AXIsProcessTrusted()
             microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-            if session.state != .idle { hotkeyFired = true }
+            loginItemEnabled = LoginItem.isEnabled
+        }
+        // KeyboardShortcuts' change notification (raw name; the library
+        // doesn't export a constant) — chips and map re-render on rebind.
+        .onReceive(NotificationCenter.default.publisher(
+            for: Notification.Name("KeyboardShortcuts_shortcutByNameDidChange")
+        )) { _ in
+            shortcutGeneration += 1
+            // A new combo landed — the form's job is done; chips and the
+            // keyboard's fresh highlights carry the confirmation.
+            withAnimation(.easeOut(duration: 0.2)) { showShortcutRecorder = false }
         }
     }
 
     // MARK: - Steps
 
+    // No key combo here — the welcome step sells the idea, and the try-it
+    // step teaches the keys with your hands already on them. Mechanics
+    // before motivation read as homework.
     private var welcome: some View {
         stepLayout(
             icon: { logo },
             title: "Talk instead of type",
             lines: [
-                "Hold  \(shortcut)  and speak. Release to finish.",
-                "(that's \(shortcutSpelled))",
-                "In a text field, your words are typed.",
-                "Anywhere else, they're saved for later.",
-                "Everything happens on your Mac. Nothing is uploaded, ever."
+                "Hold the hotkey and speak. Let go, and it's typed.",
+                "Not in a text field? It's saved. Nothing is lost."
             ]
         ) {
-            primaryButton("Continue") { step = .microphone }
+            primaryButton("Continue") { step = .setup }
         }
     }
 
-    private var microphone: some View {
+    // The three asks as one checklist — a list you work down, not pages you
+    // travel. No skips on the required two (mic: no product without it;
+    // AX: a skipper meets a voice-notes app instead of the product); the
+    // poll flips rows to granted the moment System Settings does.
+    private var setup: some View {
         stepLayout(
-            icon: { stepIcon("mic.fill", granted: microphoneGranted) },
-            title: "Microphone",
-            lines: [
-                "Yorick needs the microphone to hear you.",
-                "Audio is transcribed on this Mac and the recording is discarded."
-            ]
+            icon: { EmptyView() },
+            title: "Grant Yorick access",
+            lines: ["Everything runs on your Mac. Nothing is uploaded."]
         ) {
-            if microphoneGranted {
-                grantedLabel("Microphone access granted")
-                primaryButton("Continue") { step = .accessibility }
-            } else if microphoneDenied {
-                // Already denied: macOS won't ask again, so send them to Settings.
-                primaryButton("Open Microphone Settings") {
-                    openPrivacyPane("Privacy_Microphone")
-                }
-                quietButton("Skip for now — Yorick can't hear you until this is on") {
-                    step = .accessibility
-                }
-            } else {
-                primaryButton("Allow Microphone Access") {
-                    AVCaptureDevice.requestAccess(for: .audio) { granted in
-                        DispatchQueue.main.async {
-                            microphoneGranted = granted
-                            if granted { step = .accessibility }
+            VStack(spacing: 10) {
+                setupRow(
+                    icon: "mic.fill",
+                    name: "Microphone",
+                    why: "Hears what you say. Audio is transcribed on this Mac, then deleted.",
+                    granted: microphoneGranted,
+                    actionLabel: microphoneDenied ? "Open System Settings" : "Allow"
+                ) {
+                    if microphoneDenied {
+                        openPrivacyPane("Privacy_Microphone")
+                    } else {
+                        AVCaptureDevice.requestAccess(for: .audio) { granted in
+                            DispatchQueue.main.async { microphoneGranted = granted }
                         }
                     }
                 }
-                quietButton("Skip for now — Yorick can't hear you until this is on") {
-                    step = .accessibility
-                }
-            }
-        }
-    }
-
-    private var accessibility: some View {
-        stepLayout(
-            icon: { stepIcon("keyboard.fill", granted: accessibilityTrusted) },
-            title: "Accessibility",
-            lines: [
-                "This is how Yorick types into the app you're using,",
-                "and how it knows whether a text field is focused.",
-                "macOS asks you to enable it in System Settings."
-            ]
-        ) {
-            if accessibilityTrusted {
-                grantedLabel("Accessibility enabled")
-                primaryButton("Continue") { step = .autostart }
-            } else {
-                primaryButton("Open Accessibility Settings") {
+                setupRow(
+                    icon: "keyboard.fill",
+                    name: "Accessibility",
+                    why: "Types into the app you're using, and sees whether a text field is focused.",
+                    granted: accessibilityTrusted,
+                    actionLabel: "Open System Settings"
+                ) {
                     let options = ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary
                     AXIsProcessTrustedWithOptions(options)
                 }
-                quietButton("Skip for now — dictation won't type until enabled") {
-                    step = .autostart
+                setupRow(
+                    icon: "power",
+                    name: "Open at login",
+                    why: "Starts Yorick when you log in.",
+                    granted: loginItemEnabled,
+                    actionLabel: "Turn On"
+                ) {
+                    loginItemEnabled = LoginItem.setEnabled(true)
                 }
             }
+            .frame(width: 500)
+            // The hint holds the space above Continue, and answers a hover
+            // on a not-yet-enabled Continue in white — a disabled button
+            // that explains itself.
+            Text(!isReady
+                 ? "Microphone and Accessibility are required."
+                 : (loginItemEnabled ? " " : "Open at login is optional."))
+                .font(Theme.mono(10))
+                .foregroundStyle(setupHintLit ? Color.white : Theme.textTertiary)
+                .animation(.easeOut(duration: 0.15), value: setupHintLit)
+            primaryButton("Continue") { step = .tryIt }
+                .disabled(!isReady)
+                .opacity(isReady ? 1 : 0.45)
+                .onHover { hovering in setupHintLit = hovering && !isReady }
         }
     }
 
-    private var autostart: some View {
-        stepLayout(
-            icon: { stepIcon("power", granted: loginItemEnabled) },
-            title: "Always ready",
-            lines: [
-                "Yorick only hears the key while it's running.",
-                "Open it at login so dictation is one hold away after every restart.",
-                "You can change this anytime in System Settings or Yorick's settings."
-            ]
-        ) {
-            if loginItemEnabled {
-                grantedLabel("Opens at login")
-                primaryButton("Continue") { step = .tryIt }
-            } else {
-                primaryButton("Open at Login") {
-                    loginItemEnabled = LoginItem.setEnabled(true)
-                    if loginItemEnabled { step = .tryIt }
+    private func setupRow(
+        icon: String,
+        name: String,
+        why: String,
+        granted: Bool,
+        actionLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 34)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name)
+                    .font(Theme.mono(12.5, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(why)
+                    .font(Theme.mono(10.5))
+                    .foregroundStyle(Theme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if granted {
+                // Darker green than the text accent + a heavy check — the
+                // light brand green washed out (prototype-measured).
+                ZStack {
+                    Circle()
+                        .fill(Color(red: 0.17, green: 0.62, blue: 0.34))
+                        .frame(width: 22, height: 22)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(.white)
                 }
-                quietButton("Not now") { step = .tryIt }
+            } else {
+                Button(action: action) {
+                    Text(actionLabel)
+                        .font(Theme.mono(11, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Theme.bgElevated))
+                }
+                .buttonStyle(.plain)
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.bgCard))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
     }
 
     @ViewBuilder
@@ -202,62 +255,61 @@ struct OnboardingView: View {
         stepLayout(
             icon: { logo },
             title: "Try it here",
-            lines: [
-                "Click the box, then hold  \(shortcut)  and say a sentence.",
-                "That's \(shortcutSpelled). Release when you're done."
-            ]
+            lines: []
         ) {
-            practiceField
-            if practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                if showConflictHelp && !hotkeyFired {
-                    conflictHelp
-                } else {
-                    Text("It works the same in every app. No text field focused? Your words are saved to this window instead.")
-                        .font(Theme.mono(10))
-                        .foregroundStyle(Theme.textTertiary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 400)
+            // The instruction IS the chips — no glyph-decoding aside needed.
+            HStack(spacing: 6) {
+                Text("Click the box, then hold")
+                    .font(Theme.mono(11.5))
+                    .foregroundStyle(Theme.textSecondary)
+                HotkeyChips()
+                Text("and say a sentence.")
+                    .font(Theme.mono(11.5))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            // The keyboard shows which keys — and lights up as they hold
+            // them: right keys purple, wrong keys red. Hands, not prose.
+            // `comboActive`: recording in progress means the full combo is
+            // down (the hotkey machinery eats the final key's event, so the
+            // monitor alone can never see the whole chord).
+            KeyboardMapView(
+                targetKeyCodes: ShortcutLabel.targetKeyCodes,
+                comboActive: session.state == .recording
+            )
+            .id(shortcutGeneration) // re-highlight when the shortcut is rebound
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder.toggle() }
+            } label: {
+                Text("Set your own key combination")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.textTertiary)
+                    .underline()
+            }
+            .buttonStyle(.plain)
+            if showShortcutRecorder {
+                CompactRecorderPill {
+                    withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder = false }
                 }
-            } else {
+            }
+            practiceField
+            if !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 grantedLabel("That's it. That's the whole app.")
             }
-            primaryButton("Start using Yorick") { onDone() }
-            Text("Yorick lives in your menu bar. This window is your saved list.")
-                .font(Theme.mono(10))
-                .foregroundStyle(Theme.textTertiary)
-        }
-        .task(id: step) {
-            // Only arm the hint once we're actually asking them to press it.
-            guard step == .tryIt else { return }
-            try? await Task.sleep(nanoseconds: 12_000_000_000)
-            if !hotkeyFired { showConflictHelp = true }
+            primaryButton("Continue") { step = .done }
         }
     }
 
-    /// Shown when the trigger hasn't fired after a beat: the failure a user can't
-    /// diagnose alone. Rebinding is offered right here rather than in Settings,
-    /// because this is the moment they discover it.
-    private var conflictHelp: some View {
-        VStack(spacing: 8) {
-            Text("Nothing happening?")
-                .font(Theme.mono(11, weight: .semibold))
-                .foregroundStyle(Theme.accentAmber)
-            Text("Another app may already use \(shortcut). Launchers like Raycast and other dictation apps often claim it. Pick a different trigger:")
-                .font(Theme.mono(10))
-                .foregroundStyle(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 400)
-            ShortcutRecorderView(name: .toggleSession, label: "")
-                .frame(maxWidth: 220)
+    private var done: some View {
+        stepLayout(
+            icon: { logo },
+            title: "Yorick lives in your menu bar",
+            lines: [
+                "This window will close. Your saved items are under the skull.",
+                "The hotkey works everywhere."
+            ]
+        ) {
+            primaryButton("Start using Yorick") { onDone() }
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 14)
-        .background(
-            RoundedRectangle(cornerRadius: 10).fill(Theme.accentAmber.opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10).stroke(Theme.accentAmber.opacity(0.25), lineWidth: 1)
-        )
     }
 
     /// Skipping a permission used to land here anyway, on a practice box that

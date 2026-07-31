@@ -56,44 +56,26 @@ enum AccessibilityCapture {
         var element: AXUIElement? = nil
     }
 
-    private static let editableRoles: Set<String> = [
-        "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"
-    ]
-
-    /// Rich editors whose focused canvas is AX-opaque: it exposes no editable
-    /// role, no settable value, and no text attributes we can read (verified via
-    /// AX probe — Pages focuses a bare AXScrollArea, Word/Keynote similar). A ⌘V
-    /// paste still lands, so we trust app identity: if one of these is frontmost
-    /// and a plausible text container is focused, treat it as a dictation target.
-    private static let richEditorBundleIDs: Set<String> = [
-        "com.apple.iWork.Pages",
-        "com.apple.iWork.Keynote",
-        "com.apple.iWork.Numbers",
-        "com.apple.mail",              // also caught by settable-value, listed for clarity
-        "com.microsoft.Word",
-        "com.microsoft.Powerpoint",
-        "com.microsoft.Excel",
-        "com.microsoft.Outlook",
-        "com.literatureandlatte.scrivener3",
-        "com.coteditor.CotEditor",
-        "com.apple.TextEdit"
-    ]
-
-    /// Roles that can plausibly hold a text cursor in a rich editor. Guards the
-    /// bundle-ID trust path so a focused button/slider/menu in Pages is never
-    /// mistaken for the document canvas.
-    private static let textContainerRoles: Set<String> = [
-        "AXScrollArea", "AXTextArea", "AXTextField", "AXWebArea",
-        "AXGroup", "AXLayoutArea", "AXUnknown"
-    ]
+    // Role sets live with the pure ladder they parameterize — see
+    // FocusClassifier, whose fixture suite is the regression net for all of
+    // this. These aliases keep existing call sites reading naturally.
+    private static let editableRoles = FocusClassifier.editableRoles
+    private static let richEditorBundleIDs = FocusClassifier.richEditorBundleIDs
 
     /// The cursor location in AX hit-test coordinates (global, top-left origin).
     /// The flip must use the PRIMARY screen (`screens[0]`) — `NSScreen.main` is
     /// the key window's screen and gives wrong coordinates on multi-display setups.
+    /// Seconds since the pointer last moved — the one "is the mouse in use"
+    /// primitive; routing's parked check and the pointer timeline both read it.
+    static func pointerIdleSeconds() -> Double {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved)
+    }
+
     static func axCursorPoint() -> CGPoint {
-        let mouseLocation = NSEvent.mouseLocation
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        return CGPoint(x: mouseLocation.x, y: primaryHeight - mouseLocation.y)
+        // CGEvent's location is already global top-left (AX) coordinates and
+        // is thread-safe — start resolution now runs this off-main. (The old
+        // NSEvent/NSScreen flip was main-thread-flavored AppKit.)
+        CGEvent(source: nil)?.location ?? .zero
     }
 
     /// Whether the frontmost app currently has keyboard focus in an editable
@@ -130,14 +112,25 @@ enum AccessibilityCapture {
     /// owning app's pid. The HUD anchors to this and dismisses the moment the
     /// element stops being the focused one — switching windows or tabs makes
     /// the pill vanish with "its" field instead of haunting the new view.
-    struct FieldTarget {
+    // @unchecked: AXUIElement is an immutable CF token, safe to carry across
+    // threads — start resolution now hands targets back from a background task.
+    struct FieldTarget: @unchecked Sendable {
         let frame: CGRect
         let element: AXUIElement
         let pid: pid_t
+        /// AX role of the field — lets placement reason semantically
+        /// ("single-line by contract") instead of from pixel heights.
+        let role: String
         /// The insertion-point rectangle (global top-left AX coords) when the app
         /// exposes it — Pages, Mail, and native text views do once their
         /// assistive tree is unlocked. Nil for AX-opaque targets.
         var caret: CGRect? = nil
+        /// True when the field has a non-empty text selection. With a
+        /// selection live, the FIELD itself becomes an honest anchor even
+        /// when caret geometry is unreadable: the highlight already marks
+        /// the exact landing spot on screen, so the pill only needs to
+        /// claim the field (capsule, never the pointer corner).
+        var hasSelection: Bool = false
 
         /// Whether this is the same field as `other`. Element identity is the
         /// strong signal, but WebKit (Mail's compose body) and some Electron
@@ -198,7 +191,23 @@ enum AccessibilityCapture {
             isRichEditor: isRich,
             fieldFrame: frame
         )
-        return FieldTarget(frame: frame, element: element, pid: frontApp.processIdentifier, caret: caret)
+        var hasSelection = false
+        var rangeRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+           let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() {
+            var range = CFRange()
+            if AXValueGetValue((rangeRef as! AXValue), .cfRange, &range) {
+                hasSelection = range.length > 0
+            }
+        }
+        return FieldTarget(
+            frame: frame,
+            element: element,
+            pid: frontApp.processIdentifier,
+            role: role,
+            caret: caret,
+            hasSelection: hasSelection
+        )
     }
 
     // MARK: - Field shaping signals
@@ -208,13 +217,9 @@ enum AccessibilityCapture {
     /// Named attributes on one element only — never a tree walk. Nil when
     /// nothing is focused, which shapes as `.standard`.
     static func focusedFieldShapingSignals() -> FieldShapingSignals? {
-        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
-        let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
-        var focusedRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-              let focused = focusedRef
+        guard let frontApp = NSWorkspace.shared.frontmostApplication,
+              let element = frontmostFocusedElement(of: frontApp)
         else { return nil }
-        let element = focused as! AXUIElement
         return FieldShapingSignals(
             role: attribute(element, kAXRoleAttribute) as? String ?? "",
             subrole: attribute(element, kAXSubroleAttribute) as? String ?? "",
@@ -275,14 +280,28 @@ enum AccessibilityCapture {
         // moved. Once the assistive tree is unlocked, focus lands on the real
         // text element (Pages → AXTextArea) whose selected-range bounds tracks
         // the caret; WebKit (Mail) exposes it via text markers instead.
-        if let r = boundsForSelectedRange(element), isSaneCaret(r, within: fieldFrame) { return r }
-        if let r = boundsForSelectedTextMarker(element), isSaneCaret(r, within: fieldFrame) { return r }
+        if let r = boundsForSelectedRange(element).map(collapsedToFirstLine), isSaneCaret(r, within: fieldFrame) { return r }
+        if let r = boundsForSelectedTextMarker(element).map(collapsedToFirstLine), isSaneCaret(r, within: fieldFrame) { return r }
         // Widen coverage: some editors expose the caret's LINE but not usable
         // selected-range bounds (or return garbage for them, like Terminal).
         // The line rectangle gives the right vertical position — enough to place
         // the pill on the caret's line rather than falling to bottom-center.
         if let r = boundsForInsertionLine(element), isSaneCaret(r, within: fieldFrame) { return r }
         return nil
+    }
+
+    /// A SELECTION's bounding box anchors the pill at its TOP-LEFT — the
+    /// paste replaces the selection, so the landing area begins there. Tall
+    /// (multi-line) boxes collapse to a caret-sized rect on their first
+    /// line: the raw box floated the pill into the selection's middle and,
+    /// past isSaneCaret's height cap, lost the anchor entirely. This is
+    /// also the ONLY selection-start source for Chromium (the Claude app):
+    /// its bounds-for-range answers are degenerate for every range and it
+    /// doesn't implement the marker-collapse API (probe-measured), so the
+    /// full marker-range box is all it ever gives us.
+    private static func collapsedToFirstLine(_ r: CGRect) -> CGRect {
+        guard r.height > 44 else { return r }
+        return CGRect(x: r.minX, y: r.minY, width: 2, height: 20)
     }
 
     /// A caret must be a thin, finite rectangle sitting inside (or barely
@@ -294,15 +313,46 @@ enum AccessibilityCapture {
         return field.insetBy(dx: -40, dy: -40).intersects(r)
     }
 
-    /// Caret from an element's own selected-text range (an empty range = the
-    /// insertion point; a non-empty one = the selection, whose top-left we use).
+    /// Caret from an element's own selected-text range. A NON-EMPTY selection
+    /// is about to be REPLACED by the paste, so the landing spot is the
+    /// selection's START — ask for the zero-length range there. (Asking for
+    /// the whole selection's bounds handed back a rect spanning the field on
+    /// multi-line selections, which isSaneCaret rightly rejected as "not a
+    /// caret" — and the pill went home instead of anchoring; field-reported.)
+    /// Falls back to the full selection's rect for apps that return
+    /// degenerate bounds for empty ranges.
     private static func boundsForSelectedRange(_ element: AXUIElement) -> CGRect? {
         var rangeRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
               let rangeRef, CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
+        var selection = CFRange()
+        guard AXValueGetValue((rangeRef as! AXValue), .cfRange, &selection) else { return nil }
+        if selection.length > 0 {
+            var collapsed = CFRange(location: selection.location, length: 0)
+            if let collapsedValue = AXValueCreate(.cfRange, &collapsed),
+               let r = boundsForRangeValue(element, collapsedValue),
+               r.height > 1 {
+                return r
+            }
+            // Chromium/Electron editors (the Claude app's composer) answer a
+            // zero-length range with a degenerate rect — but a ONE-character
+            // range at the selection's start has real extent and lands
+            // within a glyph of the true insertion point (field-reported:
+            // Mail anchored, Claude didn't).
+            var firstChar = CFRange(location: selection.location, length: 1)
+            if let firstCharValue = AXValueCreate(.cfRange, &firstChar),
+               let r = boundsForRangeValue(element, firstCharValue),
+               r.height > 1 {
+                return r
+            }
+        }
+        return boundsForRangeValue(element, rangeRef as! AXValue)
+    }
+
+    private static func boundsForRangeValue(_ element: AXUIElement, _ range: AXValue) -> CGRect? {
         var out: CFTypeRef?
         guard AXUIElementCopyParameterizedAttributeValue(
-            element, kAXBoundsForRangeParameterizedAttribute as CFString, rangeRef, &out
+            element, kAXBoundsForRangeParameterizedAttribute as CFString, range, &out
         ) == .success, let out, CFGetTypeID(out) == AXValueGetTypeID() else { return nil }
         var rect = CGRect.zero
         guard AXValueGetValue((out as! AXValue), .cgRect, &rect) else { return nil }
@@ -365,37 +415,6 @@ enum AccessibilityCapture {
         return rect
     }
 
-    /// A cheap signature of a field's content, for change detection — not the
-    /// content itself. Prefers the full value; falls back to the character
-    /// count, which Chromium/Electron fields (Claude's composer) expose even
-    /// when they won't hand over the string. Return-to-send, edits, deletes
-    /// all change it. Nil when the app exposes neither.
-    struct ContentSignature: Equatable {
-        let raw: String
-        /// Content length — lets callers recognize an emptied field even
-        /// when they never saw its full state.
-        let length: Int
-    }
-
-    static func fieldContentSignature(_ element: AXUIElement) -> ContentSignature? {
-        // An EMPTY value string is not a reliable signal: WebKit (Mail's compose
-        // body) always reports kAXValue as "" no matter what's typed, so trusting
-        // it made the receipt read "length 0" right after inserting and dismiss
-        // itself as "text gone." Only a non-empty value counts; otherwise fall
-        // through to the character count, then to geometry-based tracking.
-        if let value = attribute(element, kAXValueAttribute) as? String, !value.isEmpty {
-            return ContentSignature(raw: "v:\(value.count):\(value.hashValue)", length: value.count)
-        }
-        // Character count (Chromium/Electron expose this even when they won't hand
-        // over the string). A count of 0 IS meaningful here — a native field going
-        // empty is a send/delete we should retire the receipt on — so it's kept,
-        // unlike the always-empty WebKit value string above.
-        if let count = attribute(element, "AXNumberOfCharacters") as? Int {
-            return ContentSignature(raw: "n:\(count)", length: count)
-        }
-        return nil
-    }
-
     /// Return both the mode decision and the evidence used to make it.
     static func editabilityDecisionAtCursor() -> EditabilityDecision {
         // Check 1: is the element directly under the cursor an editable field?
@@ -435,9 +454,12 @@ enum AccessibilityCapture {
             let focused = focusedEditability(editableRoles: editableRoles)
             let cursorNearFocused = focused.frame
                 .map { $0.insetBy(dx: -16, dy: -16).contains(axCursorPoint()) } ?? false
-            let pointerParked = CGEventSource.secondsSinceLastEventType(
-                .combinedSessionState, eventType: .mouseMoved
-            ) > 3.0
+            // 1.5s, down from 3.0: a user about to dictate stops moving the
+            // mouse, and the old threshold made the pill take seconds to fly
+            // to a focused field (measured in ChatGPT). Deliberate
+            // gesticulation is CONTINUOUS movement, so the observation guard
+            // still never false-parks mid-sweep.
+            let pointerParked = pointerIdleSeconds() > 1.5
             let isEditable = focused.isEditable && (cursorNearFocused || pointerParked)
             // No editor focused anywhere → solidly contextual. An editor IS
             // focused → every verdict here is a guess (this exact spot produced
@@ -468,117 +490,86 @@ enum AccessibilityCapture {
         )
     }
 
+    /// Focused element of the given app, with the Electron unlock-and-retry:
+    /// Electron apps (VS Code, Cursor) expose NO tree — not even a focused
+    /// element — until the assistive flags are set, and unlike Pages-class
+    /// apps they need the stronger AXEnhancedUserInterface. "The app claims
+    /// nothing is focused at all" is precisely the case where escalating
+    /// can't hurt and is the only thing that helps: unlock and re-read.
+    /// The ONE focused-element fetch — every consumer (routing, field
+    /// shaping) goes through it so none silently misses the unlock.
+    private static func frontmostFocusedElement(of app: NSRunningApplication) -> AXUIElement? {
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        var focusedRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) != .success
+            || focusedRef == nil {
+            enableAssistiveTree(pid: app.processIdentifier, enhanced: true)
+            AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef)
+        }
+        guard let focused = focusedRef else { return nil }
+        return (focused as! AXUIElement)
+    }
+
+    /// The DICTATION FAST PATH: one focused-element fetch and a direct role
+    /// match — no cursor probes, no corroboration, no heuristics. Dictation
+    /// is the product, so unambiguous field evidence must win instantly;
+    /// anything short of unambiguous returns nil and the full ladder
+    /// decides. Warm apps answer in single-digit milliseconds.
+    static func fastFieldProbe() -> FieldTarget? {
+        guard AXIsProcessTrusted(),
+              let frontApp = NSWorkspace.shared.frontmostApplication,
+              let element = frontmostFocusedElement(of: frontApp) else { return nil }
+        let role = attribute(element, kAXRoleAttribute) as? String ?? ""
+        let subrole = attribute(element, kAXSubroleAttribute) as? String ?? ""
+        guard FocusClassifier.editableRoles.contains(role),
+              subrole != "AXSecureTextField" else { return nil }
+        return focusedEditableFieldTarget()
+    }
+
     private static func focusedEditability(editableRoles: Set<String>) -> FocusedEditability {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else {
             return FocusedEditability(isEditable: false, summary: "focused=none app=none", frame: nil)
         }
-        let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
-
-        var focusedRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef) != .success
-            || focusedRef == nil {
-            // Electron apps (VS Code, Cursor) expose NO tree — not even a focused
-            // element — until the assistive flags are set, and unlike Pages-class
-            // apps they need the stronger AXEnhancedUserInterface. "The app claims
-            // nothing is focused at all" is precisely the case where escalating
-            // can't hurt and is the only thing that helps: unlock and re-read.
-            enableAssistiveTree(pid: frontApp.processIdentifier, enhanced: true)
-            AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef)
-        }
-        guard let focused = focusedRef else {
+        guard let focusedElement = frontmostFocusedElement(of: frontApp) else {
             return FocusedEditability(
                 isEditable: false,
                 summary: "focused=none app=\(frontApp.localizedName ?? "unknown")",
                 frame: nil
             )
         }
-
-        let focusedElement = focused as! AXUIElement
         let role = attribute(focusedElement, kAXRoleAttribute) as? String ?? ""
         let subrole = attribute(focusedElement, kAXSubroleAttribute) as? String ?? ""
         let roleDescription = attribute(focusedElement, kAXRoleDescriptionAttribute) as? String ?? ""
         let focusedSummary = "focusedRole=\(role.isEmpty ? "none" : role) subrole=\(subrole.isEmpty ? "none" : subrole) desc=\(roleDescription.isEmpty ? "none" : roleDescription) app=\(frontApp.localizedName ?? "unknown")"
 
-        // Never route dictation into a password field — the transcript would be
-        // pasted into it and briefly sit on the clipboard.
-        if subrole == "AXSecureTextField" {
-            return FocusedEditability(isEditable: false, summary: focusedSummary + " secureField=true", frame: nil)
-        }
-
-        // Disabled/read-only fields swallow the paste and the transcript is lost.
-        if let enabled = attribute(focusedElement, kAXEnabledAttribute) as? Bool, !enabled {
-            return FocusedEditability(isEditable: false, summary: focusedSummary + " enabled=false", frame: nil)
-        }
-
         let frame = elementFrame(focusedElement)
 
-        // Direct role match on focused element
-        if editableRoles.contains(role) {
-            return FocusedEditability(isEditable: true, summary: focusedSummary, frame: frame, element: focusedElement)
-        }
-
-        // Web/Electron editors: check subrole and text-editing affordances.
-        if subrole == "AXContentEditable" || subrole == "AXPlainText" {
-            return FocusedEditability(isEditable: true, summary: focusedSummary, frame: frame, element: focusedElement)
-        }
-
-        // Toolkit-agnostic signal: a focused element that exposes a text caret
-        // (AXSelectedTextRange — a CHARACTER range, distinct from a row/child
-        // selection) is a text editor, whatever its role or app — across
-        // AppKit and Electron, without a per-app allowlist. ONE measured
-        // exception: browsers keep a document-level selection range on every
-        // page, editable or not, so a bare AXWebArea "has a caret" even on a
-        // read-only article (Chrome: focusedRole=AXWebArea subrole=none
-        // desc="HTML content" textCaret=true, typed instead of saved). Web
-        // areas fall through to the stricter checks below — a truly editable
-        // one (Mail's compose body) still passes via valueSettable, and web
-        // page editors focus a contenteditable or field, caught earlier.
-        if role != "AXWebArea", hasTextCaret(focusedElement) {
+        // The ladder itself is pure and fixture-tested (FocusClassifier) —
+        // this function's job is only to FEED it. Expensive signals are
+        // closures so the short-circuit latency of the original is kept:
+        // a direct role match still costs zero extra AX round-trips.
+        let signals = FocusClassifier.Signals(
+            role: role,
+            subrole: subrole,
+            isEnabled: (attribute(focusedElement, kAXEnabledAttribute) as? Bool) ?? true,
+            bundleID: frontApp.bundleIdentifier,
+            hasExplicitEditableIdentity: { hasExplicitEditableIdentity(focusedElement, subrole: subrole) },
+            valueSettable: {
+                var settable: DarwinBoolean = false
+                return AXUIElementIsAttributeSettable(focusedElement, kAXValueAttribute as CFString, &settable) == .success
+                    && settable.boolValue
+            }
+        )
+        if let verdict = FocusClassifier.classify(signals) {
             return FocusedEditability(
-                isEditable: true,
-                summary: focusedSummary + " textCaret=true",
-                frame: frame,
-                element: focusedElement
+                isEditable: verdict.editable,
+                summary: focusedSummary + verdict.tag,
+                frame: verdict.editable ? frame : nil,
+                element: verdict.editable ? focusedElement : nil
             )
         }
 
-        if isLikelyEditableTextElement(focusedElement, role: role, subrole: subrole) {
-            return FocusedEditability(isEditable: true, summary: focusedSummary, frame: frame, element: focusedElement)
-        }
-
-        // A focused element with a SETTABLE value is a text sink even when it
-        // advertises nothing else — Mail's compose body focuses an AXWebArea
-        // ("HTML content") whose only editable tell is valueSettable=true. This
-        // check is safe here because we only reach it via keyboard focus (the
-        // ambiguous mouse-hover path resolves earlier); a focused, settable,
-        // non-secure, enabled element accepts pasted text.
-        var valueSettable: DarwinBoolean = false
-        if textContainerRoles.contains(role),
-           AXUIElementIsAttributeSettable(focusedElement, kAXValueAttribute as CFString, &valueSettable) == .success,
-           valueSettable.boolValue {
-            return FocusedEditability(
-                isEditable: true,
-                summary: focusedSummary + " valueSettable=true",
-                frame: frame,
-                element: focusedElement
-            )
-        }
-
-        // AX-opaque rich editors (Pages et al.) expose no signal at all on their
-        // focused canvas. Recognize them by app identity, but only when a
-        // plausible text container holds focus — never a button/inspector.
-        if let bundleID = frontApp.bundleIdentifier,
-           richEditorBundleIDs.contains(bundleID),
-           textContainerRoles.contains(role) {
-            return FocusedEditability(
-                isEditable: true,
-                summary: focusedSummary + " richEditorApp=\(bundleID)",
-                frame: frame,
-                element: focusedElement
-            )
-        }
-
-        // Check 3: walk up from focused element looking for editable containers
+        // Final rung, undecided by the ladder: walk up looking for editable containers
         var current = focusedElement
         var parentRoles: [String] = []
         for _ in 0..<3 {
@@ -619,61 +610,21 @@ enum AccessibilityCapture {
         return CGRect(origin: point, size: dimensions)
     }
 
-    private static func isLikelyEditableTextElement(
+    /// The element explicitly CLAIMS to be a text editor — an "editable"
+    /// subrole variant or a role description saying so. Identity claims
+    /// only: the old version also accepted any "text"-ish role that merely
+    /// carried selection-range attributes, which is the same masquerade that
+    /// burned the caret rung three times (selection ranges exist on plenty
+    /// of read-only content). Rigid contract: doubtful surfaces save.
+    private static func hasExplicitEditableIdentity(
         _ element: AXUIElement,
-        role: String,
         subrole: String
     ) -> Bool {
         let roleDescription = (attribute(element, kAXRoleDescriptionAttribute) as? String ?? "").lowercased()
-        let roleText = role.lowercased()
-        let subroleText = subrole.lowercased()
-
-        let hasExplicitEditableIdentity =
-            subrole == "AXContentEditable" ||
-            subrole == "AXPlainText" ||
-            subroleText.contains("editable") ||
-            roleDescription.contains("text field") ||
-            roleDescription.contains("text area") ||
-            roleDescription.contains("editable text")
-
-        let hasTextIdentity = hasExplicitEditableIdentity ||
-                              roleText.contains("text") ||
-                              subroleText.contains("text") ||
-                              roleDescription.contains("text") ||
-                              roleDescription.contains("edit")
-
-        let textEditingAttributes = [
-            kAXSelectedTextAttribute,
-            kAXSelectedTextRangeAttribute,
-            kAXInsertionPointLineNumberAttribute,
-            "AXNumberOfCharacters"
-        ]
-        var hasTextEditingAttribute = false
-        for attr in textEditingAttributes {
-            var value: CFTypeRef?
-            if AXUIElementCopyAttributeValue(element, attr as CFString, &value) == .success {
-                hasTextEditingAttribute = true
-                break
-            }
-        }
-
-        var isSettable: DarwinBoolean = false
-        let valueIsSettable =
-            AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &isSettable) == .success &&
-            isSettable.boolValue
-
-        // Many web/Electron apps expose generic AXGroup/AXWebArea elements with
-        // selection-like attributes. Treat those as editable only when the AX
-        // metadata explicitly says the element is text/editable; otherwise
-        // contextual captures get misclassified as dictation.
-        let genericContainerRoles: Set<String> = [
-            "AXGroup", "AXWebArea", "AXScrollArea", "AXWindow", "AXApplication"
-        ]
-        if genericContainerRoles.contains(role) {
-            return hasExplicitEditableIdentity && (hasTextEditingAttribute || valueIsSettable)
-        }
-
-        return hasTextIdentity && (hasTextEditingAttribute || valueIsSettable)
+        return subrole.lowercased().contains("editable")
+            || roleDescription.contains("text field")
+            || roleDescription.contains("text area")
+            || roleDescription.contains("editable text")
     }
 
     /// Capture element info at the current cursor position.
@@ -747,7 +698,9 @@ enum AccessibilityCapture {
         )
     }
 
-    private static func attribute(_ element: AXUIElement, _ attr: String) -> CFTypeRef? {
+    /// The one AX attribute-read primitive — every caller delegates here
+    /// too, so there's a single place this plumbing lives.
+    static func attribute(_ element: AXUIElement, _ attr: String) -> CFTypeRef? {
         var value: CFTypeRef?
         AXUIElementCopyAttributeValue(element, attr as CFString, &value)
         return value
@@ -756,16 +709,4 @@ enum AccessibilityCapture {
     /// Whether the element exposes a text insertion point — a character-range
     /// selection or an insertion-point line. Both are text-only attributes, so
     /// their presence marks the element as a real text editor.
-    private static func hasTextCaret(_ element: AXUIElement) -> Bool {
-        var value: CFTypeRef?
-        if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
-           let value, CFGetTypeID(value) == AXValueGetTypeID() {
-            return true
-        }
-        if AXUIElementCopyAttributeValue(element, kAXInsertionPointLineNumberAttribute as CFString, &value) == .success,
-           value != nil {
-            return true
-        }
-        return false
-    }
 }

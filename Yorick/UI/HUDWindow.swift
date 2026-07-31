@@ -1,4 +1,23 @@
 import AppKit
+
+/// Where the unanchored (observation) pill and card live — a user setting
+/// (Preferences → "Saved-note position"), top-center by default.
+enum HUDPlacement {
+    static let unanchoredAtTopKey = "unanchoredPillAtTop"
+    static var unanchoredAtTop: Bool {
+        UserDefaults.standard.object(forKey: unanchoredAtTopKey) == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: unanchoredAtTopKey)
+    }
+
+    /// Transparent margin between the HUD content and the window edge. The
+    /// glow halo blurs out to ~2× its max radius (10 + 4.5×level → ~29pt);
+    /// the old 6–8pt margin clipped it into hard lines at the window's
+    /// leading/bottom edges. Every anchor calculation offsets by this so
+    /// the PILL's visual position is unchanged — only the invisible window
+    /// around it grew.
+    static let contentPadding: CGFloat = 30
+}
 import SwiftUI
 
 final class HUDWindow: NSPanel {
@@ -27,7 +46,7 @@ final class HUDWindow: NSPanel {
         hostingView.autoresizingMask = [.width, .height]
         contentView?.addSubview(hostingView)
 
-        positionAtBottomCenter()
+        positionUnanchored()
 
         NotificationCenter.default.addObserver(
             self,
@@ -50,21 +69,26 @@ final class HUDWindow: NSPanel {
         if let value = note.userInfo?["origin"] as? NSValue {
             setFrameOrigin(value.pointValue)
         } else {
-            positionAtBottomCenter()
+            positionUnanchored()
         }
     }
 
-    func positionAtBottomCenter() {
+    func positionUnanchored() {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
-        let windowWidth = frame.width
-        let x = screenFrame.midX - (windowWidth / 2)
-        let y = screenFrame.minY + 40
+        let x = screenFrame.midX - (frame.width / 2)
+        // The pill's outer edge sits 48pt from the screen edge (the tuned
+        // look); the window edge is contentPadding closer so the glow has
+        // room to fade instead of clipping.
+        let windowInset = 48 - HUDPlacement.contentPadding
+        let y = HUDPlacement.unanchoredAtTop
+            ? screenFrame.maxY - frame.height - windowInset
+            : screenFrame.minY + windowInset
         setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     @objc private func screenDidChange() {
-        positionAtBottomCenter()
+        positionUnanchored()
     }
 
     override var canBecomeKey: Bool { false }

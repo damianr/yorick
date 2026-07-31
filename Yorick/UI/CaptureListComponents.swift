@@ -43,10 +43,10 @@ struct CaptureRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 indicator
-                Text(justCopied ? "✓ copied" : "click to copy")
+                Text("✓ copied")
                     .font(Theme.mono(9))
-                    .foregroundStyle(justCopied ? Theme.success : Theme.textTertiary)
-                    .opacity(justCopied || (isHovered && !capture.needsTranscription) ? 1 : 0)
+                    .foregroundStyle(Theme.success)
+                    .opacity(justCopied ? 1 : 0)
                 Spacer()
                 Text(timeLabel)
                     .font(Theme.mono(9))
@@ -62,26 +62,33 @@ struct CaptureRow: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                Text(displayText)
-                    .font(Theme.mono(12.5))
-                    .lineSpacing(6)
-                    .foregroundStyle(Theme.textPrimary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    // Selectable text swallows plain clicks — the simultaneous
-                    // recognizer restores click-to-copy while a DRAG still
-                    // selects (a tap won't fire across pointer movement).
-                    .simultaneousGesture(TapGesture().onEnded { copyRow() })
+                // Same presentation as the HUD card (CaptureCardBody).
+                CaptureCardBody(
+                    transcript: displayText,
+                    transcriptLineLimit: nil,
+                    onTranscriptTap: { copyRow() }
+                )
+                // The card's actions, as the card shows them — buttons, not
+                // hover-revealed text links. Delete stays in the context
+                // menu; there's no Dismiss here because the list IS where
+                // dismissed cards live.
+                HStack(spacing: 8) {
+                    CardActionButton(icon: "doc.on.doc", label: "Copy") { copyRow() }
+                    Spacer()
+                }
+                .padding(.top, 2)
             }
         }
         .padding(.horizontal, 12)
         .padding(.top, 11)
         .padding(.bottom, 13)
         .background(
+            // Rows read as cards now — a standing background, stronger on
+            // hover, matching the HUD card's design language.
             RoundedRectangle(cornerRadius: 10)
                 .fill(justCopied
                       ? Theme.success.opacity(0.07)
-                      : (isHovered ? Theme.bgHover : Color.clear))
+                      : (isHovered ? Theme.bgHover : Color.white.opacity(0.03)))
         )
         .contentShape(Rectangle())
         .onTapGesture { copyRow() }
@@ -101,6 +108,9 @@ struct CaptureRow: View {
 
     // MARK: - Indicator (where did this land?)
 
+    // Quiet by request: the disposition tags shouted over the content
+    // (bold amber/cyan). Only a capture that needs ACTION keeps its color;
+    // the routine tags are tertiary furniture.
     @ViewBuilder
     private var indicator: some View {
         if capture.needsTranscription {
@@ -110,10 +120,10 @@ struct CaptureRow: View {
             label(
                 (target ?? "typed").uppercased(),
                 systemImage: "arrow.right.to.line",
-                color: .cyan
+                color: Theme.textTertiary
             )
         } else {
-            label("SAVED", systemImage: "bookmark", color: Theme.accentAmber)
+            label("SAVED", systemImage: "bookmark", color: Theme.textTertiary)
         }
     }
 
@@ -131,6 +141,10 @@ struct CaptureRow: View {
     private func copyRow() {
         guard !capture.needsTranscription else { return }
         ClipboardOutput.copy(displayText)
+        flashCopied()
+    }
+
+    private func flashCopied() {
         captureStore.markActive(capture)
         withAnimation { justCopied = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {

@@ -34,8 +34,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.heyyorick.Yorick
         PRODUCT_NAME: Yorick
-        MARKETING_VERSION: "0.1.4"
-        CURRENT_PROJECT_VERSION: "5"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "6"
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         ENABLE_HARDENED_RUNTIME: YES
@@ -56,6 +56,7 @@ targets:
       - path: YorickTests
       - path: Yorick/Output/SpokenFormNormalizer.swift
       - path: Yorick/Output/FieldProfiler.swift
+      - path: Yorick/Capture/FocusClassifier.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.heyyorick.YorickTests
