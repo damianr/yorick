@@ -63,17 +63,27 @@ final class IssueComposerEval: XCTestCase {
         /// Project id the route should land on. Nil means "no project is the
         /// right answer" — the model should decline to guess.
         let expected: String?
+        /// Other answers that are defensible. A route question with two
+        /// reasonable answers should not be scored as a failure; pretending
+        /// otherwise makes the eval measure the fixture, not the model.
+        let alsoAccept: [String?]
         /// Words the title must not lose. Empty means title isn't graded.
         let titleMustMention: [String]
 
         init(_ name: String, _ transcript: String, source: String,
-             facts: [ContextFact] = [], expected: String?, mentions: [String] = []) {
+             facts: [ContextFact] = [], expected: String?,
+             alsoAccept: [String?] = [], mentions: [String] = []) {
             self.name = name
             self.transcript = transcript
             self.sourceLine = source
             self.facts = facts
             self.expected = expected
+            self.alsoAccept = alsoAccept
             self.titleMustMention = mentions
+        }
+
+        func accepts(_ projectID: String?) -> Bool {
+            projectID == expected || alsoAccept.contains(projectID)
         }
     }
 
@@ -127,10 +137,14 @@ final class IssueComposerEval: XCTestCase {
               expected: "p-yorick"),
 
         // --- The decline case: nothing matches, must not guess a project ---
-        .init("unrelated errand declines to a team",
+        // NOTE: this one's answer key was wrong in the first eval. "Send the
+        // accountant the receipts" IS what the Admin project is for
+        // ("invoicing, contracts, taxes"), so the model routing it there was
+        // correct and the eval was marking it a miss. Both answers accepted.
+        .init("errand belonging to ops",
               "remember to send the accountant the receipts from last quarter before the deadline",
               source: "Mail",
-              expected: nil, mentions: ["receipt"]),
+              expected: nil, alsoAccept: ["p-admin"], mentions: ["receipt"]),
 
         .init("generic thought with no product signal",
               "I keep thinking we should write down how we decide what to build next, it's all in my head",
@@ -167,12 +181,16 @@ final class IssueComposerEval: XCTestCase {
 
         let workspace = Self.workspace
         let options = IssueComposer.routeOptions(workspace: workspace)
-        var routeHits = 0
-        var titleHits = 0
-        var titleGraded = 0
-        var lines: [String] = []
+        // Three passes per case. Measured the hard way: three single-pass
+        // runs of this eval scored 7/11, 5/11, 7/11, and WHICH cases passed
+        // shuffled each time. A single pass cannot tell a prompt change from
+        // sampling noise, which is exactly the mistake that made the
+        // confidence experiment look conclusive when it wasn't.
+        let passes = 3
+        var routeHits = 0, routeTotal = 0
+        var titleHits = 0, titleTotal = 0
 
-        print("\n=== IssueComposer eval — \(Self.cases.count) cases, \(options.count) destinations ===\n")
+        print("\n=== IssueComposer eval — \(Self.cases.count) cases × \(passes) passes, \(options.count) destinations ===\n")
 
         for testCase in Self.cases {
             let input = IssueComposer.Input(
@@ -181,41 +199,48 @@ final class IssueComposerEval: XCTestCase {
                 context: testCase.facts.isEmpty ? nil : CaptureContext(facts: testCase.facts)
             )
             let base = IssueComposer.deterministicDraft(input, teamID: "t-prod")
-            let draft = await IssueComposer.compose(input, workspace: workspace, base: base)
 
-            let routeOK = draft.projectID == testCase.expected
-            if routeOK { routeHits += 1 }
-
-            let picked = workspace.project(id: draft.projectID)?.name
-                ?? "(no project · \(workspace.team(id: draft.teamID)?.name ?? "?"))"
-            let wanted = Self.projects.first { $0.id == testCase.expected }?.name ?? "(no project)"
-
+            var caseHits = 0
+            var picks: [String] = []
             var titleNote = ""
-            if !testCase.titleMustMention.isEmpty {
-                titleGraded += 1
-                let lowered = draft.title.lowercased()
-                let ok = testCase.titleMustMention.allSatisfy { lowered.contains($0.lowercased()) }
-                if ok { titleHits += 1 }
-                titleNote = ok ? "" : "  ⚠︎ title dropped \(testCase.titleMustMention)"
+
+            for _ in 0..<passes {
+                let result = await IssueComposer.composeDetailed(input, workspace: workspace, base: base)
+                let draft = result.draft
+                routeTotal += 1
+                if testCase.accepts(draft.projectID) { caseHits += 1; routeHits += 1 }
+
+                let name = workspace.project(id: draft.projectID)?.name
+                    ?? "team:\(workspace.team(id: draft.teamID)?.name ?? "?")"
+                let conf = result.route?.confidence.map { "\($0)" } ?? "-"
+                picks.append("\(name)(c\(conf))")
+
+                if !testCase.titleMustMention.isEmpty {
+                    titleTotal += 1
+                    let lowered = draft.title.lowercased()
+                    if testCase.titleMustMention.allSatisfy({ lowered.contains($0.lowercased()) }) {
+                        titleHits += 1
+                    } else {
+                        titleNote = "  ⚠︎ dropped \(testCase.titleMustMention): \"\(draft.title)\""
+                    }
+                }
             }
-            // A title identical to the deterministic fallback means the model
-            // refused, timed out, or failed a guard — worth seeing, since a
-            // silent fallback is invisible in the product by design.
-            let usedFallback = draft.title == base.title
-            lines.append("""
-                \(routeOK ? "✓" : "✗") \(testCase.name)
-                    route:  \(picked)\(routeOK ? "" : "   (wanted: \(wanted))")
-                    title:  \(draft.title)\(usedFallback ? "   [deterministic fallback]" : "")\(titleNote)
+
+            let wanted = Self.projects.first { $0.id == testCase.expected }?.name ?? "(no project)"
+            let mark = caseHits == passes ? "✓" : (caseHits == 0 ? "✗" : "~")
+            print("""
+                \(mark) \(caseHits)/\(passes)  \(testCase.name)
+                    picks:  \(picks.joined(separator: ", "))\(caseHits == passes ? "" : "   wanted: \(wanted)")\(titleNote)
                 """)
-            print(lines.last!)
         }
 
-        let routePct = Int((Double(routeHits) / Double(Self.cases.count) * 100).rounded())
-        let titlePct = titleGraded == 0 ? 0 : Int((Double(titleHits) / Double(titleGraded) * 100).rounded())
+        let routePct = Int((Double(routeHits) / Double(routeTotal) * 100).rounded())
+        let titlePct = titleTotal == 0 ? 0 : Int((Double(titleHits) / Double(titleTotal) * 100).rounded())
         print("""
 
-            === Routing \(routeHits)/\(Self.cases.count) (\(routePct)%) · \
-            Titles \(titleHits)/\(titleGraded) (\(titlePct)%) ===
+            === Routing \(routeHits)/\(routeTotal) (\(routePct)%) · \
+            Titles \(titleHits)/\(titleTotal) (\(titlePct)%) ===
+            ✓ = right on every pass · ~ = unstable · ✗ = wrong on every pass
 
             """)
 

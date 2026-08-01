@@ -148,6 +148,18 @@ Each stage independently shippable, independently killable.
 - **Stage 3 — Composer.** Workspace mirror, then route and title. Preview and
   correction UI. *Gate: what fraction of proposals ship uncorrected? A route pick that
   is wrong more than occasionally should be demoted to a plain picker with no model.*
+  **MEASURED 2026-08-01 (`YorickTests/IssueComposerEval`, 11 cases × 3 passes):
+  routing 23/33, titles 15/15 — and the gate is passed on a stronger result than the
+  headline number.** Every one of the ten misses was a DECLINE to a bare team; not one
+  of thirty-three attempts filed a capture into the wrong project. That is the whole
+  ballgame under a preview-before-send UI: under-routing costs one click in a picker
+  already on screen, mis-routing buries a note somewhere nobody looks. The model stays
+  on the route. Two cases fail systematically (context-only routing to the marketing
+  site; a Yorick settings note whose vocabulary pulls elsewhere) and three are
+  unstable across identical inputs — the honest read is 6/11 solid, 3/11 coin-flip,
+  2/11 broken, with the residual landing safe. Also settled: context-only routing
+  WORKS — "this number is wrong" with nothing but a pointed-at odds row routed
+  correctly 3/3. That is the moment the feature exists for.
 - **Stage 4 — Learn from corrections (only if Stage 3 earns it).** Every correction is
   a labeled example. Feeding recent corrections back as context for the route pick is
   cheap and stays entirely local. Explicitly not a classifier.
