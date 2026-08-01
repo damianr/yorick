@@ -32,41 +32,48 @@ enum IssueComposer {
     /// default team, no project. This is what the card shows the instant it
     /// opens, and what gets sent if the model is unavailable, slow, refuses,
     /// or fails a guard.
-    static func deterministicDraft(
-        capture: Capture,
-        settings: LinearSettings,
-        teamID: String
-    ) -> LinearIssueDraft {
+    static func deterministicDraft(_ input: Input, teamID: String) -> LinearIssueDraft {
         LinearIssueDraft(
-            title: LinearDescriptionBuilder.fallbackTitle(transcript: capture.transcript),
+            title: LinearDescriptionBuilder.fallbackTitle(transcript: input.transcript),
             description: LinearDescriptionBuilder.build(
-                transcript: capture.transcript,
-                sourceLine: capture.sourceLine,
-                context: capture.context
+                transcript: input.transcript,
+                sourceLine: input.sourceLine,
+                context: input.context
             ),
             teamID: teamID,
             projectID: nil
         )
     }
 
+    /// Everything the composer needs from a capture, and nothing else. Taking
+    /// primitives rather than a `Capture` keeps the composition logic
+    /// independent of the storage model — and testable without an app. The
+    /// `Capture` convenience lives beside the controller, so this file
+    /// compiles into the test target on its own.
+    struct Input: Sendable, Equatable {
+        let transcript: String
+        let sourceLine: String
+        let context: CaptureContext?
+    }
+
     /// Improve a draft with the on-device model. Never throws: any failure
     /// returns the draft it was given, unchanged. The caller can render the
     /// result without checking anything.
     static func compose(
-        capture: Capture,
+        _ input: Input,
         workspace: LinearWorkspace,
         base: LinearIssueDraft
     ) async -> LinearIssueDraft {
         guard isAvailable else { return base }
-        guard wordCount(capture.transcript) >= minimumWords else { return base }
+        guard wordCount(input.transcript) >= minimumWords else { return base }
 
         var draft = base
         // Two independent calls, deliberately. A refusal on the title (Apple's
         // guardrail declines innocent text unpredictably — it read the word
         // "pill" as drug content) must not cost the routing, and a routing
         // miss must not cost the title.
-        async let title = proposeTitle(transcript: capture.transcript)
-        async let route = proposeRoute(capture: capture, workspace: workspace, fallbackTeamID: base.teamID)
+        async let title = proposeTitle(transcript: input.transcript)
+        async let route = proposeRoute(input, workspace: workspace, fallbackTeamID: base.teamID)
 
         if let title = await title { draft.title = title }
         let resolved = await route
@@ -170,7 +177,7 @@ enum IssueComposer {
     /// resolved against the list here. An out-of-range answer is simply the
     /// fallback, so the worst case is the default team.
     private static func proposeRoute(
-        capture: Capture,
+        _ input: Input,
         workspace: LinearWorkspace,
         fallbackTeamID: String
     ) async -> Route {
@@ -183,7 +190,7 @@ enum IssueComposer {
         if #available(macOS 26.0, *) {
             let options = routeOptions(workspace: workspace)
             guard !options.isEmpty else { return fallback }
-            let prompt = routePrompt(capture: capture, options: options)
+            let prompt = routePrompt(input, options: options)
             do {
                 let session = LanguageModelSession(instructions: routeInstructions)
                 let choice = try await withTimeout(budget) {
@@ -247,12 +254,12 @@ enum IssueComposer {
         return Array(options.prefix(30))
     }
 
-    static func routePrompt(capture: Capture, options: [RouteOption]) -> String {
+    static func routePrompt(_ input: Input, options: [RouteOption]) -> String {
         let menu = options.enumerated()
             .map { "\($0.offset + 1). \($0.element.label)" }
             .joined(separator: "\n")
-        var lines = ["Note: \"\(capture.transcript)\"", "", "Context:", "- Spoken in \(capture.sourceLine)"]
-        lines.append(contentsOf: LinearDescriptionBuilder.contextLines(capture.context))
+        var lines = ["Note: \"\(input.transcript)\"", "", "Context:", "- Spoken in \(input.sourceLine)"]
+        lines.append(contentsOf: LinearDescriptionBuilder.contextLines(input.context))
         lines.append(contentsOf: ["", "Destinations:", menu])
         return lines.joined(separator: "\n")
     }

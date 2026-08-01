@@ -158,6 +158,17 @@ struct HUDContentView: View {
                     Telemetry.send(.captureCopied)
                     session.lastSavedCapture = nil
                 }
+                // Send opens the proposal in the PANEL, not here. Reviewing
+                // and editing a title needs keyboard focus and as long as you
+                // want; the HUD card is non-activating and fades on a clock.
+                // Glance-grab-go stays glance-grab-go.
+                if LinearSettings.shared.canSend, capture.kind != .dictation {
+                    CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
+                        session.lastSavedCapture = nil
+                        LinearSendController.shared.beginReview(of: capture)
+                        NotificationCenter.default.post(name: .showMenuBarPanel, object: nil)
+                    }
+                }
                 Spacer()
                 CardActionButton(icon: "xmark", label: "Dismiss") {
                     session.lastSavedCapture = nil

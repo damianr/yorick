@@ -21,6 +21,9 @@ struct SettingsView: View {
     @AppStorage(Telemetry.shareUsageCountsKey) private var shareUsageCounts = true
     @AppStorage(HUDPlacement.unanchoredAtTopKey) private var unanchoredPillAtTop = true
     @State private var opensAtLogin = LoginItem.isEnabled
+    @ObservedObject private var linear = LinearSettings.shared
+    @ObservedObject private var sendController = LinearSendController.shared
+    @State private var connecting = false
     /// Sparkle reads this key straight from UserDefaults, so binding to it is
     /// enough to turn scheduled checks on and off.
     @AppStorage("SUEnableAutomaticChecks") private var automaticUpdateChecks = true
@@ -188,6 +191,8 @@ struct SettingsView: View {
                         .controlSize(.small)
                 }
 
+                linearSection
+
                 sectionLabel("UPDATES")
                 settingsRow {
                     VStack(alignment: .leading, spacing: 3) {
@@ -251,6 +256,83 @@ struct SettingsView: View {
     /// recognizer otherwise (macOS 14–25).
     private var preferredAppleEngine: TranscriptionEngine {
         TranscriptionEngine.appleAnalyzer.isAvailableOnThisOS ? .appleAnalyzer : .apple
+    }
+
+    // MARK: - Linear
+
+    /// The only place in Yorick where user content can leave the Mac, so the
+    /// copy here does the whole job of saying so — plainly, in the flat
+    /// declarative register the rest of the app uses, and without persuasion.
+    @ViewBuilder
+    private var linearSection: some View {
+        sectionLabel("LINEAR")
+        settingsRow {
+            VStack(alignment: .leading, spacing: 3) {
+                rowLabel(linear.isConnected ? "Connected to Linear" : "Send captures to Linear")
+                caption(linear.isConnected
+                    ? "Saved captures get a Send button. You see the issue — title, team, project, and every line of context — before anything is sent, and nothing is sent until you press Create issue."
+                    : "Off by default. Connecting lets you turn a saved capture into a Linear issue. This is the only feature that sends anything off your Mac, and only when you press the button.")
+            }
+            Spacer(minLength: 16)
+            if linear.isConnected {
+                pillButton("Disconnect") {
+                    Task { await sendController.disconnect() }
+                }
+            } else if LinearConfig.isConfigured {
+                pillButton(connecting ? "Connecting…" : "Connect") {
+                    connecting = true
+                    Task {
+                        await sendController.connect()
+                        connecting = false
+                    }
+                }
+            } else {
+                Text("unavailable in this build")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+        }
+
+        if linear.isConnected {
+            settingsRow {
+                VStack(alignment: .leading, spacing: 3) {
+                    rowLabel("Default team")
+                    caption("Where a capture goes when nothing better fits. You can change it on every send.")
+                }
+                Spacer(minLength: 16)
+                Picker("", selection: $linear.defaultTeamID) {
+                    Text("—").tag(String?.none)
+                    ForEach(linear.workspace.teams) { team in
+                        Text(team.name).tag(String?.some(team.id))
+                    }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 160)
+            }
+            settingsRow {
+                VStack(alignment: .leading, spacing: 3) {
+                    rowLabel("Let this Mac draft the issue")
+                    caption("Uses Apple's on-device model to suggest a title and pick the project, from your real teams and projects. Nothing is sent to do this. Off means you get the transcript and your default team, which is also what you get whenever the model can't help.")
+                }
+                Spacer(minLength: 16)
+                Toggle("", isOn: $linear.composeWithModel)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .disabled(!IssueComposer.isAvailable)
+            }
+            settingsRow {
+                VStack(alignment: .leading, spacing: 3) {
+                    rowLabel("Screen context")
+                    caption("While this integration is on, a saved capture also records what was selected, the page or document open, and what you pointed at — so an issue makes sense to someone who wasn't there. It's collected only for captures, never for dictation, and it goes nowhere until you send. Turn the integration off and none of it is read at all.")
+                }
+                Spacer(minLength: 16)
+                pillButton("Refresh projects") {
+                    Task { await sendController.refreshWorkspace() }
+                }
+            }
+        }
     }
 
     // MARK: - Pieces

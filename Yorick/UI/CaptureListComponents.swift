@@ -31,8 +31,18 @@ struct CaptureRow: View {
     let timeLabel: String
 
     @Environment(SessionManager.self) private var session
+    @ObservedObject private var linear = LinearSettings.shared
+    @ObservedObject private var send = LinearSendController.shared
     @State private var isHovered = false
     @State private var justCopied = false
+
+    /// Send is offered only for captures that never landed anywhere — a
+    /// dictation already reached its field, and offering to file it again
+    /// would make the exit ambiguous. Once sent, the row shows the identifier
+    /// instead of the button: an exit is a one-way door.
+    private var canOfferSend: Bool {
+        linear.canSend && capture.kind != .dictation && capture.linearIssue == nil && !capture.needsTranscription
+    }
 
     /// Raw words as spoken — the stream shows what you said, not a rendering.
     private var displayText: String {
@@ -74,9 +84,34 @@ struct CaptureRow: View {
                 // dismissed cards live.
                 HStack(spacing: 8) {
                     CardActionButton(icon: "doc.on.doc", label: "Copy") { copyRow() }
+                    if canOfferSend, !send.isReviewing(capture) {
+                        CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
+                            send.beginReview(of: capture)
+                        }
+                    }
+                    if let issue = capture.linearIssue {
+                        Button(action: {
+                            if let url = URL(string: issue.url) { NSWorkspace.shared.open(url) }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 8.5))
+                                Text(issue.identifier)
+                                    .font(Theme.mono(10, weight: .semibold))
+                            }
+                            .foregroundStyle(Theme.success)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                     Spacer()
                 }
                 .padding(.top, 2)
+
+                if send.isReviewing(capture) {
+                    LinearProposalView(capture: capture, controller: send, captureStore: captureStore)
+                        .padding(.top, 4)
+                }
             }
         }
         .padding(.horizontal, 12)
@@ -91,7 +126,10 @@ struct CaptureRow: View {
                       : (isHovered ? Theme.bgHover : Color.white.opacity(0.03)))
         )
         .contentShape(Rectangle())
-        .onTapGesture { copyRow() }
+        // Click-to-copy is suspended while the proposal is open: a stray
+        // click on the form's background must not silently copy the row out
+        // from under someone who is editing a title.
+        .onTapGesture { if !send.isReviewing(capture) { copyRow() } }
         .contextMenu {
             if !capture.needsTranscription {
                 Button("Copy") { copyRow() }

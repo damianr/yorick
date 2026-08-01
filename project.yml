@@ -45,6 +45,14 @@ targets:
         INFOPLIST_FILE: Yorick/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Yorick/Resources/Yorick.entitlements
         SWIFT_STRICT_CONCURRENCY: complete
+        # Linear OAuth client ID, injected at build time. Empty by default:
+        # the integration is a PKCE public client, so this is an identifier
+        # and not a secret, but a fork should register its own rather than
+        # inherit ours. An empty value makes the Settings row read
+        # "unavailable in this build" instead of failing at connect time.
+        # Override locally without a rebuild:
+        #   defaults write com.heyyorick.Yorick linearClientID -string "<id>"
+        LINEAR_CLIENT_ID: ""
 
   # Logic tests only: compiles the pure Stage-0 sources directly instead of
   # hosting the app, so tests need no signing entitlements, permissions, or
@@ -57,6 +65,14 @@ targets:
       - path: Yorick/Output/SpokenFormNormalizer.swift
       - path: Yorick/Output/FieldProfiler.swift
       - path: Yorick/Capture/FocusClassifier.swift
+      - path: Yorick/App/AppPaths.swift
+      - path: Yorick/Model/CaptureContext.swift
+      - path: Yorick/Linear/LinearIssueDraft.swift
+      - path: Yorick/Linear/LinearWorkspace.swift
+      - path: Yorick/Linear/LinearOAuth.swift
+      - path: Yorick/Linear/LinearKeychain.swift
+      - path: Yorick/Linear/IssueComposer.swift
+      - path: Yorick/Upload/LocalIntelligence.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.heyyorick.YorickTests
