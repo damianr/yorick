@@ -124,6 +124,13 @@ final class SessionManager {
     /// "this app doesn't describe its editor."
     private var startFocusElement: AXUIElement?
 
+    // MARK: - Screen context (Linear integration only)
+
+    /// Evidence collection runs ONLY while the Linear integration is on. A
+    /// user who never connects Linear has an app that reads nothing beyond
+    /// "is a field focused" — the collector is never even started.
+    private var contextStartTask: Task<[ContextFact], Never>?
+    private var pointerTimeline: ContextCollector.PointerTimeline?
     var showSilenceWarning = false
     /// Non-nil while audio has stopped arriving mid-recording. The pill says
     /// so instead of continuing to claim it's listening.
@@ -611,6 +618,21 @@ final class SessionManager {
                 ? AccessibilityCapture.focusedElementIdentity() : nil
         }
 
+        // Freeze the semantic target at trigger, and start watching the
+        // pointer for the duration of the recording — pointing is a gesture,
+        // not a moment. Both are detached; neither can delay the pill, the
+        // transcription, or the paste. Gated entirely on the integration
+        // being on, so this is dead code for anyone who hasn't opted in.
+        if LinearSettings.shared.collectsContext {
+            contextStartTask = ContextCollector.snapshot(phase: "start")
+            let timeline = ContextCollector.PointerTimeline()
+            pointerTimeline = timeline
+            Task { await timeline.begin() }
+        } else {
+            contextStartTask = nil
+            pointerTimeline = nil
+        }
+
         silentSeconds = 0
         showSilenceWarning = false
         // .common run-loop mode: a default-mode timer stops ticking while a menu
@@ -701,6 +723,20 @@ final class SessionManager {
         let audioURL = audioCapture.stop()
         state = .transcribing
 
+        // Second snapshot while the world still looks the way it did when the
+        // user stopped talking — the delta between start and stop is itself
+        // evidence. The pointer sweep closes here too: the pill is leaving the
+        // screen, so the announced watching ends with it.
+        let contextStart = contextStartTask
+        let contextStop = LinearSettings.shared.collectsContext
+            ? ContextCollector.snapshot(phase: "stop")
+            : nil
+        let timeline = pointerTimeline
+        let timelineApp = appName ?? "Unknown"
+        contextStartTask = nil
+        pointerTimeline = nil
+        Task { await timeline?.stopSampling() }
+
         processingGeneration &+= 1
         let generation = processingGeneration
         let wasForced = modeWasForced
@@ -715,8 +751,44 @@ final class SessionManager {
                 mode: mode,
                 modeWasForced: wasForced,
                 startConfidence: confidence,
-                generation: generation
+                generation: generation,
+                contextStart: contextStart,
+                contextStop: contextStop,
+                pointerTimeline: timeline,
+                timelineApp: timelineApp
             )
+        }
+    }
+
+    /// Assemble the evidence bundle, bounded at the CONSUMER. The collector
+    /// deliberately sets no AX messaging timeouts (they leaked into routing
+    /// and broke slow apps, twice), so the wall clock lives here: a hung app
+    /// costs facts, never the capture.
+    private static func assembleContext(
+        start: Task<[ContextFact], Never>?,
+        stop: Task<[ContextFact], Never>?,
+        timeline: ContextCollector.PointerTimeline?,
+        timelineApp: String
+    ) async -> CaptureContext? {
+        guard start != nil || stop != nil || timeline != nil else { return nil }
+        return await withTaskGroup(of: CaptureContext?.self, returning: CaptureContext?.self) { group in
+            group.addTask {
+                let startFacts = await start?.value ?? []
+                let stopFacts = await stop?.value ?? []
+                let timelineFacts = await timeline?.finish(appName: timelineApp) ?? []
+                return CaptureContext.merged(
+                    start: startFacts,
+                    stop: stopFacts,
+                    timeline: timelineFacts
+                )
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(3))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
     }
 
@@ -729,7 +801,11 @@ final class SessionManager {
         mode: CaptureMode,
         modeWasForced: Bool,
         startConfidence: AccessibilityCapture.EditabilityDecision.Confidence,
-        generation: Int
+        generation: Int,
+        contextStart: Task<[ContextFact], Never>? = nil,
+        contextStop: Task<[ContextFact], Never>? = nil,
+        pointerTimeline: ContextCollector.PointerTimeline? = nil,
+        timelineApp: String = "Unknown"
     ) async {
         // Only the generation that still owns the session may reset state. A
         // cancelled or superseded pass unwinds without disturbing a newer one.
@@ -1017,7 +1093,21 @@ final class SessionManager {
                 contextEvidence: ""
             )
 
-            // 5. Save. The capture is complete the moment transcription ends —
+            // 5. Attach the evidence bundle — SAVED captures only. A
+            //    dictation already landed in its field; context exists to
+            //    make an orphaned utterance actionable somewhere else, and
+            //    keeping screen text on a capture with no destination is the
+            //    cost-without-a-story the 2026-07-29 removal was about.
+            let context: CaptureContext? = effectiveKind == .dictation
+                ? nil
+                : await Self.assembleContext(
+                    start: contextStart,
+                    stop: contextStop,
+                    timeline: pointerTimeline,
+                    timelineApp: timelineApp
+                )
+
+            // 6. Save. The capture is complete the moment transcription ends —
             //    there is no background intelligence to wait for.
             let capture = Capture(
                 id: captureID,
@@ -1038,7 +1128,8 @@ final class SessionManager {
                 suggestedTags: [],
                 actionHint: nil,
                 effects: effects,
-                diagnostics: diagnostics
+                diagnostics: diagnostics,
+                context: context
             )
 
             guard isLive() else { return }

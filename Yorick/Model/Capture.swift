@@ -219,6 +219,16 @@ struct Capture: Identifiable, Codable {
     var needsTranscription: Bool
     /// Evidence/debug payload for auditing context inference.
     let diagnostics: CaptureDiagnostics?
+    /// Verbatim accessibility evidence gathered around the utterance —
+    /// selection, page, document, pointed elements. Nil is normal and means
+    /// nothing beyond app + window title was available. Lives on the same
+    /// ephemerality clock as everything else: context is never a reason to
+    /// keep something longer.
+    let context: CaptureContext?
+    /// Set once this capture has been sent to Linear. The row shows the
+    /// identifier and stops offering Send — an exit is a one-way door, and
+    /// re-sending would quietly create duplicates.
+    var linearIssue: LinearCreatedIssue?
 
     init(
         id: UUID,
@@ -241,7 +251,9 @@ struct Capture: Identifiable, Codable {
         actionHint: String? = nil,
         effects: [CaptureEffect] = [],
         needsTranscription: Bool = false,
-        diagnostics: CaptureDiagnostics? = nil
+        diagnostics: CaptureDiagnostics? = nil,
+        context: CaptureContext? = nil,
+        linearIssue: LinearCreatedIssue? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -264,6 +276,8 @@ struct Capture: Identifiable, Codable {
         self.effects = effects
         self.needsTranscription = needsTranscription
         self.diagnostics = diagnostics
+        self.context = context
+        self.linearIssue = linearIssue
     }
 
     // MARK: - Codable (backward-compatible decode)
@@ -275,6 +289,7 @@ struct Capture: Identifiable, Codable {
         case kind, title, content, appliedTags, suggestedTags, actionHint
         case effects, needsTranscription
         case diagnostics
+        case context, linearIssue
     }
 
     init(from decoder: Decoder) throws {
@@ -326,6 +341,8 @@ struct Capture: Identifiable, Codable {
         }
         self.needsTranscription = try c.decodeIfPresent(Bool.self, forKey: .needsTranscription) ?? false
         self.diagnostics = try c.decodeIfPresent(CaptureDiagnostics.self, forKey: .diagnostics)
+        self.context = try c.decodeIfPresent(CaptureContext.self, forKey: .context)
+        self.linearIssue = try c.decodeIfPresent(LinearCreatedIssue.self, forKey: .linearIssue)
     }
 
     // MARK: - Derived
