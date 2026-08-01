@@ -160,28 +160,38 @@ actor LinearClient {
                 let id: String
                 let name: String
                 let description: String?
+                let state: String?
                 let teams: TeamRefs
             }
             let teams: Teams
             let projects: Projects
         }
+        // No server-side state filter. A filter argument this client can't
+        // test against a live schema is a way for the whole connect flow to
+        // look broken over a cosmetic preference — so the query stays plain
+        // and the exclusion happens below, where a schema change costs
+        // nothing worse than an extra project in the menu.
         let query = """
             query YorickWorkspace {
               teams(first: 100) { nodes { id name key } }
-              projects(first: 100, filter: { state: { neq: "completed" } }) {
-                nodes { id name description teams(first: 10) { nodes { id } } }
+              projects(first: 100) {
+                nodes { id name description state teams(first: 10) { nodes { id } } }
               }
             }
             """
         let response = try await perform(query: query, decoding: Response.self)
-        let projects = response.projects.nodes.map { node in
-            LinearProject(
-                id: node.id,
-                name: node.name,
-                summary: node.description,
-                teamIDs: node.teams.nodes.map(\.id)
-            )
-        }
+        // Routing a new capture into a finished project is never right.
+        let closed: Set<String> = ["completed", "canceled", "cancelled"]
+        let projects = response.projects.nodes
+            .filter { !closed.contains(($0.state ?? "").lowercased()) }
+            .map { node in
+                LinearProject(
+                    id: node.id,
+                    name: node.name,
+                    summary: node.description,
+                    teamIDs: node.teams.nodes.map(\.id)
+                )
+            }
         return LinearWorkspace(teams: response.teams.nodes, projects: projects, fetchedAt: Date())
     }
 
