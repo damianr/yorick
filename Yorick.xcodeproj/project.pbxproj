@@ -49,6 +49,7 @@
 		88A8555B35995E7A2FBB83EC /* FieldProfilerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */; };
 		95B7A0C84F5FC9A6795F5B6B /* IssueComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1230628E47D7D389918F4D68 /* IssueComposer.swift */; };
 		98CD574C2C2BFAF1CDAB1651 /* AdminMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9508203F2C34F0897692D0F4 /* AdminMode.swift */; };
+		99C39C2E21CFCBBFB35DA6AB /* SplitDetectionEval.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8811A4C33B8D2066FC1F307 /* SplitDetectionEval.swift */; };
 		A49F05C46D03C30835F7F541 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */; };
 		A8CD261A3FDF0619338D5566 /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D04D4D581F947FDD13AD5A /* Capture.swift */; };
 		A954C4E35F30860DA4CEE56B /* Telemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D88477D3D846F4B335099B /* Telemetry.swift */; };
@@ -134,6 +135,7 @@
 		ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenFormNormalizerTests.swift; sourceTree = "<group>"; };
 		B0B5304D771605BC1F26353E /* PasteboardLease.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteboardLease.swift; sourceTree = "<group>"; };
 		B3521EDECA142221E50F66A1 /* MenuBarPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanelView.swift; sourceTree = "<group>"; };
+		B8811A4C33B8D2066FC1F307 /* SplitDetectionEval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitDetectionEval.swift; sourceTree = "<group>"; };
 		BA1FC90D1A3F584F7F795AAC /* ToolbarBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarBackdrop.swift; sourceTree = "<group>"; };
 		BABFC3F93B05ABDC8E13BD05 /* HotkeyEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyEditorView.swift; sourceTree = "<group>"; };
 		BF4F07F81C3F7136AFA6E0E7 /* AppleSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeech.swift; sourceTree = "<group>"; };
@@ -266,6 +268,7 @@
 				3CDCA24AB27C465B2A1657C1 /* IssueComposerEval.swift */,
 				9B27701269CA362ED330D0DD /* LinearCallbackListenerTests.swift */,
 				CD8CF11C32CCB193054C4D05 /* LinearExitTests.swift */,
+				B8811A4C33B8D2066FC1F307 /* SplitDetectionEval.swift */,
 				ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */,
 			);
 			path = YorickTests;
@@ -450,6 +453,7 @@
 				46F8D3DD82A1E3DA0B010D8C /* LinearOAuth.swift in Sources */,
 				D13056B3E0C54A1DA34369EF /* LinearWorkspace.swift in Sources */,
 				F2CE7A73728C955A6CAF091E /* LocalIntelligence.swift in Sources */,
+				99C39C2E21CFCBBFB35DA6AB /* SplitDetectionEval.swift in Sources */,
 				E826DF35A5F759FC624218CC /* SpokenFormNormalizer.swift in Sources */,
 				F8AFA223D571C4B51C59032A /* SpokenFormNormalizerTests.swift in Sources */,
 			);

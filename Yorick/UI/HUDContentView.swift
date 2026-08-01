@@ -162,7 +162,7 @@ struct HUDContentView: View {
                 // and editing a title needs keyboard focus and as long as you
                 // want; the HUD card is non-activating and fades on a clock.
                 // Glance-grab-go stays glance-grab-go.
-                if LinearSettings.shared.canSend, capture.kind != .dictation {
+                if LinearSettings.shared.canSend {
                     CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
                         session.lastSavedCapture = nil
                         LinearSendController.shared.beginReview(of: capture)

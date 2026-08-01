@@ -32,14 +32,14 @@ title, team, project, and every line of context. Nothing is sent until you
 press the button. Turn it off, or never turn it on, and Yorick makes no
 network call carrying anything you said.
 
-While that integration is on, saved captures also record accessibility
-context — what was selected, the page or document open, what you pointed
-at — so an issue makes sense to someone who wasn't sitting there. It's
-collected for saved captures only, never for dictation, it stays on the
-same expiry clock as everything else, and it goes nowhere until you send.
-With the integration off, none of it is read at all. Still no screenshots
-and no screen recording: this is the accessibility API, the same one that
-types for you.
+While that integration is on, captures also record accessibility context —
+what was selected, the page or document open, what you pointed at — so an
+issue makes sense to someone who wasn't sitting there. That includes
+dictations, so a capture is still filable when it typed into a field you
+didn't mean to be in. It stays on the same expiry clock as everything else,
+and it goes nowhere until you send. With the integration off, none of it is
+read at all. Still no screenshots and no screen recording: this is the
+accessibility API, the same one that types for you.
 
 This repository is the proof of those claims. Read the source; run
 Little Snitch; we insist.

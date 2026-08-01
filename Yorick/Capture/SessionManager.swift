@@ -1093,19 +1093,31 @@ final class SessionManager {
                 contextEvidence: ""
             )
 
-            // 5. Attach the evidence bundle — SAVED captures only. A
-            //    dictation already landed in its field; context exists to
-            //    make an orphaned utterance actionable somewhere else, and
-            //    keeping screen text on a capture with no destination is the
-            //    cost-without-a-story the 2026-07-29 removal was about.
-            let context: CaptureContext? = effectiveKind == .dictation
-                ? nil
-                : await Self.assembleContext(
-                    start: contextStart,
-                    stop: contextStop,
-                    timeline: pointerTimeline,
-                    timelineApp: timelineApp
-                )
+            // 5. Attach the evidence bundle to EVERY capture, dictation
+            //    included (2026-08-01).
+            //
+            //    Field/no-field is an ASSUMPTION, and the whole design
+            //    already concedes it can be wrong — that asymmetry is why
+            //    every transcript is persisted regardless. Withholding
+            //    context from dictations made the recovery path worse than
+            //    the failure it recovers from: speak at a field you didn't
+            //    realize was focused, and the words type somewhere useless
+            //    AND the capture arrives in the list stripped of the context
+            //    that would have made it filable. Same mechanism for
+            //    everything; the routing decision stops being a fork in what
+            //    gets kept and goes back to being what it claims to be —
+            //    where the words went first.
+            //
+            //    Costs nothing new: collection already runs for every
+            //    session (the mode isn't known at hotkey-down), so this
+            //    stops discarding work already done, and it stays gated on
+            //    the Linear integration being on.
+            let context = await Self.assembleContext(
+                start: contextStart,
+                stop: contextStop,
+                timeline: pointerTimeline,
+                timelineApp: timelineApp
+            )
 
             // 6. Save. The capture is complete the moment transcription ends —
             //    there is no background intelligence to wait for.

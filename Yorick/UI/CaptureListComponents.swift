@@ -36,12 +36,17 @@ struct CaptureRow: View {
     @State private var isHovered = false
     @State private var justCopied = false
 
-    /// Send is offered only for captures that never landed anywhere — a
-    /// dictation already reached its field, and offering to file it again
-    /// would make the exit ambiguous. Once sent, the row shows the identifier
-    /// instead of the button: an exit is a one-way door.
+    /// Send is offered on EVERY capture, dictations included (2026-08-01).
+    ///
+    /// The earlier rule — dictations already landed, so don't offer to file
+    /// them — assumed the routing decision was right. It usually is, but the
+    /// case that matters is the one where it wasn't: you spoke at a field you
+    /// didn't know was focused, the words went somewhere useless, and the
+    /// list is the recovery. Recovery should include every exit, not just
+    /// Copy. Once sent, the row shows the identifier instead of the button —
+    /// an exit is a one-way door, and re-sending would create duplicates.
     private var canOfferSend: Bool {
-        linear.canSend && capture.kind != .dictation && capture.linearIssue == nil && !capture.needsTranscription
+        linear.canSend && capture.linearIssue == nil && !capture.needsTranscription
     }
 
     /// Raw words as spoken — the stream shows what you said, not a rendering.

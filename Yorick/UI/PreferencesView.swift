@@ -358,7 +358,7 @@ struct SettingsView: View {
             settingsRow {
                 VStack(alignment: .leading, spacing: 3) {
                     rowLabel("Screen context")
-                    caption("While this integration is on, a saved capture also records what was selected, the page or document open, and what you pointed at — so an issue makes sense to someone who wasn't there. It's collected only for captures, never for dictation, and it goes nowhere until you send. Turn the integration off and none of it is read at all.")
+                    caption("While this integration is on, every capture also records what was selected, the page or document open, and what you pointed at — so an issue makes sense to someone who wasn't there. Dictations included, so a capture is still filable when it typed somewhere you didn't mean. It goes nowhere until you send. Turn the integration off and none of it is read at all.")
                 }
                 Spacer(minLength: 16)
                 pillButton("Refresh projects") {
