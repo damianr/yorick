@@ -33,14 +33,17 @@ actor LinearClient {
         let pkce = PKCEChallenge()
         let listener = LinearCallbackListener()
 
-        // Start listening BEFORE opening the browser: a fast redirect on a
-        // warm browser can beat a listener that starts afterwards.
-        async let callback = listener.waitForCallback()
+        // Bind FIRST, and await it. Opening the browser before the socket is
+        // up spends the user's authorization on a redirect nothing can catch:
+        // field-reported as ERR_CONNECTION_REFUSED on a valid code. A bind
+        // failure now surfaces before the user has approved anything.
+        try await listener.start()
+
         openURL(LinearOAuth.authorizationURL(clientID: clientID, pkce: pkce))
 
         let path: String
         do {
-            path = try await callback
+            path = try await listener.waitForCallback()
         } catch {
             await listener.stop()
             throw error

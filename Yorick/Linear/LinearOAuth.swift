@@ -1,6 +1,6 @@
 import CryptoKit
+import Darwin
 import Foundation
-import Network
 
 /// PKCE pieces for one authorization attempt. Held only for the duration of
 /// the flow — the verifier is a secret that exists to be spent once.
@@ -131,32 +131,80 @@ enum LinearOAuth {
 
 /// A single-shot HTTP listener that exists only to catch the OAuth redirect.
 ///
-/// Loopback (RFC 8252) rather than a custom URL scheme: Linear's redirect-URI
-/// validation is documented for `http://localhost` style URIs and unverified
-/// for custom schemes, and loopback is the standard native-app pattern
-/// regardless. It binds on 127.0.0.1 only, answers exactly one request, and
-/// tears itself down — there is no window in which Yorick is a server.
+/// Loopback (RFC 8252) rather than a custom URL scheme: Linear accepts a
+/// `http://127.0.0.1:<port>` redirect (verified against a real OAuth app,
+/// 2026-08-01), and loopback is the standard native-app pattern regardless.
+/// It binds 127.0.0.1 only, answers exactly one request, and tears itself
+/// down — there is no window in which Yorick is a server.
+///
+/// A PLAIN BSD SOCKET, not `NWListener`. The first version used Network
+/// framework and failed in the field with ERR_CONNECTION_REFUSED on a valid
+/// authorization code. Probed afterwards: every `NWListener` binding form —
+/// `on: port`, `requiredLocalEndpoint`, both, neither — returns POSIX EINVAL
+/// (22) here, while `bind`/`listen` on the same port succeeds immediately.
+/// The cause was not worth chasing further, because the conclusion held
+/// either way: Network framework routes through a system daemon and carries
+/// failure modes this job has no use for. Listening on loopback for one HTTP
+/// GET is forty lines of POSIX that work everywhere, including under the
+/// test harness — which is what lets the regression test actually guard it.
 actor LinearCallbackListener {
-    private var listener: NWListener?
-    private var continuation: CheckedContinuation<String, Error>?
+    private var listenFD: Int32 = -1
+
+    /// Bind the port. Separate from `waitForCallback` and awaited BEFORE the
+    /// browser opens, because the two must not race: the original version
+    /// started listening with `async let` and opened the browser in the same
+    /// breath, so a bind failure surfaced only after the user had already
+    /// approved the app — the code spent, and nothing there to catch it.
+    func start() throws {
+        guard listenFD < 0 else { throw LinearOAuthError.listenerFailed("already listening") }
+
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw LinearOAuthError.listenerFailed(Self.errnoText()) }
+
+        // A socket left in TIME_WAIT by a previous attempt must not block the
+        // retry; the user trying again is the common case after a failure.
+        var reuse: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = LinearOAuth.redirectPort.bigEndian
+        // INADDR_LOOPBACK, so the socket is unreachable from the network.
+        // This is the security property, and here it comes from the bind
+        // itself rather than from a parameter the framework might ignore.
+        address.sin_addr = in_addr(s_addr: UInt32(0x7F00_0001).bigEndian)
+
+        let bound = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard bound == 0 else {
+            let message = Self.errnoText()
+            close(fd)
+            throw LinearOAuthError.listenerFailed("port \(LinearOAuth.redirectPort): \(message)")
+        }
+        guard listen(fd, 1) == 0 else {
+            let message = Self.errnoText()
+            close(fd)
+            throw LinearOAuthError.listenerFailed(message)
+        }
+        listenFD = fd
+    }
 
     /// Wait for the browser to hit the redirect URI. Returns the request path
-    /// (with its query), or throws on timeout, cancel, or bind failure.
+    /// with its query, or throws on timeout, cancel, or teardown.
     func waitForCallback(timeout: Duration = .seconds(300)) async throws -> String {
-        // stop() on EVERY exit, including the throwing ones: the listener
-        // holds a port and a closure that retains this actor, and a flow that
-        // times out must not leave either behind.
+        guard listenFD >= 0 else { throw LinearOAuthError.listenerFailed("not started") }
+        let fd = listenFD
+        // Teardown on EVERY exit, including the throwing ones: the socket
+        // holds a port, and a flow that times out must not leave it bound.
         do {
-            let path = try await withThrowingTaskGroup(of: String.self) { group in
-                group.addTask { try await self.listen() }
-                group.addTask {
-                    try await Task.sleep(for: timeout)
-                    throw LinearOAuthError.timedOut
-                }
-                let first = try await group.next()!
-                group.cancelAll()
-                return first
-            }
+            let deadline = ContinuousClock.now + timeout
+            let path = try await Task.detached(priority: .userInitiated) {
+                try Self.accept(on: fd, until: deadline)
+            }.value
             teardown()
             return path
         } catch {
@@ -165,111 +213,105 @@ actor LinearCallbackListener {
         }
     }
 
-    private func listen() async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            do {
-                let parameters = NWParameters.tcp
-                // Loopback only. Without this the listener would accept from
-                // the local network, which is a different security posture
-                // than "the browser on this machine."
-                parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
-                    host: .ipv4(.loopback),
-                    port: NWEndpoint.Port(rawValue: LinearOAuth.redirectPort)!
-                )
-                let listener = try NWListener(using: parameters)
-                self.listener = listener
-                // Bind the weak reference to a `let` before the inner
-                // escaping closure captures it — a captured `var self` can't
-                // cross into concurrently-executing code.
-                listener.newConnectionHandler = { [weak self] connection in
-                    let owner = self
-                    connection.start(queue: .global(qos: .userInitiated))
-                    Self.readRequest(connection) { path in
-                        Task { await owner?.finish(with: path) }
-                    }
-                }
-                listener.stateUpdateHandler = { [weak self] state in
-                    let owner = self
-                    if case .failed(let error) = state {
-                        Task { await owner?.fail(with: LinearOAuthError.listenerFailed(error.localizedDescription)) }
-                    }
-                }
-                listener.start(queue: .global(qos: .userInitiated))
-            } catch {
-                self.continuation = nil
-                continuation.resume(throwing: LinearOAuthError.listenerFailed(error.localizedDescription))
-            }
-        }
-    }
-
-    /// Read just enough to get the request line. The browser sends a plain
-    /// GET; we never need headers or a body, so one receive is sufficient.
-    private nonisolated static func readRequest(
-        _ connection: NWConnection,
-        completion: @escaping @Sendable (Result<String, Error>) -> Void
-    ) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, _, error in
-            defer { connection.cancel() }
-            if let error {
-                completion(.failure(LinearOAuthError.listenerFailed(error.localizedDescription)))
-                return
-            }
-            guard let data, let request = String(data: data, encoding: .utf8),
-                  let requestLine = request.split(separator: "\r\n").first else {
-                completion(.failure(LinearOAuthError.malformedCallback))
-                return
-            }
-            let parts = requestLine.split(separator: " ")
-            guard parts.count >= 2, parts[0] == "GET" else {
-                completion(.failure(LinearOAuthError.malformedCallback))
-                return
-            }
-            // Answer before cancelling so the user sees a finished page
-            // rather than a connection-reset error in their browser.
-            let body = Self.completionPage
-            let response = """
-                HTTP/1.1 200 OK\r
-                Content-Type: text/html; charset=utf-8\r
-                Content-Length: \(body.utf8.count)\r
-                Connection: close\r
-                \r
-                \(body)
-                """
-            connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
-                completion(.success(String(parts[1])))
-            })
-        }
-    }
-
-    private func finish(with result: Result<String, Error>) {
-        guard let continuation else { return }
-        self.continuation = nil
-        continuation.resume(with: result)
-    }
-
-    private func fail(with error: Error) {
-        finish(with: .failure(error))
-    }
-
-    func stop() async {
+    func stop() {
         teardown()
     }
 
-    /// Release the port and settle any waiter. Safe to call twice — the
-    /// continuation is cleared before it's resumed.
     private func teardown() {
-        listener?.cancel()
-        listener = nil
-        if let continuation {
-            self.continuation = nil
-            continuation.resume(throwing: LinearOAuthError.cancelled)
+        guard listenFD >= 0 else { return }
+        close(listenFD)
+        listenFD = -1
+    }
+
+    // MARK: - The blocking half
+
+    /// Poll rather than a bare blocking `accept`, so the wait is bounded and
+    /// a cancelled task actually stops waiting. One request, then done.
+    private nonisolated static func accept(
+        on fd: Int32,
+        until deadline: ContinuousClock.Instant
+    ) throws -> String {
+        while true {
+            if Task.isCancelled { throw LinearOAuthError.cancelled }
+            if ContinuousClock.now >= deadline { throw LinearOAuthError.timedOut }
+
+            var poller = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&poller, 1, 200)
+            if ready < 0 {
+                if errno == EINTR { continue }
+                throw LinearOAuthError.listenerFailed(errnoText())
+            }
+            guard ready > 0 else { continue }
+
+            let client = Darwin.accept(fd, nil, nil)
+            guard client >= 0 else {
+                if errno == EINTR || errno == ECONNABORTED { continue }
+                throw LinearOAuthError.listenerFailed(errnoText())
+            }
+            defer { close(client) }
+
+            guard let requestLine = readRequestLine(client) else {
+                // A probe that isn't a GET (some browsers speculatively open
+                // connections) must not end the wait — keep listening.
+                continue
+            }
+            let parts = requestLine.split(separator: " ")
+            guard parts.count >= 2, parts[0] == "GET" else { continue }
+
+            // Answer before closing, so the user lands on a finished page
+            // rather than a connection reset in their browser.
+            send(client, completionPage)
+            return String(parts[1])
         }
+    }
+
+    /// Read up to the end of the request line. The browser sends a plain GET;
+    /// headers and body are never needed, so one bounded read is enough.
+    private nonisolated static func readRequestLine(_ fd: Int32) -> String? {
+        var buffer = [UInt8](repeating: 0, count: 8192)
+        var filled = 0
+        while filled < buffer.count {
+            let n = buffer[filled...].withUnsafeMutableBytes { raw in
+                read(fd, raw.baseAddress, raw.count)
+            }
+            guard n > 0 else { break }
+            filled += n
+            if let newline = buffer[..<filled].firstIndex(of: UInt8(ascii: "\n")) {
+                let line = buffer[..<newline]
+                let trimmed = line.last == UInt8(ascii: "\r") ? line.dropLast() : line[...]
+                return String(decoding: trimmed, as: UTF8.self)
+            }
+        }
+        return nil
+    }
+
+    private nonisolated static func send(_ fd: Int32, _ body: String) {
+        let response = """
+            HTTP/1.1 200 OK\r
+            Content-Type: text/html; charset=utf-8\r
+            Content-Length: \(body.utf8.count)\r
+            Connection: close\r
+            \r
+            \(body)
+            """
+        var bytes = Array(response.utf8)
+        var offset = 0
+        while offset < bytes.count {
+            let written = bytes[offset...].withUnsafeMutableBytes { raw in
+                write(fd, raw.baseAddress, raw.count)
+            }
+            guard written > 0 else { break }
+            offset += written
+        }
+    }
+
+    private nonisolated static func errnoText() -> String {
+        String(cString: strerror(errno))
     }
 
     /// Bone on near-black, matching the app — the one moment Yorick renders
     /// anything in a browser, so it shouldn't look like a default error page.
-    private static let completionPage = """
+    private nonisolated static let completionPage = """
         <!doctype html><meta charset="utf-8"><title>Yorick</title>
         <style>
           html{color-scheme:dark}
