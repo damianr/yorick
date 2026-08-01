@@ -285,20 +285,28 @@ struct SettingsView: View {
                     // workspaces are common), so it gets a button rather than
                     // being an undocumented side effect of pressing Connect
                     // again — which is what it used to be.
-                    pillButton(connecting ? "Connecting…" : "Switch workspace") {
+                    if connecting {
+                        pillButton("Cancel") { sendController.cancelConnect() }
+                    } else {
+                        pillButton("Switch workspace") {
+                            connecting = true
+                            Task {
+                                await sendController.connect()
+                                connecting = false
+                            }
+                        }
+                    }
+                }
+            } else if LinearConfig.isConfigured {
+                if connecting {
+                    pillButton("Cancel") { sendController.cancelConnect() }
+                } else {
+                    pillButton("Connect") {
                         connecting = true
                         Task {
                             await sendController.connect()
                             connecting = false
                         }
-                    }
-                }
-            } else if LinearConfig.isConfigured {
-                pillButton(connecting ? "Connecting…" : "Connect") {
-                    connecting = true
-                    Task {
-                        await sendController.connect()
-                        connecting = false
                     }
                 }
             } else {

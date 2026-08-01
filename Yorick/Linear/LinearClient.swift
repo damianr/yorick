@@ -20,6 +20,11 @@ actor LinearClient {
     private var didLoadTokens = false
     private let clientID: String?
     private let session: URLSession
+    /// The listener for a connect currently in flight, so the user can give
+    /// up on one that will never complete — an authorize page that errors
+    /// (wrong workspace, unknown client) never redirects, and without this
+    /// the app waits the full timeout with no way out.
+    private var activeListener: LinearCallbackListener?
 
     init(clientID: String? = LinearConfig.clientID, session: URLSession = .shared) {
         self.clientID = clientID
@@ -47,6 +52,8 @@ actor LinearClient {
         guard let clientID, !clientID.isEmpty else { throw LinearOAuthError.notConfigured }
         let pkce = PKCEChallenge()
         let listener = LinearCallbackListener()
+        activeListener = listener
+        defer { activeListener = nil }
 
         // Bind FIRST, and await it. Opening the browser before the socket is
         // up spends the user's authorization on a redirect nothing can catch:
@@ -69,6 +76,11 @@ actor LinearClient {
         try LinearKeychain.save(tokens)
         self.tokens = tokens
         self.didLoadTokens = true
+    }
+
+    /// Abandon a connect in flight. Safe to call when none is running.
+    func cancelConnect() async {
+        await activeListener?.stop()
     }
 
     /// Disconnect. Revocation is best-effort — the local token is cleared

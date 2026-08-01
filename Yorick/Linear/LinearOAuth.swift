@@ -136,6 +136,24 @@ enum LinearOAuth {
     }
 }
 
+/// A boolean shared between the actor and its off-actor accept loop.
+/// A lock rather than an atomic because it is read a handful of times per
+/// second, and correctness here is worth more than the nanoseconds.
+final class CancelFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return value
+    }
+
+    func set() {
+        lock.lock(); defer { lock.unlock() }
+        value = true
+    }
+}
+
 // MARK: - Loopback callback listener
 
 /// A single-shot HTTP listener that exists only to catch the OAuth redirect.
@@ -158,6 +176,10 @@ enum LinearOAuth {
 /// test harness — which is what lets the regression test actually guard it.
 actor LinearCallbackListener {
     private var listenFD: Int32 = -1
+    /// Read by the accept loop, which runs off-actor. Set by `stop()` so a
+    /// cancelled connect ends as a cancellation rather than as whatever
+    /// errno a closed descriptor happens to produce.
+    private let cancelled = CancelFlag()
 
     /// Bind the port. Separate from `waitForCallback` and awaited BEFORE the
     /// browser opens, because the two must not race: the original version
@@ -211,8 +233,9 @@ actor LinearCallbackListener {
         // holds a port, and a flow that times out must not leave it bound.
         do {
             let deadline = ContinuousClock.now + timeout
+            let flag = cancelled
             let path = try await Task.detached(priority: .userInitiated) {
-                try Self.accept(on: fd, until: deadline)
+                try Self.accept(on: fd, until: deadline, cancelled: flag)
             }.value
             teardown()
             return path
@@ -227,6 +250,7 @@ actor LinearCallbackListener {
     }
 
     private func teardown() {
+        cancelled.set()
         guard listenFD >= 0 else { return }
         close(listenFD)
         listenFD = -1
@@ -238,10 +262,14 @@ actor LinearCallbackListener {
     /// a cancelled task actually stops waiting. One request, then done.
     private nonisolated static func accept(
         on fd: Int32,
-        until deadline: ContinuousClock.Instant
+        until deadline: ContinuousClock.Instant,
+        cancelled: CancelFlag
     ) throws -> String {
         while true {
-            if Task.isCancelled { throw LinearOAuthError.cancelled }
+            // `Task.isCancelled` is not enough: this runs detached, which
+            // does not inherit cancellation. The flag is what actually stops
+            // it when the user gives up on a connect.
+            if cancelled.isSet || Task.isCancelled { throw LinearOAuthError.cancelled }
             if ContinuousClock.now >= deadline { throw LinearOAuthError.timedOut }
 
             var poller = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)

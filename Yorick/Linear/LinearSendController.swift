@@ -125,6 +125,14 @@ final class LinearSendController: ObservableObject {
     /// nothing.
     @Published var connectionStatus: String?
 
+    /// Give up on a connect that will never finish. Linear's authorize page
+    /// simply renders an error and never redirects when the client id isn't
+    /// valid for the workspace you're signed into — a private OAuth app seen
+    /// from a second workspace does exactly that — so the wait needs a door.
+    func cancelConnect() {
+        Task { await client.cancelConnect() }
+    }
+
     func connect() async {
         connectionStatus = nil
         let previous = settings.workspace.organizationID
