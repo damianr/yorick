@@ -55,6 +55,10 @@ final class LinearOAuthTests: XCTestCase {
         XCTAssertEqual(value("code_challenge"), pkce.challenge)
         XCTAssertEqual(value("state"), pkce.state)
         XCTAssertEqual(value("scope"), "read,write")
+        // Forces the workspace/consent picker. Without it, Linear can
+        // return a code for the already-authorized workspace and "Switch
+        // workspace" silently reconnects you to the one you were leaving.
+        XCTAssertEqual(value("prompt"), "consent")
         // The verifier is the secret half; it must never appear in a URL that
         // travels through the browser.
         XCTAssertFalse(url.absoluteString.contains(pkce.verifier))

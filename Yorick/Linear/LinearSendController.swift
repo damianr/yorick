@@ -119,17 +119,39 @@ final class LinearSendController: ObservableObject {
 
     // MARK: - Connection
 
+    /// One line of feedback for the Settings row. Every outcome sets it —
+    /// including cancellation, which used to be swallowed silently and made
+    /// a failed connect indistinguishable from a successful one that changed
+    /// nothing.
+    @Published var connectionStatus: String?
+
     func connect() async {
+        connectionStatus = nil
+        let previous = settings.workspace.organizationID
         do {
             try await client.connect(openURL: { url in
                 NSWorkspace.shared.open(url)
             })
             settings.markConnected()
             await refreshWorkspace()
+            let name = settings.workspace.organizationName ?? "Linear"
+            // Name what actually happened. Reconnecting to the SAME workspace
+            // is a real outcome and has to read differently from a switch,
+            // or the button looks broken when it worked exactly as asked.
+            if let previous, previous == settings.workspace.organizationID {
+                connectionStatus = "Reconnected to \(name) — same workspace as before."
+            } else {
+                connectionStatus = "Connected to \(name)."
+                // A proposal open against the old workspace holds team and
+                // project ids that no longer exist here; sending it would
+                // fail at the API with something unhelpful.
+                cancelReview()
+            }
         } catch LinearOAuthError.cancelled {
-            // Closing the browser tab is a decision, not an error.
+            connectionStatus = "Connection cancelled. Still connected to "
+                + (settings.workspace.organizationName ?? "the previous workspace") + "."
         } catch {
-            phase = .failed(error.localizedDescription)
+            connectionStatus = error.localizedDescription
         }
     }
 
@@ -137,6 +159,7 @@ final class LinearSendController: ObservableObject {
         await client.disconnect()
         settings.markDisconnected()
         cancelReview()
+        connectionStatus = nil
     }
 
     /// Re-read the answer key. Cheap, and a stale mirror is the difference
@@ -146,7 +169,9 @@ final class LinearSendController: ObservableObject {
             let workspace = try await client.fetchWorkspace()
             settings.adopt(workspace: workspace)
         } catch {
-            phase = .failed(error.localizedDescription)
+            // Surfaces in the Settings row rather than `phase`, which belongs
+            // to a capture's proposal and isn't on screen during a refresh.
+            connectionStatus = "Couldn't load teams and projects: \(error.localizedDescription)"
         }
     }
 

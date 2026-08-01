@@ -47,7 +47,10 @@ final class LinearSettings: ObservableObject {
         self.defaultTeamID = defaults.string(forKey: Keys.defaultTeamID)
         self.composeWithModel = defaults.object(forKey: Keys.composeWithModel) as? Bool ?? true
         self.workspace = LinearWorkspaceCache.load() ?? .empty
-        self.isConnected = LinearKeychain.load() != nil
+        // Existence, not the secret. This initializer runs on the path that
+        // the dictation hotkey touches (`collectsContext`), and reading the
+        // token here is what let a modal keychain dialog appear at launch.
+        self.isConnected = LinearKeychain.hasStoredTokens()
     }
 
     /// The gate for screen-context collection. Both conditions matter: a

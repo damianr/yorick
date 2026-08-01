@@ -58,6 +58,14 @@ enum LinearOAuth {
     static let redirectPort: UInt16 = 51_484
     static var redirectURI: String { "http://127.0.0.1:\(redirectPort)/oauth/callback" }
 
+    /// `prompt=consent` is sent ALWAYS, not just on a switch.
+    ///
+    /// A token is scoped to one workspace, and without this Linear can hand
+    /// back a code for the already-authorized workspace without showing the
+    /// picker — so "Switch workspace" reconnects you to the workspace you
+    /// were trying to leave and looks like it did nothing. Field-reported.
+    /// Forcing the consent screen costs a first-time user nothing, since
+    /// they see it anyway.
     static func authorizationURL(clientID: String, pkce: PKCEChallenge) -> URL {
         var components = URLComponents(url: authorizeURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
@@ -68,6 +76,7 @@ enum LinearOAuth {
             URLQueryItem(name: "state", value: pkce.state),
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "prompt", value: "consent"),
         ]
         return components.url!
     }

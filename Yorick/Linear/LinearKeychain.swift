@@ -46,14 +46,50 @@ enum LinearKeychain {
         guard status == errSecSuccess else { throw LinearKeychainError.storeFailed(status) }
     }
 
+    /// Read the token. May present the system keychain dialog if the item's
+    /// ACL doesn't trust this binary — so this is ONLY safe to call from an
+    /// explicit user action, never from app startup or the dictation path.
+    /// See `loadWithoutPrompting` for everywhere else.
     static func load() -> Tokens? {
+        load(allowingUI: true)
+    }
+
+    /// Read the token, but fail rather than ask.
+    ///
+    /// The keychain dialog is modal and system-owned. Yorick's whole claim is
+    /// that the pill appears at hotkey speed, and the ACL prompt can fire on
+    /// ANY read — including one triggered by pressing the hotkey, if the
+    /// binary's signature stopped matching the item's ACL (which happens the
+    /// moment a build is signed differently). A password sheet on the
+    /// dictation path would be a catastrophic version of a papercut, so
+    /// nothing on that path is allowed to ask.
+    static func loadWithoutPrompting() -> Tokens? {
+        load(allowingUI: false)
+    }
+
+    private static func load(allowingUI: Bool) -> Tokens? {
         var query = baseQuery()
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
+        if !allowingUI {
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        }
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
               let data = item as? Data else { return nil }
         return try? JSONDecoder().decode(Tokens.self, from: data)
+    }
+
+    /// Whether a connection exists, WITHOUT reading the secret. Answers the
+    /// question the UI and the context gate actually ask ("is Linear set
+    /// up?") — the token itself is only needed at request time.
+    static func hasStoredTokens() -> Bool {
+        var query = baseQuery()
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        // Deliberately no kSecReturnData: metadata reads don't consult the
+        // ACL the way a secret read does, so this can't raise a dialog.
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
 
     /// Disconnect. Deliberately infallible from the caller's side: a failed

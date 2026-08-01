@@ -308,6 +308,16 @@ struct SettingsView: View {
             }
         }
 
+        if let status = sendController.connectionStatus {
+            Text(status)
+                .font(Theme.mono(9.5))
+                .foregroundStyle(status.hasPrefix("Couldn't") || status.hasPrefix("Connection cancelled")
+                                 ? Theme.accentAmber : Theme.success)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 8)
+        }
+
         if linear.isConnected {
             settingsRow {
                 VStack(alignment: .leading, spacing: 3) {

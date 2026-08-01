@@ -13,16 +13,31 @@ actor LinearClient {
     static let endpoint = URL(string: "https://api.linear.app/graphql")!
 
     private var tokens: LinearKeychain.Tokens?
+    /// The token is read on FIRST USE, not at init. This client is
+    /// constructed when the app builds its UI, and reading the secret there
+    /// is what put a modal keychain dialog in front of a user who had merely
+    /// launched the app.
+    private var didLoadTokens = false
     private let clientID: String?
     private let session: URLSession
 
     init(clientID: String? = LinearConfig.clientID, session: URLSession = .shared) {
         self.clientID = clientID
         self.session = session
-        self.tokens = LinearKeychain.load()
     }
 
-    var isConnected: Bool { tokens != nil }
+    /// Reading the secret can raise the system keychain dialog when the
+    /// item's ACL doesn't trust this binary, so it happens only here — inside
+    /// a request the user explicitly asked for.
+    private func currentTokens() -> LinearKeychain.Tokens? {
+        if !didLoadTokens {
+            tokens = LinearKeychain.load()
+            didLoadTokens = true
+        }
+        return tokens
+    }
+
+    var isConnected: Bool { LinearKeychain.hasStoredTokens() }
 
     // MARK: - Connect / disconnect
 
@@ -53,13 +68,14 @@ actor LinearClient {
         let tokens = try await exchange(body: body, url: LinearOAuth.tokenURL)
         try LinearKeychain.save(tokens)
         self.tokens = tokens
+        self.didLoadTokens = true
     }
 
     /// Disconnect. Revocation is best-effort — the local token is cleared
     /// either way, because a user who pressed Disconnect must end up
     /// disconnected regardless of whether Linear's endpoint answered.
     func disconnect() async {
-        if let token = tokens?.accessToken {
+        if let token = currentTokens()?.accessToken {
             var request = URLRequest(url: LinearOAuth.revokeURL)
             request.httpMethod = "POST"
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -67,6 +83,7 @@ actor LinearClient {
         }
         LinearKeychain.clear()
         tokens = nil
+        didLoadTokens = true
     }
 
     private func exchange(body: String, url: URL) async throws -> LinearKeychain.Tokens {
@@ -99,7 +116,7 @@ actor LinearClient {
     /// Without a refresh token the only honest outcome is to make the user
     /// reconnect, so say that rather than failing the request opaquely.
     private func validAccessToken() async throws -> String {
-        guard let current = tokens else { throw LinearClientError.notConnected }
+        guard let current = currentTokens() else { throw LinearClientError.notConnected }
         guard current.isExpired else { return current.accessToken }
         guard let refreshToken = current.refreshToken, let clientID else {
             throw LinearClientError.reconnectRequired
@@ -112,6 +129,7 @@ actor LinearClient {
         if merged.refreshToken == nil { merged.refreshToken = refreshToken }
         try LinearKeychain.save(merged)
         tokens = merged
+        didLoadTokens = true
         return merged.accessToken
     }
 
