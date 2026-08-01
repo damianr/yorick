@@ -271,7 +271,7 @@ struct SettingsView: View {
                 rowLabel(linear.isConnected ? "Connected to Linear" : "Send captures to Linear")
                 caption(linear.isConnected
                     ? "Saved captures get a Send button. You see the issue — title, team, project, and every line of context — before anything is sent, and nothing is sent until you press Create issue."
-                    : "Off by default. Connecting lets you turn a saved capture into a Linear issue. This is the only feature that sends anything off your Mac, and only when you press the button.")
+                    : "Off by default. Connecting lets you turn a saved capture into a Linear issue, and does two things Yorick otherwise never does: saved captures start recording what was on screen around them — what was selected, the page open, what you pointed at — and pressing Send transmits that capture to Linear. Both are shown to you in full before anything is sent, and neither happens while this is off.")
             }
             Spacer(minLength: 16)
             if linear.isConnected {

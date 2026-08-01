@@ -180,6 +180,12 @@ struct OnboardingView: View {
                 setupRow(
                     icon: "keyboard.fill",
                     name: "Accessibility",
+                    // True as written for the app the user is about to have:
+                    // the Linear integration is off, and screen context is
+                    // never read until they connect it. Consent for that
+                    // belongs at the moment of the capability, in Settings,
+                    // not as preemptive noise here for the majority who
+                    // never turn it on.
                     why: "Types into the app you're using, and sees whether a text field is focused.",
                     granted: accessibilityTrusted,
                     actionLabel: "Open System Settings"

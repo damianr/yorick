@@ -7,7 +7,7 @@ Hold a hotkey (⌥Space) and talk. One rule:
 - **In a text field** → your words are typed at the cursor.
 - **Anywhere else** → they're saved, visibly marked, waiting for you.
 
-Nothing you say gets lost — and none of it ever leaves your Mac.
+Nothing you say gets lost — and nothing leaves your Mac unless you send it.
 
 ## Privacy you can check
 
@@ -16,7 +16,7 @@ Nothing you say gets lost — and none of it ever leaves your Mac.
 - No account. No API key. No subscription.
 - Works offline. Airplane mode is a supported configuration.
 - Two permissions only: Microphone (to hear you) and Accessibility
-  (to type for you). No screen recording.
+  (to type for you). No screen recording, ever.
 - Recordings are discarded after transcription; dictation history fades
   after 7 days, saved items after 30.
 - The only routine network calls are the signed update check and anonymous
@@ -24,16 +24,36 @@ Nothing you say gets lost — and none of it ever leaves your Mac.
   enumerated in [TELEMETRY.md](TELEMETRY.md), the whole analytics surface is
   one auditable source file, and the off switch is in Settings.
 
+**The one exception, stated plainly.** There is an optional Linear
+integration, off until you connect it. With it on, a saved capture gets a
+Send button that files it as a Linear issue — and only then does anything
+you said leave this machine. You see the whole payload before it goes:
+title, team, project, and every line of context. Nothing is sent until you
+press the button. Turn it off, or never turn it on, and Yorick makes no
+network call carrying anything you said.
+
+While that integration is on, saved captures also record accessibility
+context — what was selected, the page or document open, what you pointed
+at — so an issue makes sense to someone who wasn't sitting there. It's
+collected for saved captures only, never for dictation, it stays on the
+same expiry clock as everything else, and it goes nowhere until you send.
+With the integration off, none of it is read at all. Still no screenshots
+and no screen recording: this is the accessibility API, the same one that
+types for you.
+
 This repository is the proof of those claims. Read the source; run
 Little Snitch; we insist.
 
 ## The details people ask about
 
 - A small glass pill anchors to the focused field while you talk — it shows
-  exactly where your words will land *before* you say them, rides the field
-  as it grows, and offers Undo and on-device Cleanup after insertion.
-- Guessed wrong? One keystroke (⌥⇧`) does the other thing: a typed
-  dictation gets saved; a saved item gets typed wherever your cursor is now.
+  exactly where your words will land *before* you say them, and rides the
+  field as it grows.
+- Optional on-device Cleanup runs *before* the paste, so the field only ever
+  shows final text. If it can't run, your words are typed exactly as spoken,
+  and the list always keeps the original.
+- Your clipboard is borrowed, not taken: it's restored the moment it's safe,
+  including if you press ⌘V mid-paste.
 - The saved list is deliberately plain: full raw text, where and when you
   said it, click to copy. No folders, no tags, nothing to organize or tend.
 
