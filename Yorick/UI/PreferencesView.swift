@@ -268,15 +268,30 @@ struct SettingsView: View {
         sectionLabel("LINEAR")
         settingsRow {
             VStack(alignment: .leading, spacing: 3) {
-                rowLabel(linear.isConnected ? "Connected to Linear" : "Send captures to Linear")
+                rowLabel(linear.isConnected
+                    ? "Connected to \(linear.workspace.organizationName ?? "Linear")"
+                    : "Send captures to Linear")
                 caption(linear.isConnected
-                    ? "Saved captures get a Send button. You see the issue — title, team, project, and every line of context — before anything is sent, and nothing is sent until you press Create issue."
+                    ? "Saved captures get a Send button. You see the issue — title, team, project, and every line of context — before anything is sent, and nothing is sent until you press Create issue. A Linear connection covers one workspace; connecting again switches to that one."
                     : "Off by default. Connecting lets you turn a saved capture into a Linear issue, and does two things Yorick otherwise never does: saved captures start recording what was on screen around them — what was selected, the page open, what you pointed at — and pressing Send transmits that capture to Linear. Both are shown to you in full before anything is sent, and neither happens while this is off.")
             }
             Spacer(minLength: 16)
             if linear.isConnected {
-                pillButton("Disconnect") {
-                    Task { await sendController.disconnect() }
+                VStack(alignment: .trailing, spacing: 6) {
+                    pillButton("Disconnect") {
+                        Task { await sendController.disconnect() }
+                    }
+                    // Switching is a real action people will want (multiple
+                    // workspaces are common), so it gets a button rather than
+                    // being an undocumented side effect of pressing Connect
+                    // again — which is what it used to be.
+                    pillButton(connecting ? "Connecting…" : "Switch workspace") {
+                        connecting = true
+                        Task {
+                            await sendController.connect()
+                            connecting = false
+                        }
+                    }
                 }
             } else if LinearConfig.isConfigured {
                 pillButton(connecting ? "Connecting…" : "Connect") {

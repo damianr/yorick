@@ -24,9 +24,29 @@ struct LinearProject: Codable, Sendable, Equatable, Identifiable, Hashable {
 /// is small, real, user-owned, and checkable, which is the one shape a small
 /// model handles well.
 struct LinearWorkspace: Codable, Sendable, Equatable {
+    /// Which Linear workspace this mirror belongs to. A Linear OAuth token is
+    /// scoped to ONE workspace, so identity has to be visible: without it,
+    /// connecting again silently swaps everything out and the only tell is
+    /// that your projects changed.
+    var organizationID: String?
+    var organizationName: String?
     var teams: [LinearTeam]
     var projects: [LinearProject]
     var fetchedAt: Date
+
+    init(
+        organizationID: String? = nil,
+        organizationName: String? = nil,
+        teams: [LinearTeam],
+        projects: [LinearProject],
+        fetchedAt: Date
+    ) {
+        self.organizationID = organizationID
+        self.organizationName = organizationName
+        self.teams = teams
+        self.projects = projects
+        self.fetchedAt = fetchedAt
+    }
 
     static let empty = LinearWorkspace(teams: [], projects: [], fetchedAt: .distantPast)
 

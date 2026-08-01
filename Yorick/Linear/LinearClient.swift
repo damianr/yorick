@@ -166,6 +166,11 @@ actor LinearClient {
                 let state: String?
                 let teams: TeamRefs
             }
+            struct Organization: Decodable, Sendable {
+                let id: String
+                let name: String
+            }
+            let organization: Organization?
             let teams: Teams
             let projects: Projects
         }
@@ -176,6 +181,7 @@ actor LinearClient {
         // nothing worse than an extra project in the menu.
         let query = """
             query YorickWorkspace {
+              organization { id name }
               teams(first: 100) { nodes { id name key } }
               projects(first: 100) {
                 nodes { id name description state teams(first: 10) { nodes { id } } }
@@ -195,7 +201,13 @@ actor LinearClient {
                     teamIDs: node.teams.nodes.map(\.id)
                 )
             }
-        return LinearWorkspace(teams: response.teams.nodes, projects: projects, fetchedAt: Date())
+        return LinearWorkspace(
+            organizationID: response.organization?.id,
+            organizationName: response.organization?.name,
+            teams: response.teams.nodes,
+            projects: projects,
+            fetchedAt: Date()
+        )
     }
 
     /// Create the issue. Returns what the card needs to show that it landed.
