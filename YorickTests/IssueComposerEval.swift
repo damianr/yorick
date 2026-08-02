@@ -69,10 +69,15 @@ final class IssueComposerEval: XCTestCase {
         let alsoAccept: [String?]
         /// Words the title must not lose. Empty means title isn't graded.
         let titleMustMention: [String]
+        /// Grade the title's SHAPE as well as its content. A title that opens
+        /// with "I", "we", or a bare demonstrative is a sentence lifted from
+        /// speech — the exact field failure this eval exists to catch.
+        let titleMustBeWellFormed: Bool
 
         init(_ name: String, _ transcript: String, source: String,
              facts: [ContextFact] = [], expected: String?,
-             alsoAccept: [String?] = [], mentions: [String] = []) {
+             alsoAccept: [String?] = [], mentions: [String] = [],
+             wellFormed: Bool = false) {
             self.name = name
             self.transcript = transcript
             self.sourceLine = source
@@ -80,7 +85,11 @@ final class IssueComposerEval: XCTestCase {
             self.expected = expected
             self.alsoAccept = alsoAccept
             self.titleMustMention = mentions
+            self.titleMustBeWellFormed = wellFormed
         }
+
+        /// Openers that mean the model transcribed rather than titled.
+        static let banned = ["i ", "i'", "we ", "we'", "this ", "that ", "maybe ", "so ", "uh "]
 
         func accepts(_ projectID: String?) -> Bool {
             projectID == expected || alsoAccept.contains(projectID)
@@ -156,6 +165,30 @@ final class IssueComposerEval: XCTestCase {
               "on the marketing site the pricing page still says beta, that needs to come down",
               source: "Slack",
               expected: "p-site", mentions: ["pricing"]),
+
+        // --- FIELD CASES. Real captures that produced bad titles. ---
+        .init("field miss: de-emphasize a section",
+              "I want to de-emphasize this section here. Uh, I just don't know that "
+              + "we really need it. Maybe we can come up with something else that goes there.",
+              source: "Chrome · heyyorick.com",
+              facts: [page("https://heyyorick.com/"),
+                      pointed("Ums and false starts come out before the text is typed.",
+                              "text, under “Optional cleanup”"),
+                      pointed("Optional cleanup", "text")],
+              expected: "p-site", mentions: ["cleanup"], wellFormed: true),
+
+        .init("rambling ask with a named target",
+              "yeah so the thing is the download button, I feel like it just gets lost "
+              + "down there, we should probably move it up or make it louder somehow",
+              source: "Chrome · heyyorick.com",
+              facts: [page("https://heyyorick.com/"), pointed("Download for macOS", "link")],
+              expected: "p-site", mentions: ["download"], wellFormed: true),
+
+        .init("first-person opener with a clear subject",
+              "I think the saved list needs an empty state, right now it's just blank "
+              + "and it looks broken",
+              source: "Xcode · MenuBarPanelView.swift",
+              expected: "p-yorick", mentions: ["empty state"], wellFormed: true),
 
         // --- Adversarial: words that pull toward the wrong project ---
         .init("decoy vocabulary",
@@ -240,11 +273,17 @@ final class IssueComposerEval: XCTestCase {
                 let conf = result.route?.confidence.map { "\($0)" } ?? "-"
                 picks.append("\(name)(c\(conf))")
 
-                if !testCase.titleMustMention.isEmpty {
+                if !testCase.titleMustMention.isEmpty || testCase.titleMustBeWellFormed {
                     titleTotal += 1
                     let lowered = draft.title.lowercased()
-                    if testCase.titleMustMention.allSatisfy({ lowered.contains($0.lowercased()) }) {
+                    let mentions = testCase.titleMustMention
+                        .allSatisfy { lowered.contains($0.lowercased()) }
+                    let wellFormed = !testCase.titleMustBeWellFormed
+                        || !Case.banned.contains { lowered.hasPrefix($0) }
+                    if mentions, wellFormed {
                         titleHits += 1
+                    } else if !wellFormed {
+                        titleNote = "  ⚠︎ reads as speech: \"\(draft.title)\""
                     } else {
                         titleNote = "  ⚠︎ dropped \(testCase.titleMustMention): \"\(draft.title)\""
                     }

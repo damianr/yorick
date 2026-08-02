@@ -13,6 +13,17 @@ struct LinearProposalView: View {
     var captureStore: CaptureStore
 
     @State private var showingPayload = false
+    /// The title field takes focus the moment the proposal opens.
+    ///
+    /// Measured, not assumed: the on-device model cannot reliably write an
+    /// issue title from rambling speech. Two prompts produced two failure
+    /// modes — one lifted a sentence verbatim ("I don't really need this
+    /// section"), the other wrote something terse and WRONG ("Emphasize
+    /// Ums", from a note asking to de-emphasize). A confident wrong title is
+    /// worse than an obviously raw one, so the design stops pretending the
+    /// model settles this: it proposes, the cursor is already in the field,
+    /// and correcting is the expected gesture rather than the recovery.
+    @FocusState private var titleFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -64,8 +75,29 @@ struct LinearProposalView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: Theme.radiusMd).fill(Theme.bgInput)
+                    RoundedRectangle(cornerRadius: Theme.radiusMd)
+                        .fill(Theme.bgInput)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.radiusMd)
+                                .strokeBorder(titleFocused ? Theme.glow.opacity(0.5) : .clear, lineWidth: 1)
+                        )
                 )
+                .focused($titleFocused)
+                .onAppear { titleFocused = true }
+
+            // The escape hatch from a bad generated title, in one click.
+            // Your own words are never wrong — only unpolished — so they are
+            // always worth being one gesture away.
+            if !deterministicTitle.isEmpty, draft.wrappedValue.title != deterministicTitle {
+                Button(action: { draft.wrappedValue.title = deterministicTitle }) {
+                    Text("Use my words instead")
+                        .font(Theme.mono(9.5))
+                        .foregroundStyle(Theme.textTertiary)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(deterministicTitle)
+            }
 
             HStack(spacing: 8) {
                 teamPicker(draft)
@@ -165,6 +197,12 @@ struct LinearProposalView: View {
             .padding(8)
             .background(RoundedRectangle(cornerRadius: Theme.radiusMd).fill(Theme.bgInput))
         }
+    }
+
+    /// What the title would be with no model involved: the first sentence of
+    /// what you said, capped at a word boundary.
+    private var deterministicTitle: String {
+        LinearDescriptionBuilder.fallbackTitle(transcript: capture.transcript)
     }
 
     private var payloadLabel: String {

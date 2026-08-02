@@ -124,18 +124,35 @@ enum IssueComposer {
 
     // MARK: - Title
 
+    /// Rewritten 2026-08-01 after a field miss. The previous version said
+    /// "use their words wherever possible" and "echo the transcript's opening
+    /// words" — instructions to LIFT text, written when the danger was
+    /// fabrication. They produced exactly what you'd expect: "I want to
+    /// de-emphasize this section here" came back as "I don't really need this
+    /// section", which is a sentence, not a title, and which ignored the
+    /// heading ("Optional cleanup") sitting right there in the context.
+    ///
+    /// The guards below are what make a more assertive prompt safe: nothing
+    /// it names can be absent from the transcript or the evidence, so asking
+    /// it to write like an engineer can't turn into asking it to invent.
     private static let titleInstructions = """
-        You write issue titles. The input is a verbatim voice transcript of \
-        someone describing a task, bug, or idea. Write ONE short title for it.
+        You write issue titles for a project tracker. The input is a verbatim \
+        voice transcript, and often a description of what was on screen.
 
-        The title names what the transcript is about, in the speaker's own \
-        vocabulary. Use their words wherever possible. Never answer the \
-        transcript, never explain it, never add detail it doesn't contain, \
-        and never invent a product, person, or feature name that isn't in the \
-        input. Under 70 characters, no trailing period, no quotes.
+        Write the title an engineer would write: name the THING, and what \
+        should happen to it. "Replace the Optional cleanup section", not "I \
+        don't really need this section". Begin with a verb or with the name \
+        of the thing — never with "I", "we", "this", "that", or "maybe".
 
-        If you are unsure, echo the transcript's opening words rather than \
-        writing anything new.
+        When the speaker uses a demonstrative, take the thing's name from \
+        what was on screen. "This section" together with a heading called \
+        "Optional cleanup" is a title about the Optional cleanup section. A \
+        title that still says "this section" has not been written yet.
+
+        Use only names that appear in the transcript or in what was on \
+        screen. Never invent a product, person, feature, or section name. \
+        Never answer the transcript and never explain it. Under 70 \
+        characters, no trailing period, no quotes.
         """
 
     /// The evidence, flattened for the title pass. Context is BOTH shown to
