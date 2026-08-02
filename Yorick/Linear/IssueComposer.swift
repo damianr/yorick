@@ -283,9 +283,22 @@ enum IssueComposer {
         // only option.
         guard workspace.teams.count > 1 || !workspace.projects.isEmpty else { return fallback }
 
+        // Deterministic first. A project that names the domain you were on
+        // has told you what it is for; asking a model to notice that is
+        // asking it to do string matching badly.
+        let hits = ProjectMatcher.matches(input, workspace: workspace)
+        if hits.count == 1, ProjectMatcher.isDecisive(hits[0]) {
+            return Route(teamID: hits[0].teamID, projectID: hits[0].projectID, confidence: nil)
+        }
+
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
-            let options = routeOptions(workspace: workspace)
+            // When the evidence narrows things down, the model chooses from
+            // the SHORTLIST rather than the whole workspace — a smaller menu
+            // is a decision it makes better, and it cannot escape the list.
+            let options = hits.count > 1
+                ? routeOptions(workspace: workspace, limitedTo: hits.map(\.projectID))
+                : routeOptions(workspace: workspace)
             guard !options.isEmpty else { return fallback }
             let prompt = routePrompt(input, options: options)
             do {
@@ -337,12 +350,16 @@ enum IssueComposer {
 
     /// The numbered menu. Every team appears alone (the "no project" answer
     /// must always be available), then each project under its teams.
-    static func routeOptions(workspace: LinearWorkspace) -> [RouteOption] {
+    static func routeOptions(
+        workspace: LinearWorkspace,
+        limitedTo projectIDs: [String]? = nil
+    ) -> [RouteOption] {
         var options: [RouteOption] = []
         for team in workspace.teams {
             options.append(RouteOption(teamID: team.id, projectID: nil, label: "\(team.name) — no specific project"))
         }
         for project in workspace.projects {
+            if let projectIDs, !projectIDs.contains(project.id) { continue }
             for teamID in project.teamIDs {
                 guard let team = workspace.team(id: teamID) else { continue }
                 let summary = project.summary?
