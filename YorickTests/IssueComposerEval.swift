@@ -230,6 +230,26 @@ final class IssueComposerEval: XCTestCase {
 
     // MARK: - Run
 
+    /// Set per run so both routing strategies are measured over the same
+    /// corpus rather than compared across separate runs, where the model's
+    /// own variance would swamp the difference.
+    nonisolated(unsafe) static var strategyUnderTest: IssueComposer.RoutingStrategy = .flat
+
+    func testRoutingFlat() async throws {
+        Self.strategyUnderTest = .flat
+        try await runRoutingEval(label: "FLAT")
+    }
+
+    func testRoutingTwoStage() async throws {
+        Self.strategyUnderTest = .twoStage
+        try await runRoutingEval(label: "TWO-STAGE")
+    }
+
+    private func runRoutingEval(label: String) async throws {
+        print("\n########## \(label) ##########")
+        try await testRoutingAndTitles()
+    }
+
     func testRoutingAndTitles() async throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["YORICK_EVAL"] == "1",
@@ -263,8 +283,15 @@ final class IssueComposerEval: XCTestCase {
             var titleNote = ""
 
             for _ in 0..<passes {
-                let result = await IssueComposer.composeDetailed(input, workspace: workspace, base: base)
-                let draft = result.draft
+                let route = await IssueComposer.proposeRoute(
+                    input, workspace: workspace, fallbackTeamID: "t-prod",
+                    strategy: Self.strategyUnderTest
+                )
+                var draft = base
+                draft.teamID = route.teamID
+                draft.projectID = route.projectID
+                draft.title = TitleComposer.deterministicTitle(input)
+                let result = (draft: draft, route: Optional(route), usedModelTitle: false)
                 routeTotal += 1
                 if testCase.accepts(draft.projectID) { caseHits += 1; routeHits += 1 }
 

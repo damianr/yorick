@@ -273,10 +273,40 @@ enum IssueComposer {
     /// never emits an ID — it picks a number off a list, and the number is
     /// resolved against the list here. An out-of-range answer is simply the
     /// fallback, so the worst case is the default team.
-    private static func proposeRoute(
+    /// Flat menu (every team×project combination) or the cascade (team, then
+    /// project within it). Swappable so the eval can run both.
+    enum RoutingStrategy: String, CaseIterable, Sendable {
+        case flat
+        case twoStage
+    }
+
+    /// The shipping default, set from measurement rather than preference.
+    ///
+    /// FLAT WINS, and the cascade lost for a reason worth keeping: measured
+    /// over the same corpus in the same run, flat routed 40/51 and two-stage
+    /// 30/51. Two small choices are not better than one bigger choice when
+    /// they COMPOUND — a wrong team makes the right project unreachable, so
+    /// the accuracies multiply. Worse, the team stage has to decide using
+    /// project NAMES alone, while the flat menu shows every project's
+    /// description at the moment of the decision. The cascade defers the
+    /// richest signal to a stage that no longer needs it.
+    ///
+    /// The cascade's real advantage — menus that stay small however much is
+    /// on the other end — turned out to be solved somewhere else: it is
+    /// ProjectMatcher that keeps menus small, by shortlisting on evidence
+    /// before the model sees anything. The code stays for the multi-workspace
+    /// case, where a flat menu across several workspaces could still outgrow
+    /// its cap, but it is not what ships today.
+    ///
+    /// `nonisolated(unsafe)` because it is a constant in practice — written
+    /// only by the eval, before any routing runs, never during.
+    nonisolated(unsafe) static var routingStrategy: RoutingStrategy = .flat
+
+    static func proposeRoute(
         _ input: Input,
         workspace: LinearWorkspace,
-        fallbackTeamID: String
+        fallbackTeamID: String,
+        strategy: RoutingStrategy? = nil
     ) async -> Route {
         let fallback = Route(teamID: fallbackTeamID, projectID: nil)
         // Nothing to choose between — don't spend a model call to confirm the
@@ -289,6 +319,12 @@ enum IssueComposer {
         let hits = ProjectMatcher.matches(input, workspace: workspace)
         if hits.count == 1, ProjectMatcher.isDecisive(hits[0]) {
             return Route(teamID: hits[0].teamID, projectID: hits[0].projectID, confidence: nil)
+        }
+
+        if (strategy ?? routingStrategy) == .twoStage {
+            return await twoStageRoute(
+                input, workspace: workspace, fallback: fallback, shortlist: hits
+            )
         }
 
         #if canImport(FoundationModels)
@@ -386,6 +422,97 @@ enum IssueComposer {
         lines.append(contentsOf: LinearDescriptionBuilder.contextLines(input.context, windowTitle: input.windowTitle))
         lines.append(contentsOf: ["", "Destinations:", menu])
         return lines.joined(separator: "\n")
+    }
+
+    // MARK: - Two-stage routing
+
+    private static let teamInstructions = """
+        You file voice notes into a project tracker. Pick the TEAM the note         belongs to from the numbered list. Each team is listed with the         projects it owns, so match the note against those.
+
+        The note's context lines — the app it was spoken in, the page or         document open, the text pointed at — are usually the strongest         signal. Reply with the number.
+        """
+
+    private static let projectInstructions = """
+        You are filing a note into a team that has already been chosen. Pick         the PROJECT it belongs to from the numbered list.
+
+        A note may MENTION a project without being about it: "the way X does         this is nice, we should do that in Y" belongs to Y. When nothing         clearly fits, choose the "no specific project" option rather than         guessing — an unfiled note costs one click, a misfiled one is lost.
+        """
+
+    /// Team first, then the project inside it.
+    ///
+    /// Two SMALL choices instead of one big one. The flat menu listed every
+    /// team×project combination and had to be capped at 30 — which silently
+    /// truncated once a workspace grew, and would truncate immediately once
+    /// several workspaces are connected. A cascade keeps each decision to a
+    /// handful of options no matter how much is on the other end, which is
+    /// the shape this model measurably handles best.
+    private static func twoStageRoute(
+        _ input: Input,
+        workspace: LinearWorkspace,
+        fallback: Route,
+        shortlist: [ProjectMatcher.Match]
+    ) async -> Route {
+        // Teams are listed WITH their projects: a team called "Products"
+        // says nothing on its own, and the projects under it are what the
+        // note can actually be matched against.
+        let teams = workspace.teams
+        guard !teams.isEmpty else { return fallback }
+
+        var teamID = teams[0].id
+        if teams.count > 1 {
+            let labels = teams.map { team -> String in
+                let owned = workspace.projects(forTeam: team.id).map(\.name).prefix(8)
+                return owned.isEmpty ? team.name : "\(team.name) — \(owned.joined(separator: ", "))"
+            }
+            let prompt = contextBlock(input) + "\n\nTeams:\n" + numbered(labels)
+            if let choice = try? await rawChoice(instructions: teamInstructions, prompt: prompt),
+               choice >= 1, choice <= teams.count {
+                teamID = teams[choice - 1].id
+            } else {
+                teamID = fallback.teamID
+            }
+        }
+
+        // A shortlisted project inside the chosen team settles it without a
+        // second call.
+        if let hit = shortlist.first(where: { $0.teamID == teamID }) {
+            return Route(teamID: teamID, projectID: hit.projectID, confidence: nil)
+        }
+
+        var projects = workspace.projects(forTeam: teamID)
+        if !shortlist.isEmpty {
+            let allowed = Set(shortlist.map(\.projectID))
+            let narrowed = projects.filter { allowed.contains($0.id) }
+            if !narrowed.isEmpty { projects = narrowed }
+        }
+        guard !projects.isEmpty else { return Route(teamID: teamID, projectID: nil) }
+
+        let labels = ["No specific project"] + projects.map { project -> String in
+            let summary = project.summary?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\n", with: " ")
+            let detail = summary.map { ": \(LinearDescriptionBuilder.truncate($0, to: 140))" } ?? ""
+            return project.name + detail
+        }
+        let prompt = contextBlock(input) + "\n\nProjects:\n" + numbered(labels)
+        guard let choice = try? await rawChoice(instructions: projectInstructions, prompt: prompt),
+              choice >= 2, choice <= labels.count else {
+            // 1 is "no specific project", and so is anything unreadable.
+            return Route(teamID: teamID, projectID: nil)
+        }
+        return Route(teamID: teamID, projectID: projects[choice - 2].id)
+    }
+
+    private static func contextBlock(_ input: Input) -> String {
+        var lines = ["Note: \"\(input.transcript)\"", "", "Context:", "- Spoken in \(input.sourceLine)"]
+        lines.append(contentsOf: LinearDescriptionBuilder.contextLines(
+            input.context, windowTitle: input.windowTitle
+        ))
+        return lines.joined(separator: "\n")
+    }
+
+    private static func numbered(_ labels: [String]) -> String {
+        labels.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
     }
 
     /// One bounded "pick a number" call, shared by everything that chooses
