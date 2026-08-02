@@ -39,12 +39,24 @@ enum ContextCollector {
         }
     }
 
+    /// ONBOARDING EXCEPTION to the self-evidence rule.
+    ///
+    /// The capture try-it renders its practice target inside Yorick's own
+    /// window, so pointing at it has to collect — otherwise the one step that
+    /// teaches the product demonstrates it producing nothing. Set only while
+    /// that step is on screen. Returned 2026-08-02 with the try-it itself,
+    /// having died with it on 2026-07-29.
+    ///
+    /// Flipped from the main actor, read from collector tasks: a benign
+    /// boolean race whose worst outcome is one sample obeying the old value.
+    nonisolated(unsafe) static var selfEvidenceAllowed = false
+
     /// Yorick never cites itself. Pointing at the saved list while speaking
     /// captured OLD transcripts as "screen context" — evidence about the app
-    /// rather than the world, and pollution in anything exported. One rule,
-    /// no exceptions: the onboarding carve-out died with the observe step.
+    /// rather than the world, and pollution in anything exported.
     private static func isSelf(_ pid: pid_t) -> Bool {
-        pid == ProcessInfo.processInfo.processIdentifier
+        if selfEvidenceAllowed { return false }
+        return pid == ProcessInfo.processInfo.processIdentifier
     }
 
     private static func collect(phase: String, pid: pid_t, appName: String) -> [ContextFact] {

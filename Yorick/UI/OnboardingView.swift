@@ -3,9 +3,18 @@ import AVFoundation
 import ApplicationServices
 import KeyboardShortcuts
 
-/// First-run flow: what Yorick does, the two permissions it needs, and a
-/// ten-second first dictation. Zero configuration by design — no accounts,
-/// no keys, no downloads on the default path.
+/// First-run flow, reordered 2026-08-02 for the capture-first positioning
+/// (see docs/positioning-reversal-proposal.md).
+///
+/// The CAPTURE try-it leads and the dictation reveal closes, inverting what
+/// this flow used to teach. The reasoning is the positioning's: filing a
+/// ticket about the thing in front of you is the job nobody else does, and
+/// dictation — however good — is a commodity Google gives away. A first run
+/// should demonstrate the thing that has no equivalent.
+///
+/// One try-it, not two. It teaches the hotkey and the capture in the same
+/// gesture, which is the "teach by hands" rule holding: you cannot point at
+/// something and speak without also learning to hold the key.
 struct OnboardingView: View {
     let onDone: () -> Void
     @Environment(SessionManager.self) private var session
@@ -13,7 +22,8 @@ struct OnboardingView: View {
     private enum Step: Int, CaseIterable {
         case welcome
         case setup
-        case tryIt
+        case capture
+        case connect
         case done
 
         var analyticsName: String {
@@ -44,6 +54,11 @@ struct OnboardingView: View {
     /// Bumped when the shortcut is rebound — recording a new combo changes
     /// no SwiftUI state, so chips and keyboard highlights went stale.
     @State private var shortcutGeneration = 0
+    /// Capture count on entering the try-it, so "did they make one" is a
+    /// comparison rather than a guess.
+    @State private var capturesBefore = 0
+    @State private var connecting = false
+    @ObservedObject private var linear = LinearSettings.shared
 
     private let axPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -77,7 +92,8 @@ struct OnboardingView: View {
             switch step {
             case .welcome: welcome
             case .setup: setup
-            case .tryIt: tryIt
+            case .capture: capture
+            case .connect: connect
             case .done: done
             }
 
@@ -136,18 +152,195 @@ struct OnboardingView: View {
     // MARK: - Steps
 
     // No key combo here — the welcome step sells the idea, and the try-it
-    // step teaches the keys with your hands already on them. Mechanics
-    // before motivation read as homework.
+    // teaches the keys with your hands already on them. Mechanics before
+    // motivation read as homework.
     private var welcome: some View {
         stepLayout(
             icon: { logo },
-            title: "Talk instead of type",
+            title: "Say what's wrong. Get a ticket.",
             lines: [
-                "Hold the hotkey and speak. Let go, and it's typed.",
-                "Not in a text field? It's saved. Nothing is lost."
+                "Point at the thing, hold a key, and describe it.",
+                "Yorick writes it up with what you were looking at — and none of it leaves your Mac unless you send it."
             ]
         ) {
             primaryButton("Continue") { step = .setup }
+        }
+    }
+
+    // MARK: Capture try-it
+    //
+    // NOTHING here is simulated. The real pill, the real pointer sweep, the
+    // real context bundle — and the capture the user makes is their genuine
+    // first saved item, waiting in the list afterwards. A demo that fakes its
+    // own product teaches the wrong thing twice: once about the mechanic, and
+    // once about whether to trust what it shows you.
+
+    private var capture: some View {
+        stepLayout(
+            icon: { EmptyView() },
+            title: "Point at something and say what's wrong",
+            lines: []
+        ) {
+            HStack(spacing: 6) {
+                Text("Hover the mess below, hold")
+                    .font(Theme.mono(11.5))
+                    .foregroundStyle(Theme.textSecondary)
+                HotkeyChips()
+                Text("and say what you'd change.")
+                    .font(Theme.mono(11.5))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            // The keyboard map and the rebind link move here with the
+            // hotkey's first teaching. Losing them would be a regression, not
+            // a simplification: the map lights held keys purple and wrong
+            // ones red (hands, not prose), and the quiet rebind link is the
+            // only recovery when another app already owns the combo — ⌥Space
+            // is Raycast's default, and Handy's, which otherwise looks
+            // exactly like "Yorick is broken."
+            KeyboardMapView(
+                targetKeyCodes: ShortcutLabel.targetKeyCodes,
+                comboActive: session.state == .recording
+            )
+            .id(shortcutGeneration)
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder.toggle() }
+            } label: {
+                Text("Set your own key combination")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.textTertiary)
+                    .underline()
+            }
+            .buttonStyle(.plain)
+            if showShortcutRecorder {
+                CompactRecorderPill {
+                    withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder = false }
+                }
+            }
+            practiceTarget
+            if let made = session.lastSavedCapture ?? firstCapture {
+                capturedProof(made)
+            } else {
+                Text("Yorick notes what you pointed at, not just what you said.")
+                    .font(Theme.mono(10))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            primaryButton(firstCapture == nil ? "Skip for now" : "Continue") {
+                step = .connect
+            }
+        }
+        .onAppear {
+            // The practice target lives inside Yorick's own window, so the
+            // self-evidence rule has to stand down for exactly this step.
+            ContextCollector.selfEvidenceAllowed = true
+            capturesBefore = session.captureStore.captures.count
+        }
+        .onDisappear { ContextCollector.selfEvidenceAllowed = false }
+    }
+
+    /// A deliberately terrible little interface. Terrible on purpose: the
+    /// instruction is "say what you'd change", and a good design gives nobody
+    /// anything to say.
+    private var practiceTarget: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("SYNERGY DASHBOARD PRO!!")
+                .font(.system(size: 21, weight: .black))
+                .foregroundStyle(Color(red: 0.95, green: 0.35, blue: 0.55))
+            Text("Q3 Metrics")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
+            HStack(spacing: 10) {
+                ForEach(["Revenue 412%", "Synergy 88", "Blockers 3"], id: \.self) { chip in
+                    Text(chip)
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.white.opacity(0.07)))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            Text("click here to maybe continue →")
+                .font(.system(size: 10))
+                .foregroundStyle(Color(red: 0.4, green: 0.85, blue: 0.95))
+                .underline()
+        }
+        .padding(18)
+        .frame(width: 460, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+    }
+
+    /// What it built, shown back. This is the whole pitch in one panel, and
+    /// it is the user's own words about their own gesture — never a sample.
+    private func capturedProof(_ made: Capture) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(TitleComposer.deterministicTitle(IssueComposer.Input(made)))
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(2)
+            ForEach(LinearDescriptionBuilder.contextLines(
+                made.context, windowTitle: made.windowTitle
+            ), id: \.self) { line in
+                Text(line)
+                    .font(Theme.mono(9.5))
+                    .foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(12)
+        .frame(width: 460, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bgCard))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.glow.opacity(0.35), lineWidth: 1))
+        .transition(.opacity)
+    }
+
+    /// The capture the user just made, if they made one.
+    private var firstCapture: Capture? {
+        let captures = session.captureStore.captures
+        guard captures.count > capturesBefore else { return nil }
+        return captures.sorted { $0.timestamp > $1.timestamp }.first
+    }
+
+    // MARK: Connect
+    //
+    // SKIPPABLE, and the skip is a real answer rather than a deferral: Copy
+    // ticket produces the same artifact with nothing set up. A product whose
+    // point is filing tickets can't hide the filing — but it also shouldn't
+    // hold the door shut until you sign in to something.
+
+    private var connect: some View {
+        stepLayout(
+            icon: { EmptyView() },
+            title: "Where should tickets go?",
+            lines: ["You can change this later, or never."]
+        ) {
+            VStack(spacing: 10) {
+                setupRow(
+                    icon: "arrow.up.forward.app",
+                    name: "Linear",
+                    why: linear.isConnected
+                        ? "Connected. Captures can be filed straight into your workspace."
+                        : "File captures as issues, with the context attached. Opens your browser once.",
+                    granted: linear.isConnected,
+                    actionLabel: connecting ? "Connecting…" : "Connect"
+                ) {
+                    connecting = true
+                    Task {
+                        await LinearSendController.shared.connect()
+                        connecting = false
+                    }
+                }
+                setupRow(
+                    icon: "doc.on.clipboard",
+                    name: "Anywhere else",
+                    why: "Copy ticket puts the whole thing — title, words, context, screenshot — on your clipboard. Paste it into an agent, an issue, a message.",
+                    granted: true,
+                    actionLabel: ""
+                ) {}
+            }
+            .frame(width: 500)
+            primaryButton(linear.isConnected ? "Continue" : "Continue without connecting") {
+                step = .done
+            }
         }
     }
 
@@ -159,7 +352,7 @@ struct OnboardingView: View {
         stepLayout(
             icon: { EmptyView() },
             title: "Grant Yorick access",
-            lines: ["Everything runs on your Mac. Nothing is uploaded."]
+            lines: ["Everything runs on your Mac. Nothing is uploaded unless you send it."]
         ) {
             VStack(spacing: 10) {
                 setupRow(
@@ -180,13 +373,12 @@ struct OnboardingView: View {
                 setupRow(
                     icon: "keyboard.fill",
                     name: "Accessibility",
-                    // True as written for the app the user is about to have:
-                    // the Linear integration is off, and screen context is
-                    // never read until they connect it. Consent for that
-                    // belongs at the moment of the capability, in Settings,
-                    // not as preemptive noise here for the majority who
-                    // never turn it on.
-                    why: "Types into the app you're using, and sees whether a text field is focused.",
+                    // Names screen reading up front now. Under the old
+                    // positioning that was preemptive noise for the majority
+                    // who never enabled capture; under this one it IS the
+                    // product, and burying it would be the privacy surprise
+                    // the 2026-07-29 removal was written to avoid.
+                    why: "Reads what you point at, and types into the app you're using.",
                     granted: accessibilityTrusted,
                     actionLabel: "Open System Settings"
                 ) {
@@ -213,7 +405,7 @@ struct OnboardingView: View {
                 .font(Theme.mono(10))
                 .foregroundStyle(setupHintLit ? Color.white : Theme.textTertiary)
                 .animation(.easeOut(duration: 0.15), value: setupHintLit)
-            primaryButton("Continue") { step = .tryIt }
+            primaryButton("Continue") { step = .capture }
                 .disabled(!isReady)
                 .opacity(isReady ? 1 : 0.45)
                 .onHover { hovering in setupHintLit = hovering && !isReady }
@@ -272,69 +464,20 @@ struct OnboardingView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
     }
 
-    @ViewBuilder
-    private var tryIt: some View {
-        if isReady { tryItReady } else { tryItBlocked }
-    }
-
-    private var tryItReady: some View {
-        stepLayout(
-            icon: { logo },
-            title: "Try it here",
-            lines: []
-        ) {
-            // The instruction IS the chips — no glyph-decoding aside needed.
-            HStack(spacing: 6) {
-                Text("Click the box, then hold")
-                    .font(Theme.mono(11.5))
-                    .foregroundStyle(Theme.textSecondary)
-                HotkeyChips()
-                Text("and say a sentence.")
-                    .font(Theme.mono(11.5))
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            // The keyboard shows which keys — and lights up as they hold
-            // them: right keys purple, wrong keys red. Hands, not prose.
-            // `comboActive`: recording in progress means the full combo is
-            // down (the hotkey machinery eats the final key's event, so the
-            // monitor alone can never see the whole chord).
-            KeyboardMapView(
-                targetKeyCodes: ShortcutLabel.targetKeyCodes,
-                comboActive: session.state == .recording
-            )
-            .id(shortcutGeneration) // re-highlight when the shortcut is rebound
-            Button {
-                withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder.toggle() }
-            } label: {
-                Text("Set your own key combination")
-                    .font(Theme.mono(10))
-                    .foregroundStyle(Theme.textTertiary)
-                    .underline()
-            }
-            .buttonStyle(.plain)
-            if showShortcutRecorder {
-                CompactRecorderPill {
-                    withAnimation(.easeOut(duration: 0.15)) { showShortcutRecorder = false }
-                }
-            }
-            practiceField
-            if !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                grantedLabel("That's it. That's the whole app.")
-            }
-            primaryButton("Continue") { step = .done }
-        }
-    }
-
     private var done: some View {
         stepLayout(
             icon: { logo },
-            title: "Yorick lives in your menu bar",
+            title: "One more thing",
             lines: [
-                "This window will close. Your saved items are under the skull.",
-                "The hotkey works everywhere.",
+                "Hold the same key with your cursor in a text field, and your words are typed there instead.",
+                "Same gesture. Yorick works out where they should go.",
                 "Yorick sends anonymous usage counts, never your words. You can turn this off in Settings."
             ]
         ) {
+            practiceField
+            Text("Yorick lives in your menu bar. This window closes; everything else stays.")
+                .font(Theme.mono(10))
+                .foregroundStyle(Theme.textTertiary)
             primaryButton("Start using Yorick") {
                 Telemetry.send(.onboardingCompleted)
                 onDone()
