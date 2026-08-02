@@ -51,6 +51,7 @@
 		98CD574C2C2BFAF1CDAB1651 /* AdminMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9508203F2C34F0897692D0F4 /* AdminMode.swift */; };
 		99C39C2E21CFCBBFB35DA6AB /* SplitDetectionEval.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8811A4C33B8D2066FC1F307 /* SplitDetectionEval.swift */; };
 		A49F05C46D03C30835F7F541 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */; };
+		A7755969A349E0C736185CA5 /* AppIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6100D199344098CC50AB411D /* AppIdentifier.swift */; };
 		A8CD261A3FDF0619338D5566 /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D04D4D581F947FDD13AD5A /* Capture.swift */; };
 		A954C4E35F30860DA4CEE56B /* Telemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D88477D3D846F4B335099B /* Telemetry.swift */; };
 		A957EB88DFD7D005E9D45C79 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28302C5A969B4E66966DBB8 /* OnboardingView.swift */; };
@@ -438,6 +439,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A7755969A349E0C736185CA5 /* AppIdentifier.swift in Sources */,
 				43B3F5983A5D9F8393894A69 /* AppPaths.swift in Sources */,
 				C15B1D1AE5D4B0E82FF7B8C6 /* CaptureContext.swift in Sources */,
 				41E54384A29FECBA90F55D04 /* FieldProfiler.swift in Sources */,

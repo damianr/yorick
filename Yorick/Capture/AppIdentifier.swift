@@ -4,7 +4,9 @@ import AppKit
 /// For native apps, returns the app name. For browsers, extracts the website
 /// name from the window title (e.g. "InfuseFlow" from "InfuseFlow - Google Chrome").
 enum AppIdentifier {
-    private static let browsers: Set<String> = [
+    /// Shared with the Linear payload builder, which strips these off window
+    /// titles — one list, so a browser added here can't be forgotten there.
+    static let browsers: Set<String> = [
         "Google Chrome", "Safari", "Firefox", "Arc",
         "Brave Browser", "Microsoft Edge", "Opera"
     ]

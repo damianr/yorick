@@ -67,6 +67,7 @@ targets:
       - path: Yorick/Capture/FocusClassifier.swift
       - path: Yorick/App/AppPaths.swift
       - path: Yorick/Model/CaptureContext.swift
+      - path: Yorick/Capture/AppIdentifier.swift
       - path: Yorick/Linear/LinearIssueDraft.swift
       - path: Yorick/Linear/LinearWorkspace.swift
       - path: Yorick/Linear/LinearOAuth.swift

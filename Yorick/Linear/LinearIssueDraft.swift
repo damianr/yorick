@@ -40,13 +40,9 @@ enum LinearDescriptionBuilder {
             .map { "> \($0)" }
             .joined(separator: "\n")
         var sections = [framing, "", quoted, "", "**Context**", ""]
-        // The "Spoken in" line is SUPPRESSED when a page URL is present.
-        //
-        // In a browser the source line is the raw window title, which both
-        // duplicates the Page line below it and drags along whatever the
-        // browser appends — Chrome ends its titles with the profile name, so
-        // every ticket was publishing "- Google Chrome - damian". The URL is
-        // the better identity and it's already on its own line.
+        // In a browser, identity is carried by the Page and Page title lines
+        // that `contextLines` emits — the source line there is just the raw
+        // window title again, complete with whatever the browser appends.
         if !hasPageURL(context) {
             sections.append("- Spoken in \(sourceLine)")
         }
@@ -56,6 +52,52 @@ enum LinearDescriptionBuilder {
 
     static func hasPageURL(_ context: CaptureContext?) -> Bool {
         context?.facts.contains { $0.kind == "pageURL" && !$0.value.isEmpty } ?? false
+    }
+
+    /// The page's own title, with the browser's furniture removed.
+    ///
+    /// Browsers render "<page title> - <Browser> - <profile>", so truncating
+    /// at the browser name takes the profile with it — which is the actual
+    /// leak that started this ("- Google Chrome - damian" in every ticket).
+    /// Cutting at a known browser name rather than guessing at trailing
+    /// segments keeps it from eating real titles that contain dashes.
+    static func sanitizedWindowTitle(_ title: String) -> String {
+        var cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        for browser in AppIdentifier.browsers {
+            for separator in [" - ", " — ", " – "] {
+                if let range = cleaned.range(of: separator + browser) {
+                    cleaned = String(cleaned[cleaned.startIndex..<range.lowerBound])
+                    break
+                }
+            }
+        }
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Whether the title says anything the URL doesn't.
+    ///
+    /// This is the whole reason both lines survive. A URL is a HANDLE and a
+    /// title is a NAME, and which one carries meaning flips constantly:
+    /// heyyorick.com explains itself while its title merely restates it, but
+    /// localhost:3000, figma.com/file/aB3xQ, and drive.google.com/file/d/1a2b
+    /// say nothing at all and the title is the only identity there is.
+    /// Keeping both unless they genuinely agree costs one short line and
+    /// removes a class of ticket nobody can place. Deliberately NOT a model
+    /// call — "do these two strings say the same thing" has a right answer.
+    static func titleIsRedundant(_ title: String, withURL url: String) -> Bool {
+        let squashedTitle = alphanumerics(title)
+        guard !squashedTitle.isEmpty else { return true }
+        // Compare against the HOST only: a path segment matching the title is
+        // normal ("/yorick") and doesn't make the title redundant.
+        let host = alphanumerics(URLComponents(string: url)?.host ?? "")
+        guard !host.isEmpty else { return false }
+        // "heyyorick.com" vs "Yorick" — the shorter being inside the longer
+        // means neither adds to the other.
+        return host.contains(squashedTitle) || squashedTitle.contains(host)
+    }
+
+    private static func alphanumerics(_ text: String) -> String {
+        text.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
     /// Evidence with provenance, one bullet per fact — never a summary.
@@ -77,6 +119,13 @@ enum LinearDescriptionBuilder {
             switch fact.kind {
             case "pageURL":
                 lines.append("- Page: \(fact.value)")
+                // The name beside the handle, when it adds one. On localhost,
+                // an IP, or an opaque file id this is the only identity in
+                // the whole payload.
+                let title = sanitizedWindowTitle(windowTitle)
+                if !title.isEmpty, !titleIsRedundant(title, withURL: fact.value) {
+                    lines.append("- Page title: \(title)")
+                }
             case "document":
                 // Chrome answers AXDocument with the page URL; a duplicate
                 // line is noise for the receiver.
@@ -109,7 +158,7 @@ enum LinearDescriptionBuilder {
     /// values are exempt: a button reading "Save" shouldn't vanish because
     /// the word appears in a window title.
     static func echoesDocumentTitle(_ value: String, windowTitle: String) -> Bool {
-        let title = windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let title = sanitizedWindowTitle(windowTitle).lowercased()
         let candidate = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !title.isEmpty, candidate.count >= 12 else { return false }
         return title.contains(candidate) || candidate.contains(title)

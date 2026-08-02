@@ -224,6 +224,62 @@ final class LinearDescriptionTests: XCTestCase {
         XCTAssertTrue(body.contains("- Page: https://heyyorick.com/"))
     }
 
+    // MARK: Page title — a URL is a handle, a title is a name
+
+    /// The leak that started this: browsers append their own name and the
+    /// profile, and truncating at the browser name takes both.
+    func testBrowserFurnitureAndProfileAreStripped() {
+        XCTAssertEqual(
+            LinearDescriptionBuilder.sanitizedWindowTitle(
+                "InfuseFlow | Calendar - Google Chrome - damian"),
+            "InfuseFlow | Calendar"
+        )
+        // A title containing its own dashes must survive intact.
+        XCTAssertEqual(
+            LinearDescriptionBuilder.sanitizedWindowTitle("Q3 - planning - notes"),
+            "Q3 - planning - notes"
+        )
+    }
+
+    /// localhost, an IP, or an opaque file id say nothing. The title is then
+    /// the only identity in the entire payload, so it has to survive.
+    func testTitleSurvivesWhenTheURLIsUninformative() {
+        for url in ["http://localhost:3000/settings",
+                    "http://127.0.0.1:8080/",
+                    "https://figma.com/file/aB3xQ/Untitled",
+                    "https://drive.google.com/file/d/1a2b3c/view"] {
+            XCTAssertFalse(
+                LinearDescriptionBuilder.titleIsRedundant("InfuseFlow | Calendar", withURL: url),
+                "title should survive against \(url)"
+            )
+        }
+    }
+
+    /// When the title merely restates the host, one of them is noise.
+    func testTitleIsDroppedWhenItRestatesTheHost() {
+        XCTAssertTrue(LinearDescriptionBuilder.titleIsRedundant("Yorick", withURL: "https://heyyorick.com/"))
+        XCTAssertTrue(LinearDescriptionBuilder.titleIsRedundant("GitHub", withURL: "https://github.com/damianr/yorick"))
+    }
+
+    /// A path segment matching the title is normal and must not count.
+    func testPathMatchesDoNotMakeATitleRedundant() {
+        XCTAssertFalse(
+            LinearDescriptionBuilder.titleIsRedundant("Yorick", withURL: "https://github.com/damianr/yorick")
+        )
+    }
+
+    func testPageTitleLineAppearsForALocalDevURL() {
+        let body = LinearDescriptionBuilder.build(
+            transcript: "the calendar column headers are misaligned",
+            sourceLine: "InfuseFlow | Calendar - Google Chrome - damian",
+            windowTitle: "InfuseFlow | Calendar - Google Chrome - damian",
+            context: CaptureContext(facts: [fact("pageURL", "http://localhost:3000/calendar")])
+        )
+        XCTAssertTrue(body.contains("- Page: http://localhost:3000/calendar"))
+        XCTAssertTrue(body.contains("- Page title: InfuseFlow | Calendar"))
+        XCTAssertFalse(body.contains("damian"))
+    }
+
     /// Without a URL there's nothing else carrying identity, so it stays.
     func testSpokenInLineSurvivesWithoutAPageURL() {
         let body = LinearDescriptionBuilder.build(
