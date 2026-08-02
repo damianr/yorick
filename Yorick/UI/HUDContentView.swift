@@ -25,6 +25,14 @@ struct HUDContentView: View {
             && LinearSettings.shared.collectsContext
     }
 
+    /// The recording pill is deliberately SMALLER when anchored at a caret
+    /// ("small is right near a caret") and roomier when it stands alone at a
+    /// screen edge. The screenshot pill sits beside it, so it has to follow
+    /// the same rule or the pair reads as two mismatched objects.
+    private var unanchoredPill: Bool {
+        session.hudPillPlacement == .bottomCenter
+    }
+
     private var isVisible: Bool {
         (session.state == .recording && session.hudReady) ||
         session.state == .transcribing ||
@@ -431,8 +439,13 @@ struct HUDContentView: View {
         }
         .buttonStyle(.plain)
         .disabled(session.screenshotInProgress)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 8)
+        // Vertical padding MATCHES the recording pill exactly (8 unanchored,
+        // 5 at a field), so the two capsules are the same height in both
+        // placements. Horizontal is a touch tighter than the recording
+        // pill's, since this one holds a single glyph rather than a mark, a
+        // label and a meter.
+        .padding(.horizontal, unanchoredPill ? 9 : 6)
+        .padding(.vertical, unanchoredPill ? 8 : 5)
         .pillGlass(corners: .capsule)
         .help(session.screenshotInProgress
               ? "Drag to frame a region"

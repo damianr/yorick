@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import ScreenCaptureKit
 
 /// Region screenshots, taken during a recording and attached to the capture.
 ///
@@ -15,14 +16,15 @@ import CoreGraphics
 /// onboarding, and everything else in the app works without it. Accessibility
 /// and Microphone remain the only permissions the product requires.
 ///
-/// The crosshair is the SYSTEM's (`screencapture -i`), not one built here.
-/// That buys correct multi-display handling, Retina backing scale, the
-/// space-bar window-picker, and Escape-to-cancel — all of which a hand-rolled
-/// overlay would have to reimplement and get wrong on someone's monitor
-/// arrangement. The tradeoff accepted knowingly: it's a subprocess, and the
-/// UI is macOS's rather than Yorick's.
+/// The crosshair is OURS (`RegionSelector`), not `screencapture -i`.
+///
+/// The system tool was the right first call and the wrong one here: its
+/// crosshair reads modifier keys, Option means "resize from the centre," and
+/// Yorick's recording is push-to-talk — so ⌥Space is necessarily HELD while
+/// you frame the shot and every drag came out centre-anchored. No flag turns
+/// that off; the conflict is structural. Owning the overlay fixes the anchor,
+/// ignores modifiers on purpose, and drops the subprocess.
 enum ScreenCapture {
-    private static let tool = "/usr/sbin/screencapture"
 
     /// Whether Screen Recording has already been granted. Never prompts.
     static var isAuthorized: Bool { CGPreflightScreenCaptureAccess() }
@@ -55,34 +57,63 @@ enum ScreenCapture {
         }
     }
 
-    /// Run the system crosshair and return the crop as JPEG data.
-    ///
-    /// Off the main actor: the tool blocks for as long as the user takes to
-    /// drag, which is unbounded, and the recording is still running behind it.
+    /// Frame a region and return the crop as JPEG data.
+    @MainActor
     static func selectRegion() async throws -> Data {
         guard isAuthorized else { throw Failure.notAuthorized }
 
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("yorick-shot-\(UUID().uuidString).jpg")
-        defer { try? FileManager.default.removeItem(at: destination) }
+        let selector = RegionSelector()
+        guard let rect = await selector.selectRegion() else { throw Failure.cancelled }
+        // One runloop turn so the overlay is really gone before the shutter —
+        // ordering it out is not the same as it having finished drawing, and
+        // a dimmed band across the crop is the tell.
+        try? await Task.sleep(nanoseconds: 60_000_000)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: tool)
-        // -i interactive crosshair · -x silent (the shutter sound over a live
-        // recording would land in the transcript) · -t jpg for size · -o no
-        // window shadow when the space-bar picker is used.
-        process.arguments = ["-i", "-x", "-o", "-t", "jpg", destination.path]
-
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            process.terminationHandler = { _ in continuation.resume() }
-            do { try process.run() } catch { continuation.resume(throwing: Failure.toolFailed) }
-        }
-
-        // Escape or a right-click cancel exits cleanly and writes nothing,
-        // which is a normal outcome rather than an error to report.
-        guard let data = try? Data(contentsOf: destination), !data.isEmpty else {
-            throw Failure.cancelled
-        }
+        guard let image = try? await capture(rect: rect) else { throw Failure.toolFailed }
+        guard let data = jpeg(from: image) else { throw Failure.toolFailed }
         return data
+    }
+
+    /// Grab the pixels via ScreenCaptureKit, which is the supported path on
+    /// macOS 14+ (`CGWindowListCreateImage` is deprecated there and warns).
+    @MainActor
+    private static func capture(rect: CGRect) async throws -> CGImage {
+        let content = try await SCShareableContent.excludingDesktopWindows(
+            false, onScreenWindowsOnly: true
+        )
+        // The display the selection starts on. A rect spanning two monitors
+        // captures from the one it began on rather than failing — a partial
+        // shot beats an error the user can't act on.
+        let display = content.displays.first { display in
+            display.frame.intersects(rect)
+        } ?? content.displays.first
+        guard let display else { throw Failure.toolFailed }
+
+        let configuration = SCStreamConfiguration()
+        // sourceRect is relative to the display's own origin.
+        let local = CGRect(
+            x: rect.minX - display.frame.minX,
+            y: rect.minY - display.frame.minY,
+            width: rect.width,
+            height: rect.height
+        )
+        configuration.sourceRect = local
+        // Backing scale, so a Retina crop stays sharp instead of being
+        // resampled down to points.
+        let scale = NSScreen.screens.first { NSPointInRect(rect.origin, $0.frame) }?.backingScaleFactor ?? 2
+        configuration.width = Int(local.width * scale)
+        configuration.height = Int(local.height * scale)
+        configuration.captureResolution = .best
+        configuration.showsCursor = false
+
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+        return try await SCScreenshotManager.captureImage(
+            contentFilter: filter, configuration: configuration
+        )
+    }
+
+    private static func jpeg(from image: CGImage, quality: CGFloat = 0.8) -> Data? {
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        return bitmap.representation(using: .jpeg, properties: [.compressionFactor: quality])
     }
 }
