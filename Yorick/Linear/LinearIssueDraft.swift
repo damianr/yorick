@@ -23,6 +23,29 @@ struct LinearCreatedIssue: Codable, Sendable, Equatable {
     let title: String
 }
 
+/// One capture, rendered as a whole ticket: title, a blank line, then the
+/// body. What "Copy ticket" puts on the clipboard.
+///
+/// Deliberately NOT gated on having an integration. Pasting a framed ticket
+/// into a coding agent is a validated workflow in its own right — the
+/// enrichment era measured it: a gesticulated complaint about a section,
+/// pasted into an agent, produced a correct shipped fix with zero added
+/// explanation. Making it the consolation prize for people without Linear
+/// would hide it from the users most likely to want it, and would make the
+/// exit vanish the moment someone connected.
+enum TicketClipboard {
+    static func text(
+        title: String, transcript: String, sourceLine: String,
+        windowTitle: String, context: CaptureContext?, screenshotCount: Int
+    ) -> String {
+        let body = LinearDescriptionBuilder.build(
+            transcript: transcript, sourceLine: sourceLine, windowTitle: windowTitle,
+            context: context, screenshotCount: screenshotCount, destination: .clipboard
+        )
+        return "# \(title)\n\n\(body)"
+    }
+}
+
 /// The description body. DETERMINISTIC — a template, never model-written.
 ///
 /// Inherited whole from the enrichment plan and unchanged in its reasoning: a
@@ -34,12 +57,24 @@ enum LinearDescriptionBuilder {
     static let framing = "Captured by voice. The quoted words are a verbatim transcript — "
         + "resolve any \"this\", \"here\", or \"these\" against the context below."
 
+    /// Where the body is going, which changes only one line — but changes it
+    /// from true to false if ignored. "1 screenshot attached" is accurate in
+    /// a Linear issue that carries the image and a lie on the clipboard,
+    /// where the reader gets text and nothing else.
+    enum Destination: Sendable, Equatable {
+        /// Uploaded with the issue.
+        case tracker
+        /// Text only. The crop stays in Yorick.
+        case clipboard
+    }
+
     static func build(
         transcript: String,
         sourceLine: String,
         windowTitle: String = "",
         context: CaptureContext?,
-        screenshotCount: Int = 0
+        screenshotCount: Int = 0,
+        destination: Destination = .tracker
     ) -> String {
         let quoted = transcript
             .split(separator: "\n", omittingEmptySubsequences: false)
@@ -53,10 +88,15 @@ enum LinearDescriptionBuilder {
             sections.append("- Spoken in \(sourceLine)")
         }
         sections.append(contentsOf: contextLines(context, windowTitle: windowTitle))
-        // Named even before upload exists, so the issue is honest about what
-        // the capture holds rather than silently leaving it on the Mac.
         if screenshotCount > 0 {
-            sections.append("- \(screenshotCount) screenshot\(screenshotCount == 1 ? "" : "s") attached")
+            let noun = "screenshot\(screenshotCount == 1 ? "" : "s")"
+            // "attached" is true of an issue that carries the upload. On the
+            // clipboard the image rides as a separate representation, which
+            // rich targets render inline and plain-text ones drop — so the
+            // wording claims only that it is THERE, never that it rendered.
+            sections.append(destination == .tracker
+                ? "- \(screenshotCount) \(noun) attached"
+                : "- \(screenshotCount) \(noun), also on the clipboard")
         }
         return sections.joined(separator: "\n")
     }

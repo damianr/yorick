@@ -19,6 +19,7 @@ struct CaptureDetailView: View {
     @Environment(SessionManager.self) private var session
     @State private var justCopied = false
     @State private var attaching = false
+    @State private var justCopiedTicket = false
 
     private var canOfferSend: Bool {
         linear.canSend && capture.linearIssue == nil && !capture.needsTranscription
@@ -38,6 +39,7 @@ struct CaptureDetailView: View {
                 } else {
                     words
                     actions
+                    linearHint
                     if send.isReviewing(capture) {
                         LinearProposalView(capture: capture, controller: send, captureStore: captureStore)
                     }
@@ -109,6 +111,31 @@ struct CaptureDetailView: View {
                     justCopied = false
                 }
             }
+            // Always offered, connected or not. A framed ticket pasted into
+            // a coding agent is its own validated workflow, so this is not
+            // the consolation prize for having no integration — it is the
+            // exit that needs nothing.
+            CardActionButton(icon: justCopiedTicket ? "checkmark" : "doc.text",
+                             label: justCopiedTicket ? "Copied" : "Copy ticket") {
+                // copyBundle, not copy: it puts plain text, PNG, HTML with
+                // the image inline, and RTF on the pasteboard at once. A
+                // terminal takes the text; Claude Mac and Linear's web editor
+                // take the rich version and render the crop with it. Built in
+                // the enrichment era for exactly this paste.
+                let images = capture.screenshotFileNames.indices.compactMap {
+                    captureStore.screenshotImage(for: capture, index: $0)
+                }
+                if images.isEmpty {
+                    ClipboardOutput.copy(ticketText)
+                } else {
+                    ClipboardOutput.copyBundle(text: ticketText, images: images)
+                }
+                justCopiedTicket = true
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    justCopiedTicket = false
+                }
+            }
             if canOfferSend, !send.isReviewing(capture) {
                 CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
                     send.beginReview(of: capture, store: captureStore)
@@ -148,6 +175,42 @@ struct CaptureDetailView: View {
             .help("Delete this capture")
         }
         .animation(.easeOut(duration: 0.15), value: justCopied)
+        .animation(.easeOut(duration: 0.15), value: justCopiedTicket)
+    }
+
+    /// The whole ticket as markdown: the title Yorick would have used, then
+    /// the same body a Linear issue gets.
+    private var ticketText: String {
+        TicketClipboard.text(
+            title: TitleComposer.deterministicTitle(IssueComposer.Input(capture)),
+            transcript: displayText,
+            sourceLine: capture.sourceLine,
+            windowTitle: capture.windowTitle,
+            context: capture.context,
+            screenshotCount: capture.screenshotFileNames.count
+        )
+    }
+
+    /// Shown only when there is no integration: the education lives HERE,
+    /// beside the artifact it describes, rather than in a fifth onboarding
+    /// step about a feature most people will never switch on. Same principle
+    /// as the catch teaching itself the first time it fires.
+    @ViewBuilder
+    private var linearHint: some View {
+        if !linear.isConnected, LinearConfig.isConfigured, !capture.needsTranscription {
+            Button(action: { router.push(.settings) }) {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 8.5, weight: .semibold))
+                    Text("Yorick can file these into Linear for you")
+                        .font(Theme.mono(9.5))
+                }
+                .foregroundStyle(Theme.textTertiary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Set up the Linear integration")
+        }
     }
 
     // MARK: - Screenshots
@@ -194,17 +257,32 @@ struct CaptureDetailView: View {
                                 .strokeBorder(Theme.borderSubtle, lineWidth: 1)
                         )
                         .overlay(alignment: .topTrailing) {
-                            Button(action: { captureStore.removeScreenshot(from: capture, index: index) }) {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.9))
-                                    .frame(width: 18, height: 18)
-                                    .background(Color.black.opacity(0.55))
-                                    .clipShape(Circle())
+                            HStack(spacing: 4) {
+                                // The ticket text can't carry an image, so
+                                // the image carries itself — one click, then
+                                // paste it wherever the text went.
+                                Button(action: { ClipboardOutput.copy(image: image) }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                        .frame(width: 18, height: 18)
+                                        .background(Color.black.opacity(0.55))
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .help("Copy this image")
+                                Button(action: { captureStore.removeScreenshot(from: capture, index: index) }) {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                        .frame(width: 18, height: 18)
+                                        .background(Color.black.opacity(0.55))
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .help("Remove this screenshot")
                             }
-                            .buttonStyle(.plain)
                             .padding(6)
-                            .help("Remove this screenshot")
                         }
                 }
             }

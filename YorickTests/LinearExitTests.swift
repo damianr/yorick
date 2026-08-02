@@ -344,6 +344,36 @@ final class LinearDescriptionTests: XCTestCase {
         XCTAssertTrue(body.contains("- 1 screenshot attached"))
     }
 
+    /// "attached" is true of an issue that carries the upload and false of a
+    /// clipboard paste, where the image rides as a separate representation
+    /// that plain-text targets drop.
+    func testTheScreenshotLineTellsTheTruthForItsDestination() {
+        let tracker = LinearDescriptionBuilder.build(
+            transcript: "the spacing here is off", sourceLine: "Figma",
+            context: nil, screenshotCount: 1, destination: .tracker
+        )
+        XCTAssertTrue(tracker.contains("- 1 screenshot attached"))
+
+        let clipboard = LinearDescriptionBuilder.build(
+            transcript: "the spacing here is off", sourceLine: "Figma",
+            context: nil, screenshotCount: 1, destination: .clipboard
+        )
+        XCTAssertFalse(clipboard.contains("attached"))
+        XCTAssertTrue(clipboard.contains("also on the clipboard"))
+    }
+
+    func testCopiedTicketLeadsWithTheTitle() {
+        let ticket = TicketClipboard.text(
+            title: "Optional cleanup — de-emphasize this section",
+            transcript: "I want to de-emphasize this section here",
+            sourceLine: "Chrome · heyyorick.com", windowTitle: "",
+            context: nil, screenshotCount: 0
+        )
+        XCTAssertTrue(ticket.hasPrefix("# Optional cleanup — de-emphasize this section\n\n"))
+        XCTAssertTrue(ticket.contains(LinearDescriptionBuilder.framing))
+        XCTAssertTrue(ticket.contains("> I want to de-emphasize this section here"))
+    }
+
     func testNoScreenshotsAddsNoLine() {
         let body = LinearDescriptionBuilder.build(
             transcript: "the spacing here is off", sourceLine: "Figma", context: nil
