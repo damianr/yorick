@@ -148,7 +148,8 @@ enum ContextCollector {
             if role == "AXRow" || role == "AXCell" {
                 let rowText = childrenText(of: node)
                 if !rowText.isEmpty {
-                    return (String(rowText.prefix(pointedCap)), str(node, kAXRoleDescriptionAttribute) ?? "row")
+                    return (String(rowText.prefix(pointedCap)),
+                            qualified(str(node, kAXRoleDescriptionAttribute) ?? "row", at: point))
                 }
                 break
             }
@@ -157,12 +158,54 @@ enum ContextCollector {
             let title = str(node, kAXTitleAttribute) ?? str(node, kAXDescriptionAttribute) ?? ""
             if !title.isEmpty, title != leafText {
                 let detail = str(node, kAXRoleDescriptionAttribute) ?? role
-                return (String(title.prefix(pointedCap)), detail)
+                return (String(title.prefix(pointedCap)), qualified(detail, at: point))
             }
         }
         guard let leafText, !leafText.isEmpty else { return nil }
         let roleDesc = str(leaf, kAXRoleDescriptionAttribute) ?? (str(leaf, kAXRoleAttribute) ?? "element")
-        return (String(leafText.prefix(pointedCap)), roleDesc)
+        return (String(leafText.prefix(pointedCap)), qualified(roleDesc, at: point))
+    }
+
+    /// Append the section a pointed thing sits under, when one is findable.
+    ///
+    /// Pointing at a paragraph names the paragraph; what a reader needs is
+    /// which SECTION it belongs to ("under 'Nothing's lost'"). The ancestor
+    /// climb can't supply that — on a web page a heading is a SIBLING of the
+    /// paragraph, not a parent — so this walks up the screen instead of up
+    /// the tree: hit-test a few points above the cursor in the same column
+    /// until an AXHeading lands. Bounded probes, never a tree walk, and
+    /// silence is the normal answer.
+    private static func qualified(_ detail: String, at point: CGPoint) -> String {
+        guard let heading = nearestHeading(above: point) else { return detail }
+        return "\(detail), under “\(heading)”"
+    }
+
+    private static func nearestHeading(above point: CGPoint) -> String? {
+        let systemWide = AXUIElementCreateSystemWide()
+        var probed = 0
+        var y = point.y - 24
+        // ~600pt of screen at 40pt steps: far enough to clear a paragraph or
+        // two, short enough that it can't wander into an unrelated section.
+        while probed < 15, y > 0, point.y - y <= 600 {
+            defer { y -= 40; probed += 1 }
+            var element: AXUIElement?
+            AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(y), &element)
+            guard let element else { continue }
+            var ownerPID: pid_t = 0
+            AXUIElementGetPid(element, &ownerPID)
+            guard !isSelf(ownerPID) else { return nil }
+            let role = str(element, kAXRoleAttribute) ?? ""
+            let subrole = str(element, kAXSubroleAttribute) ?? ""
+            guard role == "AXHeading" || subrole == "AXHeading" || role == "AXStaticText" else { continue }
+            // A heading proper wins outright; static text only counts when
+            // the app marks it as one, since every paragraph is static text.
+            guard role == "AXHeading" || subrole == "AXHeading" else { continue }
+            if let text = bestText(of: element)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !text.isEmpty, text.count <= 80 {
+                return text
+            }
+        }
+        return nil
     }
 
     private static func bestText(of element: AXUIElement) -> String? {
@@ -194,13 +237,16 @@ enum ContextCollector {
     /// hands on the keyboard, so a mouse left where it was yesterday is not a
     /// gesture and contributes nothing.
     actor PointerTimeline {
-        private var items: [(value: String, detail: String)] = []
+        private var items: [(value: String, detail: String, at: Double)] = []
         private var sampler: Task<Void, Never>?
+        private var startedAt: ContinuousClock.Instant?
         private static let maxItems = 8
 
         func begin() {
             guard sampler == nil else { return }
-            let deadline = ContinuousClock.now + .seconds(600)
+            let started = ContinuousClock.now
+            startedAt = started
+            let deadline = started + .seconds(600)
             sampler = Task {
                 while !Task.isCancelled, items.count < Self.maxItems, ContinuousClock.now < deadline {
                     sampleOnce()
@@ -216,7 +262,14 @@ enum ContextCollector {
                   let point = CGEvent(source: nil)?.location else { return }
             guard let resolved = ContextCollector.resolvePointed(at: point) else { return }
             if items.contains(where: { $0.value == resolved.value }) { return }
-            items.append(resolved)
+            // Seconds since the hotkey went down, so a later pass can line a
+            // deictic word up with whatever the cursor was on when it was
+            // spoken. Recorded now even though nothing consumes it yet — the
+            // sweep can't be reconstructed after the fact.
+            let elapsed = startedAt.map { ContinuousClock.now - $0 } ?? .zero
+            let seconds = Double(elapsed.components.seconds)
+                + Double(elapsed.components.attoseconds) / 1e18
+            items.append((resolved.value, resolved.detail, seconds))
         }
 
         /// Stop sampling (hotkey release) — items are kept for `finish`.
@@ -230,7 +283,13 @@ enum ContextCollector {
             stopSampling()
             ContextCollector.logTimeline(appName: appName, count: items.count)
             return items.map {
-                ContextFact(kind: "pointedElement", value: $0.value, detail: $0.detail, phase: "timeline")
+                ContextFact(
+                    kind: "pointedElement",
+                    value: $0.value,
+                    detail: $0.detail,
+                    phase: "timeline",
+                    atSeconds: $0.at
+                )
             }
         }
     }

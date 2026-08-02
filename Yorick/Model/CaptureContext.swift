@@ -22,6 +22,23 @@ struct ContextFact: Codable, Sendable, Equatable {
     /// sweep). Pointing happens while talking, so both snapshots matter and
     /// the delta is itself evidence.
     let phase: String
+    /// Seconds from the start of the recording, for timeline facts.
+    ///
+    /// Deixis needs this. "Fix THIS one, and that other thing is fine" points
+    /// at two different elements at two different moments, and without a
+    /// clock the sweep is an unordered bag that can't be aligned with the
+    /// words. Apple Speech gives word-level timings, so a timestamped sweep
+    /// is what makes "this" resolvable rather than merely suggestive.
+    /// Optional so records written before it stay decodable.
+    var atSeconds: Double?
+
+    init(kind: String, value: String, detail: String?, phase: String, atSeconds: Double? = nil) {
+        self.kind = kind
+        self.value = value
+        self.detail = detail
+        self.phase = phase
+        self.atSeconds = atSeconds
+    }
 }
 
 /// The evidence bundle attached to a capture. Versioned so the schema can

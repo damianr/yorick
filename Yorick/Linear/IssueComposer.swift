@@ -107,7 +107,7 @@ enum IssueComposer {
         // guardrail declines innocent text unpredictably — it read the word
         // "pill" as drug content) must not cost the routing, and a routing
         // miss must not cost the title.
-        async let title = proposeTitle(transcript: input.transcript)
+        async let title = proposeTitle(input)
         async let route = proposeRoute(input, workspace: workspace, fallbackTeamID: base.teamID)
 
         let modelTitle = await title
@@ -136,7 +136,20 @@ enum IssueComposer {
         writing anything new.
         """
 
-    private static func proposeTitle(transcript: String) async -> String? {
+    /// The evidence, flattened for the title pass. Context is BOTH shown to
+    /// the model and added to the allowlist: a proper noun that appears in
+    /// what you were pointing at is grounded in evidence, not invented, and
+    /// rejecting it was blocking exactly the referent-bearing titles the
+    /// context exists to enable ("Nothing's lost section is too long").
+    static func contextText(_ input: Input) -> String {
+        ([input.sourceLine] + LinearDescriptionBuilder.contextLines(
+            input.context, windowTitle: input.windowTitle
+        )).joined(separator: "\n")
+    }
+
+    private static func proposeTitle(_ input: Input) async -> String? {
+        let transcript = input.transcript
+        let evidence = contextText(input)
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             do {
@@ -144,14 +157,20 @@ enum IssueComposer {
                 // Unwrap to a String inside the raced closure:
                 // LanguageModelSession.Response isn't Sendable, so it can't
                 // cross the task-group boundary.
+                // The model sees the evidence too, so a demonstrative can
+                // resolve into a name instead of surviving into the title as
+                // "this". The guard below is what makes that safe.
+                let prompt = evidence.isEmpty
+                    ? transcript
+                    : "Note: \"\(transcript)\"\n\nWhat was on screen:\n\(evidence)"
                 let raw = try await withTimeout(budget) {
-                    try await session.respond(to: transcript, generating: ProposedTitle.self).content.text
+                    try await session.respond(to: prompt, generating: ProposedTitle.self).content.text
                 }
                 guard let raw else { return nil }
                 let title = raw
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-                return validatedTitle(title, transcript: transcript)
+                return validatedTitle(title, transcript: transcript, evidence: evidence)
             } catch {
                 return nil
             }
@@ -165,15 +184,21 @@ enum IssueComposer {
     /// fabrication that reads as fact on a ticket somebody else will act on.
     /// This is the readback lesson, applied: a pointed-at headline once
     /// became a "product name" and the line asserted something nobody said.
-    static func validatedTitle(_ title: String, transcript: String) -> String? {
+    static func validatedTitle(_ title: String, transcript: String, evidence: String = "") -> String? {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= 120 else { return nil }
         // One line only — a multi-line "title" means the model wrote a body.
         guard !trimmed.contains("\n") else { return nil }
-        // A title that is longer than what was said is not a title.
-        guard trimmed.count <= max(40, transcript.count) else { return nil }
-        let spoken = Set(words(of: transcript))
-        let invented = capitalizedTerms(in: trimmed).filter { !spoken.contains($0.lowercased()) }
+        // A title that is longer than what was said is not a title. The
+        // floor rises when there's evidence, since a resolved referent
+        // legitimately adds words the speaker never uttered.
+        guard trimmed.count <= max(evidence.isEmpty ? 40 : 70, transcript.count) else { return nil }
+        // Grounded = spoken OR on screen. Widened 2026-08-01: the transcript
+        // alone was too narrow once the model could see context, because the
+        // whole point of a referent-bearing title is naming something the
+        // speaker pointed at instead of said.
+        let grounded = Set(words(of: transcript)).union(words(of: evidence))
+        let invented = capitalizedTerms(in: trimmed).filter { !grounded.contains($0.lowercased()) }
         guard invented.isEmpty else { return nil }
         return LinearDescriptionBuilder.truncate(trimmed, to: 80)
     }

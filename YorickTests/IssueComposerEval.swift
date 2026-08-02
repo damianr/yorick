@@ -164,6 +164,31 @@ final class IssueComposerEval: XCTestCase {
               facts: [selection("Clean up dictation before it types")],
               expected: "p-yorick"),
 
+        // --- DEIXIS. The point of the context layer: a demonstrative that
+        // resolves only against what the pointer was on. Titles are graded
+        // here on whether the REFERENT survives, which is the thing the
+        // widened allowlist exists to permit.
+        .init("this section, resolved by heading",
+              "this whole section is way too long, nobody's getting past the first line",
+              source: "Chrome · heyyorick.com",
+              facts: [page("https://heyyorick.com/"),
+                      pointed("Nothing you say is lost, and nothing leaves your Mac",
+                              "paragraph, under “Nothing's lost”")],
+              expected: "p-site", mentions: ["nothing's lost"]),
+
+        .init("this one, resolved by row",
+              "this one's been sitting there for weeks, we should just close it",
+              source: "Chrome · Odds dashboard",
+              facts: [page("https://railbird.app/odds"),
+                      pointed("Warriors · -145 · stale since Jun 2", "row")],
+              expected: "p-railbird", mentions: ["warriors"]),
+
+        .init("these, resolved by selection",
+              "these need to be consistent, half of them say one thing and half the other",
+              source: "Xcode · PreferencesView.swift",
+              facts: [selection("Clean up dictation before it types")],
+              expected: "p-yorick", mentions: ["clean up dictation"]),
+
         .init("two products mentioned, one is the subject",
               "the way railbird does its empty states is nice, we should do that in the saved list",
               source: "Xcode · CaptureListComponents.swift",
