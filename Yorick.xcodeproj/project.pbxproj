@@ -72,6 +72,7 @@
 		C98F3DCBAAC0162408A1B609 /* PasteboardLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B5304D771605BC1F26353E /* PasteboardLease.swift */; };
 		CF95ECA12953ED4FC0AFA4C3 /* AppIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6100D199344098CC50AB411D /* AppIdentifier.swift */; };
 		D13056B3E0C54A1DA34369EF /* LinearWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27DF324A1A834C1AA6AA8344 /* LinearWorkspace.swift */; };
+		DA41C6782364D00694B88839 /* ScreenCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D97FD5921524939A777B8C1 /* ScreenCapture.swift */; };
 		DA6EEAFAB95E78E24F215A7F /* MicrophoneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */; };
 		DEAE4E20CE687BB5866E6387 /* LocalIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 813E2EEDBADFF07063F688D3 /* LocalIntelligence.swift */; };
 		DFA546D3EDB08D812550DDBD /* LoginItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D3C0B62573CB6B00A999CE /* LoginItem.swift */; };
@@ -133,6 +134,7 @@
 		813E2EEDBADFF07063F688D3 /* LocalIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalIntelligence.swift; sourceTree = "<group>"; };
 		86D3C0B62573CB6B00A999CE /* LoginItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItem.swift; sourceTree = "<group>"; };
 		8AD999AF3A2983F6D044382B /* HUDContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDContentView.swift; sourceTree = "<group>"; };
+		8D97FD5921524939A777B8C1 /* ScreenCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCapture.swift; sourceTree = "<group>"; };
 		9508203F2C34F0897692D0F4 /* AdminMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminMode.swift; sourceTree = "<group>"; };
 		9B27701269CA362ED330D0DD /* LinearCallbackListenerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinearCallbackListenerTests.swift; sourceTree = "<group>"; };
 		9BC530C070F06B8488BD526B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
@@ -200,6 +202,7 @@
 				40A121B44D438B2AAC2B727B /* ContextCollector.swift */,
 				DC5D45E53DCBF0E30B307567 /* FocusClassifier.swift */,
 				B0B5304D771605BC1F26353E /* PasteboardLease.swift */,
+				8D97FD5921524939A777B8C1 /* ScreenCapture.swift */,
 				2DC34EBB54A844C9F08A9B1C /* SessionManager.swift */,
 				3956B1F5059C9796A3016FD3 /* UtteranceRouter.swift */,
 			);
@@ -520,6 +523,7 @@
 				A55B9840C68E70F0B925682A /* PanelRouter.swift in Sources */,
 				C98F3DCBAAC0162408A1B609 /* PasteboardLease.swift in Sources */,
 				511A03C41E6CD48D985D05F9 /* PreferencesView.swift in Sources */,
+				DA41C6782364D00694B88839 /* ScreenCapture.swift in Sources */,
 				35E56C0FD55F736227AA6C86 /* SessionManager.swift in Sources */,
 				007FEC1B6F73F8F3A223852B /* SessionUploader.swift in Sources */,
 				EF12E5AC1C7B78D778526C1D /* ShortcutRecorderView.swift in Sources */,

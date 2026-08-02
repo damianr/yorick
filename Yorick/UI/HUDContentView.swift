@@ -332,6 +332,32 @@ struct HUDContentView: View {
                     .buttonStyle(.plain)
                     .help("Cancel transcription")
                 } else {
+                    // Screenshot lives on the RECORDING pill, not the card:
+                    // the thing worth a crop is on screen while you're
+                    // talking about it, and by the time a card appears you've
+                    // usually navigated away from it.
+                    if session.canScreenshot {
+                        Button(action: { session.captureScreenshot() }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: session.screenshotInProgress
+                                      ? "camera.viewfinder" : "camera")
+                                    .font(.system(size: 9, weight: .semibold))
+                                if session.pendingScreenshotCount > 0 {
+                                    Text("\(session.pendingScreenshotCount)")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                            }
+                            .foregroundStyle(session.pendingScreenshotCount > 0
+                                             ? Theme.glow : .white.opacity(0.7))
+                            .frame(height: 19)
+                            .padding(.horizontal, session.pendingScreenshotCount > 0 ? 6 : 5)
+                            .background(.white.opacity(0.12))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(session.screenshotInProgress)
+                        .help("Screenshot a region — the recording keeps running")
+                    }
                     DotEqualizer(level: session.audioLevel)
                         // The EQ is flat-ended, not round: as the TRAILING
                         // element it needs optical air the crook padding

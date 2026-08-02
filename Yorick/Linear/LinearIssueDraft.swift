@@ -33,7 +33,8 @@ enum LinearDescriptionBuilder {
         transcript: String,
         sourceLine: String,
         windowTitle: String = "",
-        context: CaptureContext?
+        context: CaptureContext?,
+        screenshotCount: Int = 0
     ) -> String {
         let quoted = transcript
             .split(separator: "\n", omittingEmptySubsequences: false)
@@ -47,6 +48,11 @@ enum LinearDescriptionBuilder {
             sections.append("- Spoken in \(sourceLine)")
         }
         sections.append(contentsOf: contextLines(context, windowTitle: windowTitle))
+        // Named even before upload exists, so the issue is honest about what
+        // the capture holds rather than silently leaving it on the Mac.
+        if screenshotCount > 0 {
+            sections.append("- \(screenshotCount) screenshot\(screenshotCount == 1 ? "" : "s") attached")
+        }
         return sections.joined(separator: "\n")
     }
 

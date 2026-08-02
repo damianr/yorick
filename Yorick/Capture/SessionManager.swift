@@ -131,6 +131,61 @@ final class SessionManager {
     /// "is a field focused" — the collector is never even started.
     private var contextStartTask: Task<[ContextFact], Never>?
     private var pointerTimeline: ContextCollector.PointerTimeline?
+
+    // MARK: - Screenshots
+
+    /// Crops taken during the current recording, written to the capture's
+    /// directory when it saves. Held here because the screenshot happens
+    /// while you're still talking — there is no Capture to attach it to yet.
+    private var pendingScreenshots: [Data] = []
+    /// True while the system crosshair is up, so the pill can say so and the
+    /// button can't be pressed twice.
+    private(set) var screenshotInProgress = false
+    /// How many crops are already attached to the running session — the pill
+    /// shows the count so the feedback isn't just "the crosshair went away."
+    private(set) var pendingScreenshotCount = 0
+
+    /// Whether the screenshot button belongs on the pill at all. Same gate as
+    /// every other piece of context: no integration, no screenshots.
+    var canScreenshot: Bool {
+        LinearSettings.shared.collectsContext && state == .recording
+    }
+
+    /// Take a region screenshot without interrupting the recording.
+    ///
+    /// The audio keeps rolling the whole time — the crosshair is a side
+    /// errand, not a mode the session enters, so a user who thinks better of
+    /// it presses Escape and keeps talking.
+    func captureScreenshot() {
+        guard !screenshotInProgress else { return }
+        guard ScreenCapture.isAuthorized else {
+            // Asking mid-recording would be the worst possible moment for a
+            // system dialog, so this only ever explains and points at
+            // Settings. The grant needs a relaunch anyway.
+            _ = ScreenCapture.requestAuthorization()
+            transientNotice = TransientNotice(
+                message: "Screen Recording needed for screenshots",
+                detail: "Grant it in System Settings, then relaunch Yorick."
+            )
+            return
+        }
+        screenshotInProgress = true
+        let timeline = pointerTimeline
+        Task { @MainActor in
+            await timeline?.pause()
+            defer { Task { await timeline?.resume() } }
+            do {
+                let data = try await ScreenCapture.selectRegion()
+                pendingScreenshots.append(data)
+                pendingScreenshotCount = pendingScreenshots.count
+            } catch ScreenCapture.Failure.cancelled {
+                // Escape is a decision, not an error.
+            } catch {
+                transientNotice = TransientNotice(message: error.localizedDescription)
+            }
+            screenshotInProgress = false
+        }
+    }
     var showSilenceWarning = false
     /// Non-nil while audio has stopped arriving mid-recording. The pill says
     /// so instead of continuing to claim it's listening.
@@ -633,6 +688,9 @@ final class SessionManager {
             pointerTimeline = nil
         }
 
+        pendingScreenshots = []
+        pendingScreenshotCount = 0
+        screenshotInProgress = false
         silentSeconds = 0
         showSilenceWarning = false
         // .common run-loop mode: a default-mode timer stops ticking while a menu
@@ -1119,6 +1177,13 @@ final class SessionManager {
                 timelineApp: timelineApp
             )
 
+            // Screenshots taken while talking. Read once, here, so a
+            // crosshair still open when transcription finishes can't mutate
+            // the array underneath the save.
+            let shots = pendingScreenshots
+            pendingScreenshots = []
+            pendingScreenshotCount = 0
+
             // 6. Save. The capture is complete the moment transcription ends —
             //    there is no background intelligence to wait for.
             let capture = Capture(
@@ -1131,7 +1196,7 @@ final class SessionManager {
                 processedInstructions: nil,
                 transcriptSegments: result.transcriptSegments,
                 durationSeconds: duration,
-                screenshotFileNames: [],
+                screenshotFileNames: shots.indices.map { "screenshot-\($0).jpg" },
                 state: .new,
                 kind: effectiveKind,
                 title: nil,
@@ -1148,7 +1213,7 @@ final class SessionManager {
 
             try captureStore.save(
                 capture,
-                screenshots: [],
+                screenshots: shots,
                 debugAudioURL: retainedAudioFileName == nil ? nil : audioURL
             )
             lastUtteranceID = capture.id

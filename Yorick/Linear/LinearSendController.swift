@@ -14,7 +14,8 @@ extension IssueComposer.Input {
             transcript: capture.transcript,
             sourceLine: capture.sourceLine,
             windowTitle: capture.windowTitle,
-            context: capture.context
+            context: capture.context,
+            screenshotCount: capture.screenshotFileNames.count
         )
     }
 }

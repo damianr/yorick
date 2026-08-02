@@ -255,7 +255,18 @@ enum ContextCollector {
             }
         }
 
+        /// Suspended while the user is driving the pointer somewhere that
+        /// isn't evidence — travelling to the pill to press the screenshot
+        /// button, and then dragging a crosshair. Without this the sweep
+        /// fills up with Yorick's own chrome and whatever the crosshair
+        /// crossed, which is the opposite of what a pointed fact means.
+        private var paused = false
+
+        func pause() { paused = true }
+        func resume() { paused = false }
+
         private func sampleOnce() {
+            guard !paused else { return }
             // CGEvent's location is already top-left-origin global coords —
             // matching AX — and both CG calls are thread-safe.
             guard AccessibilityCapture.pointerIdleSeconds() < 2.0,

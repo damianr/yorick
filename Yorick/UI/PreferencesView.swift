@@ -24,6 +24,7 @@ struct SettingsView: View {
     @ObservedObject private var linear = LinearSettings.shared
     @ObservedObject private var sendController = LinearSendController.shared
     @State private var connecting = false
+    @State private var screenRecordingGranted = ScreenCapture.isAuthorized
     /// Sparkle reads this key straight from UserDefaults, so binding to it is
     /// enough to turn scheduled checks on and off.
     @AppStorage("SUEnableAutomaticChecks") private var automaticUpdateChecks = true
@@ -363,6 +364,21 @@ struct SettingsView: View {
                 Spacer(minLength: 16)
                 pillButton("Refresh projects") {
                     Task { await sendController.refreshWorkspace() }
+                }
+            }
+            settingsRow {
+                VStack(alignment: .leading, spacing: 3) {
+                    rowLabel("Screenshots")
+                    caption("A camera button appears on the recording pill: drag a region while you're still talking and the crop rides along with the capture. Optional, and the only feature that needs Screen Recording — everything else works without it. Screenshots stay on your Mac until you send, and you can delete one from the capture first.")
+                }
+                Spacer(minLength: 16)
+                if screenRecordingGranted {
+                    grantedLabel
+                } else {
+                    pillButton("Allow") {
+                        _ = ScreenCapture.requestAuthorization()
+                        screenRecordingGranted = ScreenCapture.isAuthorized
+                    }
                 }
             }
         }

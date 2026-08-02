@@ -191,7 +191,7 @@ struct Capture: Identifiable, Codable {
     let processedInstructions: String?
     let transcriptSegments: [TranscriptSegment]
     let durationSeconds: Int
-    let screenshotFileNames: [String]
+    var screenshotFileNames: [String]
     var state: CaptureState
     /// When the capture was marked done. Drives the done-fade prune — done
     /// items exit the stream for good after a grace window.

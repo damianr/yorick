@@ -260,6 +260,36 @@ final class CaptureStore {
         NSImage(contentsOf: screenshotURL(for: capture, index: index))
     }
 
+    func screenshotImage(for capture: Capture, index: Int) -> NSImage? {
+        loadScreenshot(for: capture, index: index)
+    }
+
+    /// Remove one crop, file and record together.
+    ///
+    /// Deletes from disk FIRST: a screenshot the user asked to remove but
+    /// which survives on disk is the failure that matters here, and an
+    /// orphaned file with no record is merely untidy. Remaining files are
+    /// renumbered so the names stay dense — `screenshotFileNames` is
+    /// positional, and a gap would make index 1 load index 2's image.
+    func removeScreenshot(from capture: Capture, index: Int) {
+        let dir = capturesDir.appendingPathComponent(capture.id.uuidString, isDirectory: true)
+        let fm = FileManager.default
+        try? fm.removeItem(at: screenshotURL(for: capture, index: index))
+
+        var names = capture.screenshotFileNames
+        guard index < names.count else { return }
+        names.remove(at: index)
+        for position in index..<names.count {
+            let from = dir.appendingPathComponent("screenshot-\(position + 1).jpg")
+            let to = dir.appendingPathComponent("screenshot-\(position).jpg")
+            try? fm.moveItem(at: from, to: to)
+        }
+
+        var updated = capture
+        updated.screenshotFileNames = names.indices.map { "screenshot-\($0).jpg" }
+        update(updated)
+    }
+
     func audioURL(for capture: Capture) -> URL {
         capturesDir
             .appendingPathComponent(capture.id.uuidString, isDirectory: true)

@@ -58,7 +58,8 @@ enum IssueComposer {
                 transcript: input.transcript,
                 sourceLine: input.sourceLine,
                 windowTitle: input.windowTitle,
-                context: input.context
+                context: input.context,
+                screenshotCount: input.screenshotCount
             ),
             teamID: teamID,
             projectID: nil
@@ -77,6 +78,7 @@ enum IssueComposer {
         /// a pointed element is just restating the document's own title.
         var windowTitle: String = ""
         let context: CaptureContext?
+        var screenshotCount: Int = 0
     }
 
     /// Improve a draft with the on-device model. Never throws: any failure

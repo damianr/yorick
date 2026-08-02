@@ -40,6 +40,9 @@ struct CaptureDetailView: View {
                     if send.isReviewing(capture) {
                         LinearProposalView(capture: capture, controller: send, captureStore: captureStore)
                     }
+                    if !capture.screenshotFileNames.isEmpty {
+                        screenshots
+                    }
                     if let context = capture.context, !context.facts.isEmpty {
                         contextSection(context)
                     }
@@ -144,6 +147,47 @@ struct CaptureDetailView: View {
             .help("Delete this capture")
         }
         .animation(.easeOut(duration: 0.15), value: justCopied)
+    }
+
+    // MARK: - Screenshots
+
+    /// Crops taken while you were talking, deletable before the capture goes
+    /// anywhere. A screenshot is the most revealing thing this app can hold,
+    /// so removing one has to be a visible, one-click affordance sitting on
+    /// the image itself — not a context menu you'd have to guess at.
+    private var screenshots: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("SCREENSHOTS")
+                .font(Theme.mono(8.5, weight: .semibold))
+                .tracking(1.4)
+                .foregroundStyle(Theme.textTertiary)
+            ForEach(capture.screenshotFileNames.indices, id: \.self) { index in
+                if let image = captureStore.screenshotImage(for: capture, index: index) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusMd))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.radiusMd)
+                                .strokeBorder(Theme.borderSubtle, lineWidth: 1)
+                        )
+                        .overlay(alignment: .topTrailing) {
+                            Button(action: { captureStore.removeScreenshot(from: capture, index: index) }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.9))
+                                    .frame(width: 18, height: 18)
+                                    .background(Color.black.opacity(0.55))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(6)
+                            .help("Remove this screenshot")
+                        }
+                }
+            }
+        }
     }
 
     // MARK: - Context

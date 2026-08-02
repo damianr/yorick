@@ -15,8 +15,9 @@ Nothing you say gets lost — and nothing leaves your Mac unless you send it.
   (zero download) or an optional local Whisper model.
 - No account. No API key. No subscription.
 - Works offline. Airplane mode is a supported configuration.
-- Two permissions only: Microphone (to hear you) and Accessibility
-  (to type for you). No screen recording, ever.
+- Two permissions on the default path: Microphone (to hear you) and
+  Accessibility (to type for you). Screen Recording is optional and asked
+  for only if you use the screenshot button in the Linear integration.
 - Recordings are discarded after transcription; dictation history fades
   after 7 days, saved items after 30.
 - The only routine network calls are the signed update check and anonymous
@@ -38,8 +39,13 @@ issue makes sense to someone who wasn't sitting there. That includes
 dictations, so a capture is still filable when it typed into a field you
 didn't mean to be in. It stays on the same expiry clock as everything else,
 and it goes nowhere until you send. With the integration off, none of it is
-read at all. Still no screenshots and no screen recording: this is the
-accessibility API, the same one that types for you.
+read at all.
+
+The integration also puts a camera button on the recording pill: drag a
+region while you're talking and the crop rides along with the capture. That
+one needs Screen Recording, asked for the first time you use it and never
+otherwise — nothing else in Yorick takes a screenshot, and the permission
+is not part of setup.
 
 This repository is the proof of those claims. Read the source; run
 Little Snitch; we insist.
