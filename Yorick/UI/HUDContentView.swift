@@ -71,8 +71,23 @@ struct HUDContentView: View {
                     }
 
                     if session.state == .recording || session.state == .transcribing {
-                        sessionPill
-                            .transition(.opacity.combined(with: .move(edge: pillEdge)))
+                        HStack(alignment: .center, spacing: 6) {
+                            sessionPill
+                            // Its own pill, sharing the recording pill's
+                            // glass. A second surface rather than a button
+                            // inside the first because the screenshot is a
+                            // different KIND of thing: the recording pill
+                            // reports a state Yorick is in, and this offers
+                            // an action you may take. Crowding them into one
+                            // capsule made the pill grow and shrink as the
+                            // integration toggled, which read as instability
+                            // in the one element that must look inevitable.
+                            if session.canScreenshot {
+                                screenshotPill
+                                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: pillEdge)))
                     }
                 }
             }
@@ -332,32 +347,6 @@ struct HUDContentView: View {
                     .buttonStyle(.plain)
                     .help("Cancel transcription")
                 } else {
-                    // Screenshot lives on the RECORDING pill, not the card:
-                    // the thing worth a crop is on screen while you're
-                    // talking about it, and by the time a card appears you've
-                    // usually navigated away from it.
-                    if session.canScreenshot {
-                        Button(action: { session.captureScreenshot() }) {
-                            HStack(spacing: 3) {
-                                Image(systemName: session.screenshotInProgress
-                                      ? "camera.viewfinder" : "camera")
-                                    .font(.system(size: 9, weight: .semibold))
-                                if session.pendingScreenshotCount > 0 {
-                                    Text("\(session.pendingScreenshotCount)")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
-                            }
-                            .foregroundStyle(session.pendingScreenshotCount > 0
-                                             ? Theme.glow : .white.opacity(0.7))
-                            .frame(height: 19)
-                            .padding(.horizontal, session.pendingScreenshotCount > 0 ? 6 : 5)
-                            .background(.white.opacity(0.12))
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(session.screenshotInProgress)
-                        .help("Screenshot a region — the recording keeps running")
-                    }
                     DotEqualizer(level: session.audioLevel)
                         // The EQ is flat-ended, not round: as the TRAILING
                         // element it needs optical air the crook padding
@@ -408,6 +397,50 @@ struct HUDContentView: View {
         .animation(.spring(duration: 0.3), value: transcribing)
         .animation(.easeOut(duration: 0.15), value: session.showSilenceWarning)
     }
+
+    // MARK: - Screenshot Pill
+
+    /// Its own pill beside the recording pill, sharing the glass and nothing
+    /// else. A second surface rather than a button inside the first because
+    /// the two say different kinds of thing: the recording pill REPORTS a
+    /// state Yorick is in, and this OFFERS an action you may take. Folded
+    /// together, the recording pill also grew and shrank as the integration
+    /// toggled — instability in the one element that has to look inevitable.
+    ///
+    /// Deliberately NO halo. The halo means "hearing you" and belongs to
+    /// exactly one surface; borrowing it here would make two things claim the
+    /// same signal.
+    private var screenshotPill: some View {
+        Button(action: { session.captureScreenshot() }) {
+            HStack(spacing: 4) {
+                Image(systemName: session.screenshotInProgress ? "camera.viewfinder" : "camera")
+                    .font(.system(size: 11, weight: .semibold))
+                if session.pendingScreenshotCount > 0 {
+                    Text("\(session.pendingScreenshotCount)")
+                        .font(.system(size: 10, weight: .bold))
+                        .monospacedDigit()
+                }
+            }
+            // Glow once a crop is attached — the equalizer's colour, so
+            // "Yorick is holding something of yours" is one hue across the HUD.
+            .foregroundStyle(session.pendingScreenshotCount > 0
+                             ? Theme.glow : Theme.bone.opacity(0.75))
+            .frame(height: 19)
+            .frame(minWidth: 19)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(session.screenshotInProgress)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .pillGlass(corners: .capsule)
+        .help(session.screenshotInProgress
+              ? "Drag to frame a region"
+              : "Screenshot a region — the recording keeps running")
+        .animation(.easeOut(duration: 0.15), value: session.pendingScreenshotCount)
+        .animation(.easeOut(duration: 0.15), value: session.screenshotInProgress)
+    }
+
 }
 
 // MARK: - Pill Glass
