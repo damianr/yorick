@@ -36,6 +36,7 @@
 		5CBEA61931232EA31E59BB9C /* LinearSendController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1E65FF8A86915748A59A82 /* LinearSendController.swift */; };
 		6007E64A5E39615DD61BF4AD /* HUDWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC33F800989734476CB1D6D /* HUDWindow.swift */; };
 		672E6E5DA3E9F0B483635D80 /* CaptureListComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */; };
+		6789C2C88452C6B01E220DF7 /* SkullGazeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38DBA2E98DB5DAC38F5DFCE /* SkullGazeView.swift */; };
 		6AA227E198DF170BDA250AF4 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1644B703BCDFB773ED233BB4 /* AppPaths.swift */; };
 		6BC26C229E3F2646520F6DAD /* LinearWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27DF324A1A834C1AA6AA8344 /* LinearWorkspace.swift */; };
 		6EE4DD1788ADD0931036B6C2 /* MenuBarPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3521EDECA142221E50F66A1 /* MenuBarPanelView.swift */; };
@@ -136,6 +137,7 @@
 		9B27701269CA362ED330D0DD /* LinearCallbackListenerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinearCallbackListenerTests.swift; sourceTree = "<group>"; };
 		9BC530C070F06B8488BD526B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorderView.swift; sourceTree = "<group>"; };
+		A38DBA2E98DB5DAC38F5DFCE /* SkullGazeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkullGazeView.swift; sourceTree = "<group>"; };
 		A6D8914D8F1C6277B1681614 /* LinearSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinearSettings.swift; sourceTree = "<group>"; };
 		ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenFormNormalizerTests.swift; sourceTree = "<group>"; };
 		B0B5304D771605BC1F26353E /* PasteboardLease.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteboardLease.swift; sourceTree = "<group>"; };
@@ -251,6 +253,7 @@
 				65F11A2E7B2A02E59106FC0E /* PanelRouter.swift */,
 				7A47ABE579672A11EBF68F05 /* PreferencesView.swift */,
 				9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */,
+				A38DBA2E98DB5DAC38F5DFCE /* SkullGazeView.swift */,
 				BFDADD63A711A33CB1DAFC49 /* Theme.swift */,
 				BA1FC90D1A3F584F7F795AAC /* ToolbarBackdrop.swift */,
 			);
@@ -520,6 +523,7 @@
 				35E56C0FD55F736227AA6C86 /* SessionManager.swift in Sources */,
 				007FEC1B6F73F8F3A223852B /* SessionUploader.swift in Sources */,
 				EF12E5AC1C7B78D778526C1D /* ShortcutRecorderView.swift in Sources */,
+				6789C2C88452C6B01E220DF7 /* SkullGazeView.swift in Sources */,
 				E1C160A45632D6D84926A30C /* SpokenFormNormalizer.swift in Sources */,
 				A954C4E35F30860DA4CEE56B /* Telemetry.swift in Sources */,
 				2E2AFAFEEFD172F632EA9E32 /* Theme.swift in Sources */,

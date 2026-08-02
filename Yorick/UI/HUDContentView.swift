@@ -8,6 +8,22 @@ struct HUDContentView: View {
     /// The saved-capture card's fade clock, cancelled while hovered.
     @State private var cardDismissTask: Task<Void, Never>?
     @State private var cardHovering = false
+    /// The 3D skull mounts only after a beat, and only when it is fully
+    /// GPU-warm — the flat mark is always what launches.
+    @State private var gazeMounted = false
+
+    /// The gaze skull is HONEST or it is ornament, and the difference is
+    /// whether the pointer is actually being sampled. It was removed on
+    /// 2026-07-30 when the context layer went, precisely because its
+    /// honesty function had died with pointer sampling. Sampling is back —
+    /// gated on the Linear integration — so the skull returns on the same
+    /// gate, and users who never connect Linear never see a skull pretending
+    /// to watch something nobody is reading.
+    private var gazeEligible: Bool {
+        session.state == .recording
+            && session.hudPillPlacement == .bottomCenter
+            && LinearSettings.shared.collectsContext
+    }
 
     private var isVisible: Bool {
         (session.state == .recording && session.hudReady) ||
@@ -62,6 +78,11 @@ struct HUDContentView: View {
             }
         }
         .animation(.spring(duration: 0.3), value: session.state)
+        .onChange(of: session.state) { _, state in
+            // The skull stays through transcribing (one continuous presence)
+            // and re-earns its slot on the next recording.
+            if state != .recording, state != .transcribing { gazeMounted = false }
+        }
         .animation(.spring(duration: 0.3), value: session.lastSavedCapture?.id)
         .animation(.spring(duration: 0.3), value: session.transientNotice?.id)
         .frame(
@@ -263,8 +284,26 @@ struct HUDContentView: View {
         let unanchored = session.hudPillPlacement == .bottomCenter
         return VStack(spacing: 4) {
             HStack(spacing: unanchored ? 10 : 9) {
-                skullMark(16)
-                    .frame(height: 19) // seat at button height so hover adds no vertical jump
+                // BULLETPROOF ORDERING, unchanged from the original: launch
+                // with the flat mark, which is instant and depends on
+                // nothing. The 3D skull is an upgrade that fades in only
+                // when fully GPU-warm, and never blocks the pill.
+                if unanchored, gazeMounted {
+                    SkullGazeView()
+                        .frame(width: 30, height: 30)
+                        .transition(.opacity)
+                } else {
+                    skullMark(16)
+                        .frame(height: 19) // seat at button height so hover adds no vertical jump
+                        .onAppear {
+                            guard gazeEligible else { return }
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 300_000_000)
+                                guard gazeEligible, SkullGazeView.isReady else { return }
+                                withAnimation(.easeIn(duration: 0.2)) { gazeMounted = true }
+                            }
+                        }
+                }
                 if unanchored {
                     // A stalled mic must never read as "Listening…". The
                     // whole bug was the pill claiming to hear you while

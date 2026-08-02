@@ -23,6 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         registerHotkeys()
         // The menu bar surface: custom status item + card-styled panel.
         menuBarPanel = MenuBarPanelController(session: sessionManager)
+        // Every cost of the 3D skull is paid HERE, at launch: the model
+        // parse happens off-main and the view is GPU-warmed before any pill
+        // could want it. Absent model file = absent feature, silently.
+        SkullGazeView.preload()
 
         // Yorick launches as an accessory (LSUIElement) and STAYS one —
         // except while onboarding runs, which needs a real, activated
