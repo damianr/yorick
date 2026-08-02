@@ -209,7 +209,7 @@ struct HUDContentView: View {
                 if LinearSettings.shared.canSend {
                     CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
                         session.lastSavedCapture = nil
-                        LinearSendController.shared.beginReview(of: capture)
+                        LinearSendController.shared.beginReview(of: capture, store: session.captureStore)
                         PanelRouter.shared.openDetail(capture.id)
                     }
                 }

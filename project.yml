@@ -73,6 +73,7 @@ targets:
       - path: Yorick/Linear/LinearOAuth.swift
       - path: Yorick/Linear/LinearKeychain.swift
       - path: Yorick/Linear/IssueComposer.swift
+      - path: Yorick/Linear/TitleComposer.swift
       - path: Yorick/Upload/LocalIntelligence.swift
     settings:
       base:

@@ -111,7 +111,7 @@ struct CaptureDetailView: View {
             }
             if canOfferSend, !send.isReviewing(capture) {
                 CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
-                    send.beginReview(of: capture)
+                    send.beginReview(of: capture, store: captureStore)
                 }
             }
             if let issue = capture.linearIssue {

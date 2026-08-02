@@ -60,7 +60,7 @@ final class LinearSendController: ObservableObject {
 
     /// Open the proposal for a capture. Returns immediately with the
     /// deterministic draft; the model pass, if any, lands a moment later.
-    func beginReview(of capture: Capture) {
+    func beginReview(of capture: Capture, store: CaptureStore) {
         guard let teamID = settings.defaultTeamID ?? settings.workspace.teams.first?.id else {
             phase = .failed("No Linear team available. Reconnect in Settings.")
             captureID = capture.id
@@ -78,8 +78,17 @@ final class LinearSendController: ObservableObject {
         }
         phase = .proposing(composing: true)
         let workspace = settings.workspace
+        let shotURLs = capture.screenshotFileNames.indices.map {
+            store.screenshotURL(for: capture, index: $0)
+        }
         composeTask = Task { [weak self] in
-            let composed = await IssueComposer.compose(input, workspace: workspace, base: base)
+            // OCR first: what you framed is the strongest subject available,
+            // and it reaches surfaces the accessibility tree cannot see at
+            // all. Off the main actor, and the deterministic draft is already
+            // on screen while this runs.
+            var enriched = input
+            enriched.screenshotText = await Self.textFromScreenshots(shotURLs)
+            let composed = await IssueComposer.compose(enriched, workspace: workspace, base: base)
             guard let self, !Task.isCancelled, self.captureID == capture.id else { return }
             // Only adopt the model's work if the user hasn't started editing —
             // text changing under someone's cursor is the exact failure the
@@ -87,6 +96,17 @@ final class LinearSendController: ObservableObject {
             if self.draft == base { self.draft = composed }
             if case .proposing = self.phase { self.phase = .proposing(composing: false) }
         }
+    }
+
+    /// Read every attached crop, tallest glyphs first, deduped.
+    private static func textFromScreenshots(_ urls: [URL]) async -> [String] {
+        var lines: [String] = []
+        for url in urls {
+            guard let data = try? Data(contentsOf: url) else { continue }
+            lines.append(contentsOf: await ScreenshotText.lines(in: data, limit: 3))
+        }
+        var seen = Set<String>()
+        return lines.filter { seen.insert($0.lowercased()).inserted }
     }
 
     func cancelReview() {

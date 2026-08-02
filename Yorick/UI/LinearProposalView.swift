@@ -251,7 +251,7 @@ struct LinearProposalView: View {
                 .font(.system(size: 10.5))
                 .foregroundStyle(Theme.textTertiary)
             HStack(spacing: 8) {
-                Button("Try again") { controller.beginReview(of: capture) }
+                Button("Try again") { controller.beginReview(of: capture, store: captureStore) }
                     .buttonStyle(.plain)
                     .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(Theme.glow)

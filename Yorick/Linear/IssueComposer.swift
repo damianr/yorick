@@ -53,7 +53,7 @@ enum IssueComposer {
     /// or fails a guard.
     static func deterministicDraft(_ input: Input, teamID: String) -> LinearIssueDraft {
         LinearIssueDraft(
-            title: LinearDescriptionBuilder.fallbackTitle(transcript: input.transcript),
+            title: TitleComposer.deterministicTitle(input, screenshotText: input.screenshotText),
             description: LinearDescriptionBuilder.build(
                 transcript: input.transcript,
                 sourceLine: input.sourceLine,
@@ -79,6 +79,11 @@ enum IssueComposer {
         var windowTitle: String = ""
         let context: CaptureContext?
         var screenshotCount: Int = 0
+        /// Text read out of attached crops, tallest glyphs first. The one
+        /// subject source accessibility cannot supply — canvas, WebGL,
+        /// images — and the highest-intent one, since framing a region is a
+        /// deliberate act rather than wherever the mouse happened to be.
+        var screenshotText: [String] = []
     }
 
     /// Improve a draft with the on-device model. Never throws: any failure
@@ -105,19 +110,19 @@ enum IssueComposer {
         }
 
         var draft = base
-        // Two independent calls, deliberately. A refusal on the title (Apple's
-        // guardrail declines innocent text unpredictably — it read the word
-        // "pill" as drug content) must not cost the routing, and a routing
-        // miss must not cost the title.
-        async let title = proposeTitle(input)
-        async let route = proposeRoute(input, workspace: workspace, fallbackTeamID: base.teamID)
-
-        let modelTitle = await title
-        if let modelTitle { draft.title = modelTitle }
-        let resolved = await route
+        // The TITLE is deterministic and needs no model at all — measured
+        // head to head over 20 cases, it names the subject 95% of the time
+        // against 75% for the model authoring it, 90% for the model picking
+        // the subject, and 65% for the model ranking whole candidates. It
+        // also cannot invert meaning, which the authored version did
+        // ("Emphasize Ums" from a note asking to DE-emphasize). See
+        // TitleStrategyEval. The model keeps the one job it measurably wins:
+        // routing.
+        draft.title = TitleComposer.deterministicTitle(input, screenshotText: input.screenshotText)
+        let resolved = await proposeRoute(input, workspace: workspace, fallbackTeamID: base.teamID)
         draft.teamID = resolved.teamID
         draft.projectID = resolved.projectID
-        return (draft, resolved, modelTitle != nil)
+        return (draft, resolved, false)
     }
 
     static var isAvailable: Bool { LocalIntelligence.isCleanupAvailable }
@@ -164,6 +169,13 @@ enum IssueComposer {
         ([input.sourceLine] + LinearDescriptionBuilder.contextLines(
             input.context, windowTitle: input.windowTitle
         )).joined(separator: "\n")
+    }
+
+    /// Kept reachable, though nothing in the product calls it: it is the
+    /// BASELINE the deterministic builder has to keep beating, and a future
+    /// prompt attempt needs something to be measured against.
+    static func modelAuthoredTitle(_ input: Input) async -> String {
+        await proposeTitle(input) ?? TitleComposer.deterministicTitle(input)
     }
 
     private static func proposeTitle(_ input: Input) async -> String? {
@@ -359,6 +371,21 @@ enum IssueComposer {
         return lines.joined(separator: "\n")
     }
 
+    /// One bounded "pick a number" call, shared by everything that chooses
+    /// rather than writes. Returns nil on refusal, timeout, or unavailability
+    /// — every caller treats those identically, which is the point.
+    static func rawChoice(instructions: String, prompt: String) async throws -> Int? {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let session = LanguageModelSession(instructions: instructions)
+            return try await withTimeout(budget) {
+                try await session.respond(to: prompt, generating: PlainChoice.self).content.choice
+            }
+        }
+        #endif
+        return nil
+    }
+
     /// Sendable carrier for the raced model call — `LanguageModelSession`'s
     /// own Response type isn't Sendable, so the fields cross the task-group
     /// boundary, not the response.
@@ -399,6 +426,13 @@ enum IssueComposer {
 struct ProposedTitle {
     @Guide(description: "A short issue title naming what the transcript is about, in the speaker's own words. Under 70 characters. No trailing period, no quotes, no commentary.")
     var text: String
+}
+
+@available(macOS 26.0, *)
+@Generable
+struct PlainChoice {
+    @Guide(description: "The number of the best option from the numbered list. Just the number, and 0 if none apply.")
+    var choice: Int
 }
 
 @available(macOS 26.0, *)
