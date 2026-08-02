@@ -319,6 +319,38 @@ final class LinearDescriptionTests: XCTestCase {
         XCTAssertFalse(LinearDescriptionBuilder.echoesDocumentTitle("some long pointed value", windowTitle: ""))
     }
 
+    /// The placeholder has to be findable, because the send path swaps it
+    /// for rendered markdown — a shape change here would silently append
+    /// images instead of replacing the line the preview showed.
+    func testScreenshotCountLineIsPresentAndMatchesThePlaceholderShape() {
+        let body = LinearDescriptionBuilder.build(
+            transcript: "the spacing here is off",
+            sourceLine: "Figma",
+            context: nil,
+            screenshotCount: 2
+        )
+        XCTAssertTrue(body.contains("- 2 screenshots attached"))
+        let placeholder = body
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .first { $0.hasPrefix("- ") && $0.hasSuffix("attached") }
+        XCTAssertNotNil(placeholder)
+    }
+
+    func testSingleScreenshotReadsSingular() {
+        let body = LinearDescriptionBuilder.build(
+            transcript: "the spacing here is off", sourceLine: "Figma",
+            context: nil, screenshotCount: 1
+        )
+        XCTAssertTrue(body.contains("- 1 screenshot attached"))
+    }
+
+    func testNoScreenshotsAddsNoLine() {
+        let body = LinearDescriptionBuilder.build(
+            transcript: "the spacing here is off", sourceLine: "Figma", context: nil
+        )
+        XCTAssertFalse(body.contains("attached"))
+    }
+
     func testNoContextProducesNoContextLines() {
         XCTAssertTrue(LinearDescriptionBuilder.contextLines(nil).isEmpty)
         XCTAssertTrue(LinearDescriptionBuilder.contextLines(CaptureContext(facts: [])).isEmpty)

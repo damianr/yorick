@@ -102,9 +102,22 @@ final class LinearSendController: ObservableObject {
     func send(capture: Capture, store: CaptureStore) {
         guard let draft, phase != .sending else { return }
         phase = .sending
+        // Screenshot bytes are read here, on the main actor, so the upload
+        // task doesn't reach back into the store.
+        let shots: [Data] = capture.screenshotFileNames.indices.compactMap { index in
+            try? Data(contentsOf: store.screenshotURL(for: capture, index: index))
+        }
         Task { [weak self] in
             do {
-                let issue = try await self?.client.createIssue(draft)
+                var outgoing = draft
+                if !shots.isEmpty, let self {
+                    // Uploaded only NOW, on the press — never at preview
+                    // time. The trust model is that nothing leaves until you
+                    // commit, and an image uploaded to show you a preview
+                    // would have already left.
+                    outgoing.description = try await self.attachScreenshots(shots, to: draft.description)
+                }
+                let issue = try await self?.client.createIssue(outgoing)
                 guard let self, let issue else { return }
                 self.phase = .sent(issue)
                 // Record the exit on the capture: the row shows the
@@ -117,6 +130,34 @@ final class LinearSendController: ObservableObject {
                 self?.phase = .failed(error.localizedDescription)
             }
         }
+    }
+
+    /// Upload the crops and swap the placeholder line for real images.
+    ///
+    /// A REPLACEMENT, not an addition: the previewed body already says "2
+    /// screenshots attached", and the sent body says the same thing in
+    /// markdown that renders. Nothing appears in the issue that the preview
+    /// didn't account for.
+    ///
+    /// An upload that fails does NOT fail the send. A ticket without its
+    /// screenshot is worth far more than no ticket at all, and the capture
+    /// keeps the image either way.
+    private func attachScreenshots(_ shots: [Data], to description: String) async -> String {
+        var markdown: [String] = []
+        for (index, data) in shots.enumerated() {
+            guard let url = try? await client.uploadFile(
+                data, filename: "yorick-screenshot-\(index + 1).jpg", contentType: "image/jpeg"
+            ) else { continue }
+            markdown.append("![screenshot \(index + 1)](\(url))")
+        }
+        guard !markdown.isEmpty else { return description }
+        let placeholder = description
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .first { $0.hasPrefix("- ") && $0.hasSuffix("attached") }
+            .map(String.init)
+        let block = "\n" + markdown.joined(separator: "\n")
+        guard let placeholder else { return description + block }
+        return description.replacingOccurrences(of: placeholder, with: placeholder + block)
     }
 
     // MARK: - Connection

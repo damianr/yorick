@@ -240,6 +240,67 @@ actor LinearClient {
         )
     }
 
+    /// Upload one file and return its `assetUrl`, ready to embed as markdown.
+    ///
+    /// Two steps by Linear's design: ask for a pre-signed URL, then PUT the
+    /// bytes straight to storage. Linear's own guide says the PUT "must be
+    /// executed on the server" — that is a BROWSER constraint (their CSP
+    /// blocks it from a page), and a native client doing an ordinary HTTPS
+    /// PUT is not a browser. Verified by the shape of the thing: the signed
+    /// URL carries its own auth in the returned headers.
+    func uploadFile(_ data: Data, filename: String, contentType: String) async throws -> String {
+        struct Response: Decodable, Sendable {
+            struct Payload: Decodable, Sendable {
+                struct UploadFile: Decodable, Sendable {
+                    struct Header: Decodable, Sendable {
+                        let key: String
+                        let value: String
+                    }
+                    let uploadUrl: String
+                    let assetUrl: String
+                    let headers: [Header]
+                }
+                let success: Bool
+                let uploadFile: UploadFile?
+            }
+            let fileUpload: Payload
+        }
+        let mutation = """
+            mutation YorickFileUpload($contentType: String!, $filename: String!, $size: Int!) {
+              fileUpload(contentType: $contentType, filename: $filename, size: $size) {
+                success
+                uploadFile { uploadUrl assetUrl headers { key value } }
+              }
+            }
+            """
+        let response = try await perform(
+            query: mutation,
+            variables: ["contentType": contentType, "filename": filename, "size": data.count],
+            decoding: Response.self
+        )
+        guard response.fileUpload.success, let upload = response.fileUpload.uploadFile,
+              let url = URL(string: upload.uploadUrl) else {
+            throw LinearClientError.api("Linear declined the upload")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        // The signed URL's own auth arrives here; without these the PUT is
+        // rejected by storage rather than by Linear.
+        for header in upload.headers {
+            request.setValue(header.value, forHTTPHeaderField: header.key)
+        }
+        request.timeoutInterval = 60
+
+        let (_, putResponse) = try await session.upload(for: request, from: data)
+        guard let http = putResponse as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let status = (putResponse as? HTTPURLResponse)?.statusCode ?? 0
+            throw LinearClientError.transport("upload failed (HTTP \(status))")
+        }
+        return upload.assetUrl
+    }
+
     /// Create the issue. Returns what the card needs to show that it landed.
     func createIssue(_ draft: LinearIssueDraft) async throws -> LinearCreatedIssue {
         struct Response: Decodable, Sendable {
