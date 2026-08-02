@@ -41,11 +41,13 @@ didn't mean to be in. It stays on the same expiry clock as everything else,
 and it goes nowhere until you send. With the integration off, none of it is
 read at all.
 
-The integration also puts a camera button on the recording pill: drag a
-region while you're talking and the crop rides along with the capture. That
-one needs Screen Recording, asked for the first time you use it and never
-otherwise — nothing else in Yorick takes a screenshot, and the permission
-is not part of setup.
+The integration also puts a camera button on the recording pill when you're
+NOT in a text field: drag a region while you're talking and the crop rides
+along with the capture. (In a field it's deliberately absent — clicking it
+would blur the field you're dictating into. Attach one from the capture's
+page instead.) That one needs Screen Recording, asked for the first time you
+use it and never otherwise — nothing else in Yorick takes a screenshot, and
+the permission is not part of setup.
 
 This repository is the proof of those claims. Read the source; run
 Little Snitch; we insist.

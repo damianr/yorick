@@ -145,10 +145,24 @@ final class SessionManager {
     /// shows the count so the feedback isn't just "the crosshair went away."
     private(set) var pendingScreenshotCount = 0
 
-    /// Whether the screenshot button belongs on the pill at all. Same gate as
-    /// every other piece of context: no integration, no screenshots.
+    /// Whether the screenshot button belongs on the pill at all.
+    ///
+    /// NOT while dictating into a field (field-reported): pressing it blurs
+    /// the field, and the routing decision re-corroborates at stop, so the
+    /// words end up saved instead of typed. The button was breaking the
+    /// primary function to offer a secondary one.
+    ///
+    /// Deliberately NOT the same rule as context collection, which stays on
+    /// for dictations. Collection is passive and invisible, so having it
+    /// always costs nothing; a button is an interaction, and an interaction
+    /// that corrupts what you're doing has no business on the dictation path.
+    /// The case this leaves — realising afterwards that you wanted a crop —
+    /// is served by attaching one from the capture's detail page, where there
+    /// is no field to lose and no recording to disturb.
     var canScreenshot: Bool {
-        LinearSettings.shared.collectsContext && state == .recording
+        LinearSettings.shared.collectsContext
+            && state == .recording
+            && captureMode == .contextual
     }
 
     /// Take a region screenshot without interrupting the recording.

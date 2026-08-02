@@ -369,7 +369,7 @@ struct SettingsView: View {
             settingsRow {
                 VStack(alignment: .leading, spacing: 3) {
                     rowLabel("Screenshots")
-                    caption("A camera button appears on the recording pill: drag a region while you're still talking and the crop rides along with the capture. Optional, and the only feature that needs Screen Recording — everything else works without it. Screenshots stay on your Mac until you send, and you can delete one from the capture first.")
+                    caption("A camera button appears on the recording pill when you're not in a text field: drag a region while you're still talking and the crop rides along. In a field it's left out on purpose, since clicking it would blur what you're dictating into — attach one from the capture's page afterwards instead. Optional, and the only feature that needs Screen Recording. Screenshots stay on your Mac until you send, and you can delete one first.")
                 }
                 Spacer(minLength: 16)
                 if screenRecordingGranted {

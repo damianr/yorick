@@ -18,6 +18,7 @@ struct CaptureDetailView: View {
     @ObservedObject private var send = LinearSendController.shared
     @Environment(SessionManager.self) private var session
     @State private var justCopied = false
+    @State private var attaching = false
 
     private var canOfferSend: Bool {
         linear.canSend && capture.linearIssue == nil && !capture.needsTranscription
@@ -40,7 +41,7 @@ struct CaptureDetailView: View {
                     if send.isReviewing(capture) {
                         LinearProposalView(capture: capture, controller: send, captureStore: captureStore)
                     }
-                    if !capture.screenshotFileNames.isEmpty {
+                    if LinearSettings.shared.collectsContext || !capture.screenshotFileNames.isEmpty {
                         screenshots
                     }
                     if let context = capture.context, !context.facts.isEmpty {
@@ -157,10 +158,30 @@ struct CaptureDetailView: View {
     /// the image itself — not a context menu you'd have to guess at.
     private var screenshots: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("SCREENSHOTS")
-                .font(Theme.mono(8.5, weight: .semibold))
-                .tracking(1.4)
-                .foregroundStyle(Theme.textTertiary)
+            HStack(spacing: 8) {
+                Text("SCREENSHOTS")
+                    .font(Theme.mono(8.5, weight: .semibold))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.textTertiary)
+                Spacer()
+                // The pill's button is gone for dictations because pressing it
+                // blurred the field. Here there is no field to lose, so the
+                // case it served — realising afterwards that a picture would
+                // have said it — is still covered.
+                Button(action: attachScreenshot) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(attaching ? "Framing…" : "Add")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.glow)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(attaching)
+                .help("Drag a region to attach it to this capture")
+            }
             ForEach(capture.screenshotFileNames.indices, id: \.self) { index in
                 if let image = captureStore.screenshotImage(for: capture, index: index) {
                     Image(nsImage: image)
@@ -222,6 +243,24 @@ struct CaptureDetailView: View {
             RoundedRectangle(cornerRadius: Theme.radiusLg)
                 .fill(Color.white.opacity(0.03))
         )
+    }
+
+    private func attachScreenshot() {
+        guard !attaching else { return }
+        attaching = true
+        Task { @MainActor in
+            defer { attaching = false }
+            do {
+                let data = try await ScreenCapture.selectRegion()
+                captureStore.addScreenshot(to: capture, data: data)
+            } catch ScreenCapture.Failure.cancelled {
+                // Escape is a decision.
+            } catch {
+                // The capture is untouched and the page still shows what it
+                // had; a banner here would be louder than the failure.
+                print("[Detail] Screenshot failed: \(error)")
+            }
+        }
     }
 
     private static func label(for fact: ContextFact) -> String {

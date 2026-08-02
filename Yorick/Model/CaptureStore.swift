@@ -264,6 +264,28 @@ final class CaptureStore {
         loadScreenshot(for: capture, index: index)
     }
 
+    /// Append a crop to a capture that already exists.
+    ///
+    /// The counterpart to taking one mid-recording, and the reason the pill's
+    /// button can be dropped for dictations without losing the case: realise
+    /// after the fact that a picture would have said it, and attach one from
+    /// the capture's own page.
+    @discardableResult
+    func addScreenshot(to capture: Capture, data: Data) -> Capture {
+        let dir = capturesDir.appendingPathComponent(capture.id.uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let index = capture.screenshotFileNames.count
+        let name = "screenshot-\(index).jpg"
+        // Write FIRST: a record naming a file that isn't there renders as a
+        // blank slot with no way back, where an unreferenced file is invisible.
+        try? data.write(to: dir.appendingPathComponent(name))
+
+        var updated = capture
+        updated.screenshotFileNames.append(name)
+        update(updated)
+        return updated
+    }
+
     /// Remove one crop, file and record together.
     ///
     /// Deletes from disk FIRST: a screenshot the user asked to remove but
