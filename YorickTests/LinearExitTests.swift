@@ -209,6 +209,60 @@ final class LinearDescriptionTests: XCTestCase {
         XCTAssertEqual(LinearDescriptionBuilder.contextLines(context), ["- Pointed at: Save (button)"])
     }
 
+    /// Chrome appends the profile name to every window title, so the source
+    /// line was publishing "- Google Chrome - damian" into every ticket while
+    /// also duplicating the Page line right under it.
+    func testSpokenInLineIsSuppressedWhenAPageURLIsPresent() {
+        let body = LinearDescriptionBuilder.build(
+            transcript: "these buttons could be more bone like",
+            sourceLine: "Yorick: you talk, it types. - Google Chrome - damian",
+            windowTitle: "Yorick: you talk, it types. - Google Chrome - damian",
+            context: CaptureContext(facts: [fact("pageURL", "https://heyyorick.com/")])
+        )
+        XCTAssertFalse(body.contains("Spoken in"))
+        XCTAssertFalse(body.contains("damian"))
+        XCTAssertTrue(body.contains("- Page: https://heyyorick.com/"))
+    }
+
+    /// Without a URL there's nothing else carrying identity, so it stays.
+    func testSpokenInLineSurvivesWithoutAPageURL() {
+        let body = LinearDescriptionBuilder.build(
+            transcript: "the export throws on an empty list",
+            sourceLine: "Xcode · CaptureStore.swift",
+            windowTitle: "CaptureStore.swift",
+            context: nil
+        )
+        XCTAssertTrue(body.contains("- Spoken in Xcode · CaptureStore.swift"))
+    }
+
+    /// The sweep catches the document on its way to the referent. A pointed
+    /// fact that just restates the page title reads as evidence and dilutes
+    /// the fact that is.
+    func testPointedElementEchoingTheTitleIsDropped() {
+        let title = "Yorick: you talk, it types. Free local dictation for macOS. - Google Chrome"
+        let context = CaptureContext(facts: [
+            ContextFact(kind: "pointedElement", value: "Yorick: you talk, it types. Free local dictation for macOS.",
+                        detail: "HTML content", phase: "timeline"),
+            ContextFact(kind: "pointedElement", value: "Download for macOS", detail: "link", phase: "timeline"),
+        ])
+        let lines = LinearDescriptionBuilder.contextLines(context, windowTitle: title)
+        XCTAssertEqual(lines, ["- Pointed at: Download for macOS (link)"])
+    }
+
+    /// A short label must not vanish just because its word appears in the
+    /// window title — that would delete the referent to remove noise.
+    func testShortPointedLabelSurvivesEvenIfTheTitleContainsIt() {
+        let context = CaptureContext(facts: [
+            ContextFact(kind: "pointedElement", value: "Save", detail: "button", phase: "timeline")
+        ])
+        let lines = LinearDescriptionBuilder.contextLines(context, windowTitle: "Save your work — Notes")
+        XCTAssertEqual(lines, ["- Pointed at: Save (button)"])
+    }
+
+    func testEchoDetectionIgnoresAnEmptyWindowTitle() {
+        XCTAssertFalse(LinearDescriptionBuilder.echoesDocumentTitle("some long pointed value", windowTitle: ""))
+    }
+
     func testNoContextProducesNoContextLines() {
         XCTAssertTrue(LinearDescriptionBuilder.contextLines(nil).isEmpty)
         XCTAssertTrue(LinearDescriptionBuilder.contextLines(CaptureContext(facts: [])).isEmpty)

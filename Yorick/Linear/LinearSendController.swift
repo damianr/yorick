@@ -13,6 +13,7 @@ extension IssueComposer.Input {
         self.init(
             transcript: capture.transcript,
             sourceLine: capture.sourceLine,
+            windowTitle: capture.windowTitle,
             context: capture.context
         )
     }

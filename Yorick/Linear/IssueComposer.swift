@@ -57,6 +57,7 @@ enum IssueComposer {
             description: LinearDescriptionBuilder.build(
                 transcript: input.transcript,
                 sourceLine: input.sourceLine,
+                windowTitle: input.windowTitle,
                 context: input.context
             ),
             teamID: teamID,
@@ -72,6 +73,9 @@ enum IssueComposer {
     struct Input: Sendable, Equatable {
         let transcript: String
         let sourceLine: String
+        /// Carried separately from `sourceLine` so the payload can tell when
+        /// a pointed element is just restating the document's own title.
+        var windowTitle: String = ""
         let context: CaptureContext?
     }
 
@@ -306,7 +310,7 @@ enum IssueComposer {
             .map { "\($0.offset + 1). \($0.element.label)" }
             .joined(separator: "\n")
         var lines = ["Note: \"\(input.transcript)\"", "", "Context:", "- Spoken in \(input.sourceLine)"]
-        lines.append(contentsOf: LinearDescriptionBuilder.contextLines(input.context))
+        lines.append(contentsOf: LinearDescriptionBuilder.contextLines(input.context, windowTitle: input.windowTitle))
         lines.append(contentsOf: ["", "Destinations:", menu])
         return lines.joined(separator: "\n")
     }

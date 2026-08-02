@@ -29,26 +29,51 @@ enum LinearDescriptionBuilder {
     static let framing = "Captured by voice. The quoted words are a verbatim transcript — "
         + "resolve any \"this\", \"here\", or \"these\" against the context below."
 
-    static func build(transcript: String, sourceLine: String, context: CaptureContext?) -> String {
+    static func build(
+        transcript: String,
+        sourceLine: String,
+        windowTitle: String = "",
+        context: CaptureContext?
+    ) -> String {
         let quoted = transcript
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { "> \($0)" }
             .joined(separator: "\n")
-        var sections = [framing, "", quoted, "", "**Context**", "", "- Spoken in \(sourceLine)"]
-        sections.append(contentsOf: contextLines(context))
+        var sections = [framing, "", quoted, "", "**Context**", ""]
+        // The "Spoken in" line is SUPPRESSED when a page URL is present.
+        //
+        // In a browser the source line is the raw window title, which both
+        // duplicates the Page line below it and drags along whatever the
+        // browser appends — Chrome ends its titles with the profile name, so
+        // every ticket was publishing "- Google Chrome - damian". The URL is
+        // the better identity and it's already on its own line.
+        if !hasPageURL(context) {
+            sections.append("- Spoken in \(sourceLine)")
+        }
+        sections.append(contentsOf: contextLines(context, windowTitle: windowTitle))
         return sections.joined(separator: "\n")
+    }
+
+    static func hasPageURL(_ context: CaptureContext?) -> Bool {
+        context?.facts.contains { $0.kind == "pageURL" && !$0.value.isEmpty } ?? false
     }
 
     /// Evidence with provenance, one bullet per fact — never a summary.
     /// Yorick states what accessibility reported and lets the reader resolve
     /// the reference; interpreting it here would be the thing the whole
     /// design is built to avoid.
-    static func contextLines(_ context: CaptureContext?) -> [String] {
+    static func contextLines(_ context: CaptureContext?, windowTitle: String = "") -> [String] {
         let facts = context?.facts ?? []
         guard !facts.isEmpty else { return [] }
         var lines: [String] = []
         var pointed: [String] = []
         for fact in facts {
+            // A pointed element that merely restates the page or window title
+            // is the sweep catching the document on its way somewhere, not a
+            // referent. It reads as evidence and dilutes the fact that is.
+            if fact.kind == "pointedElement", echoesDocumentTitle(fact.value, windowTitle: windowTitle) {
+                continue
+            }
             switch fact.kind {
             case "pageURL":
                 lines.append("- Page: \(fact.value)")
@@ -76,6 +101,18 @@ enum LinearDescriptionBuilder {
             lines.append(contentsOf: pointed.map { "  - \($0)" })
         }
         return lines
+    }
+
+    /// Whether a pointed value is really just the document's own title.
+    /// Substring in either direction, because the window title carries
+    /// browser furniture the pointed value doesn't, and vice versa. Short
+    /// values are exempt: a button reading "Save" shouldn't vanish because
+    /// the word appears in a window title.
+    static func echoesDocumentTitle(_ value: String, windowTitle: String) -> Bool {
+        let title = windowTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let candidate = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !title.isEmpty, candidate.count >= 12 else { return false }
+        return title.contains(candidate) || candidate.contains(title)
     }
 
     /// The deterministic title, used whenever the model is unavailable,
