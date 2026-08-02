@@ -9,8 +9,11 @@ struct MenuBarPanelView: View {
     unowned let controller: MenuBarPanelController
     @Environment(SessionManager.self) private var session
     @State private var pinned = false
-    /// The panel IS the app: settings live here as a page, not a window.
-    @State private var showingSettings = false
+    /// The panel IS the app: settings and a capture's detail are PAGES here,
+    /// not windows. The route is shared rather than view state so the HUD
+    /// card can navigate to a specific capture instead of opening the panel
+    /// onto whatever page it was left on.
+    @ObservedObject private var router = PanelRouter.shared
 
     private var shortcutLabel: String {
         KeyboardShortcuts.getShortcut(for: .toggleSession).map(String.init(describing:)) ?? "⌥Space"
@@ -19,22 +22,31 @@ struct MenuBarPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if showingSettings {
-                Rectangle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(height: 1)
-                    .padding(.horizontal, 14)
+            switch router.route {
+            case .settings:
+                divider
                 SettingsView(session: session)
-            } else {
+            case .detail(let id):
+                divider
+                if let capture = session.captureStore.captures.first(where: { $0.id == id }) {
+                    CaptureDetailView(capture: capture, captureStore: session.captureStore)
+                        .environment(session)
+                } else {
+                    // The capture aged out or was deleted elsewhere while its
+                    // page was open. Say so rather than showing an empty page.
+                    missingCapture
+                }
+            case .stream:
                 statusLine
-                Rectangle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(height: 1)
-                    .padding(.horizontal, 14)
+                divider
                 captureList
             }
         }
-        .frame(width: 420, height: 560)
+        // Wider and taller than the 420×560 glance panel it grew out of: a
+        // title field and two pickers need room to be a form rather than a
+        // squeeze. Still a panel, deliberately — a page is not a window, and
+        // time-to-empty is still the metric.
+        .frame(width: 480, height: 620)
         // The pill's glass recipe, pinned (PillGlass): same frost + black
         // 0.85 background, same bone rim 0.26→0.08 at 1pt — the panel and
         // the pills read as one material. Drop shadow stays the system
@@ -62,17 +74,54 @@ struct MenuBarPanelView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.08))
+            .frame(height: 1)
+            .padding(.horizontal, 14)
+    }
+
+    private var missingCapture: some View {
+        VStack(spacing: 8) {
+            Text("That capture is gone.")
+                .font(Theme.mono(12))
+                .foregroundStyle(Theme.textSecondary)
+            Button("Back to your saved items") { router.popToStream() }
+                .buttonStyle(.plain)
+                .font(Theme.mono(10.5))
+                .foregroundStyle(Theme.glow)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     // MARK: - Header
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image("SkullLogo")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 17, height: 17)
-            Text("yorick")
-                .font(Theme.mono(13, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
+            if router.isHome {
+                Image("SkullLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 17, height: 17)
+                Text("yorick")
+                    .font(Theme.mono(13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+            } else {
+                // One back affordance for both pages, so "back" means the
+                // same thing everywhere: return home.
+                Button { withAnimation(.easeOut(duration: 0.15)) { router.popToStream() } } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(router.route == .settings ? "Settings" : "Capture")
+                            .font(Theme.mono(12, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.textPrimary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Back to your saved items")
+            }
             Spacer()
             Button {
                 pinned.toggle()
@@ -89,19 +138,23 @@ struct MenuBarPanelView: View {
             // Settings is a PAGE of the panel, not a window — the gear
             // toggles between the stream and settings in place.
             Button {
-                withAnimation(.easeOut(duration: 0.15)) { showingSettings.toggle() }
+                withAnimation(.easeOut(duration: 0.15)) {
+                    router.route == .settings ? router.popToStream() : router.push(.settings)
+                }
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(showingSettings ? Theme.bone : Theme.textTertiary)
+                    .foregroundStyle(router.route == .settings ? Theme.bone : Theme.textTertiary)
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(showingSettings ? "Back to your saved items" : "Settings")
+            .help(router.route == .settings ? "Back to your saved items" : "Settings")
             Menu {
-                Button(showingSettings ? "Saved Items" : "Settings…") {
-                    withAnimation(.easeOut(duration: 0.15)) { showingSettings.toggle() }
+                Button(router.route == .settings ? "Saved Items" : "Settings…") {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        router.route == .settings ? router.popToStream() : router.push(.settings)
+                    }
                 }
                 Button("Check for Updates…") {
                     NotificationCenter.default.post(name: .checkForUpdates, object: nil)

@@ -51,6 +51,7 @@
 		98CD574C2C2BFAF1CDAB1651 /* AdminMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9508203F2C34F0897692D0F4 /* AdminMode.swift */; };
 		99C39C2E21CFCBBFB35DA6AB /* SplitDetectionEval.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8811A4C33B8D2066FC1F307 /* SplitDetectionEval.swift */; };
 		A49F05C46D03C30835F7F541 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */; };
+		A55B9840C68E70F0B925682A /* PanelRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65F11A2E7B2A02E59106FC0E /* PanelRouter.swift */; };
 		A7755969A349E0C736185CA5 /* AppIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6100D199344098CC50AB411D /* AppIdentifier.swift */; };
 		A8CD261A3FDF0619338D5566 /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D04D4D581F947FDD13AD5A /* Capture.swift */; };
 		A954C4E35F30860DA4CEE56B /* Telemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D88477D3D846F4B335099B /* Telemetry.swift */; };
@@ -84,6 +85,7 @@
 		F6E801CEF56950DB18603144 /* FocusClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC5D45E53DCBF0E30B307567 /* FocusClassifier.swift */; };
 		F8AFA223D571C4B51C59032A /* SpokenFormNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */; };
 		F8E173F6B8DB89FC15E4CB18 /* AudioDiagnosticsAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7B4957DCF515111706FAEC /* AudioDiagnosticsAnalyzer.swift */; };
+		F9F5EA23B8987684461AADE2 /* CaptureDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 262E06C83C6B5DAA03EB6F7F /* CaptureDetailView.swift */; };
 		FBBC63DD1A56828A26A19364 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49C618076D702087B0DDE731 /* NotificationManager.swift */; };
 /* End PBXBuildFile section */
 
@@ -97,6 +99,7 @@
 		1644B703BCDFB773ED233BB4 /* AppPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPaths.swift; sourceTree = "<group>"; };
 		1A281AE9455EFE0250E48405 /* OnboardingKeyboardMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingKeyboardMap.swift; sourceTree = "<group>"; };
 		232F5B10D1C9FAE986C7C864 /* TranscriptQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptQuality.swift; sourceTree = "<group>"; };
+		262E06C83C6B5DAA03EB6F7F /* CaptureDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDetailView.swift; sourceTree = "<group>"; };
 		27DF324A1A834C1AA6AA8344 /* LinearWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinearWorkspace.swift; sourceTree = "<group>"; };
 		2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneManager.swift; sourceTree = "<group>"; };
 		2DC34EBB54A844C9F08A9B1C /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
@@ -119,6 +122,7 @@
 		5E6A73B80A26C6E90C1289E6 /* Yorick.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yorick.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldProfilerTests.swift; sourceTree = "<group>"; };
 		6100D199344098CC50AB411D /* AppIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIdentifier.swift; sourceTree = "<group>"; };
+		65F11A2E7B2A02E59106FC0E /* PanelRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelRouter.swift; sourceTree = "<group>"; };
 		66D88477D3D846F4B335099B /* Telemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Telemetry.swift; sourceTree = "<group>"; };
 		6AF1CD392440FF27E1B5FD00 /* YorickTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YorickTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6D103354483E5EA671B0C228 /* AppleSpeechAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeechAnalyzer.swift; sourceTree = "<group>"; };
@@ -233,6 +237,7 @@
 			isa = PBXGroup;
 			children = (
 				FF0F174F400DAA6E1AA0200E /* CaptureCardBody.swift */,
+				262E06C83C6B5DAA03EB6F7F /* CaptureDetailView.swift */,
 				0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */,
 				E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */,
 				BABFC3F93B05ABDC8E13BD05 /* HotkeyEditorView.swift */,
@@ -243,6 +248,7 @@
 				B3521EDECA142221E50F66A1 /* MenuBarPanelView.swift */,
 				1A281AE9455EFE0250E48405 /* OnboardingKeyboardMap.swift */,
 				D28302C5A969B4E66966DBB8 /* OnboardingView.swift */,
+				65F11A2E7B2A02E59106FC0E /* PanelRouter.swift */,
 				7A47ABE579672A11EBF68F05 /* PreferencesView.swift */,
 				9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */,
 				BFDADD63A711A33CB1DAFC49 /* Theme.swift */,
@@ -477,6 +483,7 @@
 				A8CD261A3FDF0619338D5566 /* Capture.swift in Sources */,
 				341CCEF224DBB126D2ACE707 /* CaptureCardBody.swift in Sources */,
 				7C2BCF917315DD41058EF6C5 /* CaptureContext.swift in Sources */,
+				F9F5EA23B8987684461AADE2 /* CaptureDetailView.swift in Sources */,
 				672E6E5DA3E9F0B483635D80 /* CaptureListComponents.swift in Sources */,
 				4928039C83CF682048A4C20A /* CaptureStore.swift in Sources */,
 				25F2794237167E2B86E76872 /* ClipboardOutput.swift in Sources */,
@@ -507,6 +514,7 @@
 				FBBC63DD1A56828A26A19364 /* NotificationManager.swift in Sources */,
 				7F369EA3D7469110B47F9B41 /* OnboardingKeyboardMap.swift in Sources */,
 				A957EB88DFD7D005E9D45C79 /* OnboardingView.swift in Sources */,
+				A55B9840C68E70F0B925682A /* PanelRouter.swift in Sources */,
 				C98F3DCBAAC0162408A1B609 /* PasteboardLease.swift in Sources */,
 				511A03C41E6CD48D985D05F9 /* PreferencesView.swift in Sources */,
 				35E56C0FD55F736227AA6C86 /* SessionManager.swift in Sources */,

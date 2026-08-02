@@ -166,7 +166,7 @@ struct HUDContentView: View {
                     CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
                         session.lastSavedCapture = nil
                         LinearSendController.shared.beginReview(of: capture)
-                        NotificationCenter.default.post(name: .showMenuBarPanel, object: nil)
+                        PanelRouter.shared.openDetail(capture.id)
                     }
                 }
                 Spacer()
@@ -181,9 +181,11 @@ struct HUDContentView: View {
         .frame(maxWidth: 400)
         .contentShape(Rectangle())
         .onTapGesture {
-            // Click anywhere else on the card to open Yorick at the list.
+            // Click anywhere else on the card to open THIS capture. It used
+            // to open the panel and land on whatever page was last shown —
+            // field-reported as "clicking the card took me to Settings."
             session.lastSavedCapture = nil
-            NSApp.activate(ignoringOtherApps: true)
+            PanelRouter.shared.openDetail(capture.id)
         }
         .onHover { hovering in
             // Hover holds the card (the skull's pattern); leaving restarts a

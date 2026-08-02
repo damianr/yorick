@@ -31,23 +31,8 @@ struct CaptureRow: View {
     let timeLabel: String
 
     @Environment(SessionManager.self) private var session
-    @ObservedObject private var linear = LinearSettings.shared
-    @ObservedObject private var send = LinearSendController.shared
     @State private var isHovered = false
     @State private var justCopied = false
-
-    /// Send is offered on EVERY capture, dictations included (2026-08-01).
-    ///
-    /// The earlier rule — dictations already landed, so don't offer to file
-    /// them — assumed the routing decision was right. It usually is, but the
-    /// case that matters is the one where it wasn't: you spoke at a field you
-    /// didn't know was focused, the words went somewhere useless, and the
-    /// list is the recovery. Recovery should include every exit, not just
-    /// Copy. Once sent, the row shows the identifier instead of the button —
-    /// an exit is a one-way door, and re-sending would create duplicates.
-    private var canOfferSend: Bool {
-        linear.canSend && capture.linearIssue == nil && !capture.needsTranscription
-    }
 
     /// Raw words as spoken — the stream shows what you said, not a rendering.
     private var displayText: String {
@@ -69,54 +54,31 @@ struct CaptureRow: View {
             }
 
             if capture.needsTranscription {
-                Button(action: { session.retryTranscription(capture.id) }) {
-                    Text("Transcription failed — click to retry. The recording is safe.")
-                        .font(Theme.mono(11))
-                        .foregroundStyle(Theme.accentAmber)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                Text("Transcription failed — open to retry. The recording is safe.")
+                    .font(Theme.mono(11))
+                    .foregroundStyle(Theme.accentAmber)
+                    .lineLimit(2)
             } else {
-                // Same presentation as the HUD card (CaptureCardBody).
-                CaptureCardBody(
-                    transcript: displayText,
-                    transcriptLineLimit: nil,
-                    onTranscriptTap: { copyRow() }
-                )
-                // The card's actions, as the card shows them — buttons, not
-                // hover-revealed text links. Delete stays in the context
-                // menu; there's no Dismiss here because the list IS where
-                // dismissed cards live.
-                HStack(spacing: 8) {
-                    CardActionButton(icon: "doc.on.doc", label: "Copy") { copyRow() }
-                    if canOfferSend, !send.isReviewing(capture) {
-                        CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
-                            send.beginReview(of: capture)
-                        }
-                    }
-                    if let issue = capture.linearIssue {
-                        Button(action: {
-                            if let url = URL(string: issue.url) { NSWorkspace.shared.open(url) }
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 8.5))
-                                Text(issue.identifier)
-                                    .font(Theme.mono(10, weight: .semibold))
-                            }
-                            .foregroundStyle(Theme.success)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer()
-                }
-                .padding(.top, 2)
+                // The list is a SCAN: what you said, clamped. Everything you
+                // might do with it lives one tap down, where there's room.
+                // Selectable text is gone from the row on purpose — it
+                // swallowed the click that now opens the capture.
+                Text(displayText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
-                if send.isReviewing(capture) {
-                    LinearProposalView(capture: capture, controller: send, captureStore: captureStore)
-                        .padding(.top, 4)
+            if let issue = capture.linearIssue {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 8))
+                    Text(issue.identifier)
+                        .font(Theme.mono(9, weight: .semibold))
                 }
+                .foregroundStyle(Theme.success)
             }
         }
         .padding(.horizontal, 12)
@@ -131,14 +93,15 @@ struct CaptureRow: View {
                       : (isHovered ? Theme.bgHover : Color.white.opacity(0.03)))
         )
         .contentShape(Rectangle())
-        // Click-to-copy is suspended while the proposal is open: a stray
-        // click on the form's background must not silently copy the row out
-        // from under someone who is editing a title.
-        .onTapGesture { if !send.isReviewing(capture) { copyRow() } }
+        // A click OPENS the capture now; Copy moved down to the detail page
+        // and stays here on the context menu, where a one-second action is
+        // still one gesture away.
+        .onTapGesture { PanelRouter.shared.push(.detail(capture.id)) }
         .contextMenu {
             if !capture.needsTranscription {
                 Button("Copy") { copyRow() }
             }
+            Button("Open") { PanelRouter.shared.push(.detail(capture.id)) }
             Button("Delete", role: .destructive) { captureStore.delete(capture) }
         }
         .onHover { isHovered = $0 }
@@ -146,7 +109,7 @@ struct CaptureRow: View {
         .animation(.easeOut(duration: 0.15), value: justCopied)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(capture.kind == .dictation ? "Typed" : "Saved"): \(capture.transcriptPreview)")
-        .accessibilityHint("Click to copy")
+        .accessibilityHint("Click to open")
     }
 
     // MARK: - Indicator (where did this land?)

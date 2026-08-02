@@ -19,7 +19,7 @@ final class MenuBarPanelController {
     /// hold-open on request.
     private(set) var isPinned = false
 
-    private static let panelSize = NSSize(width: 420, height: 560)
+    private static let panelSize = NSSize(width: 480, height: 620)
 
     private var showObserver: NSObjectProtocol?
 
