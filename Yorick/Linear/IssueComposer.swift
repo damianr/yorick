@@ -51,7 +51,7 @@ enum IssueComposer {
     /// default team, no project. This is what the card shows the instant it
     /// opens, and what gets sent if the model is unavailable, slow, refuses,
     /// or fails a guard.
-    static func deterministicDraft(_ input: Input, teamID: String) -> LinearIssueDraft {
+    static func deterministicDraft(_ input: Input, teamID: String, workspaceID: String = "") -> LinearIssueDraft {
         LinearIssueDraft(
             title: TitleComposer.deterministicTitle(input, screenshotText: input.screenshotText),
             description: LinearDescriptionBuilder.build(
@@ -61,6 +61,7 @@ enum IssueComposer {
                 context: input.context,
                 screenshotCount: input.screenshotCount
             ),
+            workspaceID: workspaceID,
             teamID: teamID,
             projectID: nil
         )
@@ -91,10 +92,10 @@ enum IssueComposer {
     /// result without checking anything.
     static func compose(
         _ input: Input,
-        workspace: LinearWorkspace,
+        workspaces: LinearWorkspaces,
         base: LinearIssueDraft
     ) async -> LinearIssueDraft {
-        await composeDetailed(input, workspace: workspace, base: base).draft
+        await composeDetailed(input, workspaces: workspaces, base: base).draft
     }
 
     /// Same pass, with the route's reasoning exposed. The eval reads this so
@@ -102,7 +103,7 @@ enum IssueComposer {
     /// product uses `compose` and never sees the number.
     static func composeDetailed(
         _ input: Input,
-        workspace: LinearWorkspace,
+        workspaces: LinearWorkspaces,
         base: LinearIssueDraft
     ) async -> (draft: LinearIssueDraft, route: Route?, usedModelTitle: Bool) {
         guard isAvailable, wordCount(input.transcript) >= minimumWords else {
@@ -119,7 +120,11 @@ enum IssueComposer {
         // TitleStrategyEval. The model keeps the one job it measurably wins:
         // routing.
         draft.title = TitleComposer.deterministicTitle(input, screenshotText: input.screenshotText)
-        let resolved = await proposeRoute(input, workspace: workspace, fallbackTeamID: base.teamID)
+        let resolved = await proposeRoute(
+            input, workspaces: workspaces,
+            fallbackTeamID: base.teamID, fallbackWorkspaceID: base.workspaceID
+        )
+        draft.workspaceID = resolved.workspaceID
         draft.teamID = resolved.teamID
         draft.projectID = resolved.projectID
         return (draft, resolved, false)
@@ -260,6 +265,9 @@ enum IssueComposer {
     // MARK: - Route
 
     struct Route: Sendable, Equatable {
+        /// Which connection creates the issue. Implied by the team, never
+        /// chosen separately — a team belongs to exactly one workspace.
+        var workspaceID: String = ""
         var teamID: String
         var projectID: String?
         /// 1–5 as the model reported it, nil when the model never ran or
@@ -304,26 +312,31 @@ enum IssueComposer {
 
     static func proposeRoute(
         _ input: Input,
-        workspace: LinearWorkspace,
+        workspaces: LinearWorkspaces,
         fallbackTeamID: String,
+        fallbackWorkspaceID: String = "",
         strategy: RoutingStrategy? = nil
     ) async -> Route {
-        let fallback = Route(teamID: fallbackTeamID, projectID: nil)
+        let fallback = Route(workspaceID: fallbackWorkspaceID, teamID: fallbackTeamID, projectID: nil)
         // Nothing to choose between — don't spend a model call to confirm the
         // only option.
-        guard workspace.teams.count > 1 || !workspace.projects.isEmpty else { return fallback }
+        guard workspaces.teams.count > 1 || workspaces.all.contains(where: { !$0.projects.isEmpty }) else {
+            return fallback
+        }
 
-        // Deterministic first. A project that names the domain you were on
-        // has told you what it is for; asking a model to notice that is
-        // asking it to do string matching badly.
-        let hits = ProjectMatcher.matches(input, workspace: workspace)
+        // Deterministic first, ACROSS every connected workspace. This is
+        // where matching earns most: a work domain and a personal domain are
+        // unambiguous signals, and they are exactly what distinguishes two
+        // workspaces that may otherwise have identically-named teams.
+        let hits = ProjectMatcher.matches(input, workspaces: workspaces)
         if hits.count == 1, ProjectMatcher.isDecisive(hits[0]) {
-            return Route(teamID: hits[0].teamID, projectID: hits[0].projectID, confidence: nil)
+            return Route(workspaceID: hits[0].workspaceID, teamID: hits[0].teamID,
+                         projectID: hits[0].projectID, confidence: nil)
         }
 
         if (strategy ?? routingStrategy) == .twoStage {
             return await twoStageRoute(
-                input, workspace: workspace, fallback: fallback, shortlist: hits
+                input, workspaces: workspaces, fallback: fallback, shortlist: hits
             )
         }
 
@@ -333,8 +346,8 @@ enum IssueComposer {
             // the SHORTLIST rather than the whole workspace — a smaller menu
             // is a decision it makes better, and it cannot escape the list.
             let options = hits.count > 1
-                ? routeOptions(workspace: workspace, limitedTo: hits.map(\.projectID))
-                : routeOptions(workspace: workspace)
+                ? routeOptions(workspaces: workspaces, limitedTo: hits.map(\.projectID))
+                : routeOptions(workspaces: workspaces)
             guard !options.isEmpty else { return fallback }
             let prompt = routePrompt(input, options: options)
             do {
@@ -347,10 +360,12 @@ enum IssueComposer {
                 // never gets to name a destination that doesn't exist.
                 guard let answer, answer.choice >= 1, answer.choice <= options.count else { return fallback }
                 let picked = options[answer.choice - 1]
+                _ = picked
                 // Low confidence keeps the TEAM and drops the project. Team
                 // is the coarser call and survives a shaky read; the project
                 // is the one that files a note somewhere you'll never look.
-                return Route(teamID: picked.teamID, projectID: picked.projectID, confidence: answer.confidence)
+                return Route(workspaceID: picked.workspaceID, teamID: picked.teamID,
+                             projectID: picked.projectID, confidence: answer.confidence)
             } catch {
                 return fallback
             }
@@ -379,6 +394,7 @@ enum IssueComposer {
         """
 
     struct RouteOption: Sendable, Equatable {
+        let workspaceID: String
         let teamID: String
         let projectID: String?
         let label: String
@@ -387,14 +403,24 @@ enum IssueComposer {
     /// The numbered menu. Every team appears alone (the "no project" answer
     /// must always be available), then each project under its teams.
     static func routeOptions(
-        workspace: LinearWorkspace,
+        workspaces: LinearWorkspaces,
         limitedTo projectIDs: [String]? = nil
     ) -> [RouteOption] {
         var options: [RouteOption] = []
-        for team in workspace.teams {
-            options.append(RouteOption(teamID: team.id, projectID: nil, label: "\(team.name) — no specific project"))
+        // Team names are qualified by workspace only when more than one is
+        // connected: two workspaces routinely both have an "Engineering",
+        // and one workspace never does.
+        let qualify = workspaces.needsWorkspaceQualifier
+        for ref in workspaces.teams {
+            options.append(RouteOption(
+                workspaceID: ref.workspaceID, teamID: ref.team.id, projectID: nil,
+                label: "\(ref.label(qualified: qualify)) — no specific project"
+            ))
         }
-        for project in workspace.projects {
+        for workspace in workspaces.all {
+            let workspaceID = workspace.organizationID ?? ""
+            let workspaceName = workspace.organizationName ?? "Linear"
+            for project in workspace.projects {
             if let projectIDs, !projectIDs.contains(project.id) { continue }
             for teamID in project.teamIDs {
                 guard let team = workspace.team(id: teamID) else { continue }
@@ -402,11 +428,14 @@ enum IssueComposer {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .replacingOccurrences(of: "\n", with: " ")
                 let detail = summary.map { ": \(LinearDescriptionBuilder.truncate($0, to: 140))" } ?? ""
+                let prefix = qualify ? "\(workspaceName) › \(team.name)" : team.name
                 options.append(RouteOption(
+                    workspaceID: workspaceID,
                     teamID: teamID,
                     projectID: project.id,
-                    label: "\(team.name) › \(project.name)\(detail)"
+                    label: "\(prefix) › \(project.name)\(detail)"
                 ))
+            }
             }
         }
         // A menu longer than this stops being a choice and starts being a
@@ -448,44 +477,48 @@ enum IssueComposer {
     /// the shape this model measurably handles best.
     private static func twoStageRoute(
         _ input: Input,
-        workspace: LinearWorkspace,
+        workspaces: LinearWorkspaces,
         fallback: Route,
         shortlist: [ProjectMatcher.Match]
     ) async -> Route {
         // Teams are listed WITH their projects: a team called "Products"
         // says nothing on its own, and the projects under it are what the
         // note can actually be matched against.
-        let teams = workspace.teams
+        let teams = workspaces.teams
         guard !teams.isEmpty else { return fallback }
+        let qualify = workspaces.needsWorkspaceQualifier
 
-        var teamID = teams[0].id
+        var chosen = teams[0]
         if teams.count > 1 {
-            let labels = teams.map { team -> String in
-                let owned = workspace.projects(forTeam: team.id).map(\.name).prefix(8)
-                return owned.isEmpty ? team.name : "\(team.name) — \(owned.joined(separator: ", "))"
+            let labels = teams.map { ref -> String in
+                let owned = workspaces.projects(forTeam: ref.team.id).map(\.name).prefix(8)
+                let name = ref.label(qualified: qualify)
+                return owned.isEmpty ? name : "\(name) — \(owned.joined(separator: ", "))"
             }
             let prompt = contextBlock(input) + "\n\nTeams:\n" + numbered(labels)
             if let choice = try? await rawChoice(instructions: teamInstructions, prompt: prompt),
                choice >= 1, choice <= teams.count {
-                teamID = teams[choice - 1].id
-            } else {
-                teamID = fallback.teamID
+                chosen = teams[choice - 1]
+            } else if let fallbackRef = workspaces.team(id: fallback.teamID) {
+                chosen = fallbackRef
             }
         }
+        let teamID = chosen.team.id
+        let workspaceID = chosen.workspaceID
 
         // A shortlisted project inside the chosen team settles it without a
         // second call.
         if let hit = shortlist.first(where: { $0.teamID == teamID }) {
-            return Route(teamID: teamID, projectID: hit.projectID, confidence: nil)
+            return Route(workspaceID: workspaceID, teamID: teamID, projectID: hit.projectID, confidence: nil)
         }
 
-        var projects = workspace.projects(forTeam: teamID)
+        var projects = workspaces.projects(forTeam: teamID)
         if !shortlist.isEmpty {
             let allowed = Set(shortlist.map(\.projectID))
             let narrowed = projects.filter { allowed.contains($0.id) }
             if !narrowed.isEmpty { projects = narrowed }
         }
-        guard !projects.isEmpty else { return Route(teamID: teamID, projectID: nil) }
+        guard !projects.isEmpty else { return Route(workspaceID: workspaceID, teamID: teamID, projectID: nil) }
 
         let labels = ["No specific project"] + projects.map { project -> String in
             let summary = project.summary?
@@ -498,9 +531,9 @@ enum IssueComposer {
         guard let choice = try? await rawChoice(instructions: projectInstructions, prompt: prompt),
               choice >= 2, choice <= labels.count else {
             // 1 is "no specific project", and so is anything unreadable.
-            return Route(teamID: teamID, projectID: nil)
+            return Route(workspaceID: workspaceID, teamID: teamID, projectID: nil)
         }
-        return Route(teamID: teamID, projectID: projects[choice - 2].id)
+        return Route(workspaceID: workspaceID, teamID: teamID, projectID: projects[choice - 2].id)
     }
 
     private static func contextBlock(_ input: Input) -> String {

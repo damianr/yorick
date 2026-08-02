@@ -38,7 +38,7 @@ final class LinearSettings: ObservableObject {
         didSet { UserDefaults.standard.set(composeWithModel, forKey: Keys.composeWithModel) }
     }
 
-    @Published var workspace: LinearWorkspace
+    @Published var workspaces: LinearWorkspaces
     @Published var isConnected: Bool
 
     private init() {
@@ -46,7 +46,7 @@ final class LinearSettings: ObservableObject {
         self.isEnabled = defaults.bool(forKey: Keys.enabled)
         self.defaultTeamID = defaults.string(forKey: Keys.defaultTeamID)
         self.composeWithModel = defaults.object(forKey: Keys.composeWithModel) as? Bool ?? true
-        self.workspace = LinearWorkspaceCache.load() ?? .empty
+        self.workspaces = LinearWorkspaceCache.load()
         // Existence, not the secret. This initializer runs on the path that
         // the dictation hotkey touches (`collectsContext`), and reading the
         // token here is what let a modal keychain dialog appear at launch.
@@ -59,15 +59,27 @@ final class LinearSettings: ObservableObject {
     var collectsContext: Bool { isEnabled && isConnected }
 
     /// True when a capture can actually be sent right now.
-    var canSend: Bool { collectsContext && !workspace.teams.isEmpty }
+    var canSend: Bool { collectsContext && !workspaces.teams.isEmpty }
 
     func adopt(workspace: LinearWorkspace) {
-        self.workspace = workspace
-        LinearWorkspaceCache.save(workspace)
-        // First connection picks a default so the first send needs no setup.
-        if defaultTeamID == nil || workspace.team(id: defaultTeamID) == nil {
-            defaultTeamID = workspace.teams.first?.id
+        workspaces.adopt(workspace)
+        LinearWorkspaceCache.save(workspaces)
+        // The first connection picks a default so the first send needs no
+        // setup; later ones leave an existing default alone, because adding a
+        // second workspace should never silently redirect the first.
+        if defaultTeamID == nil || workspaces.team(id: defaultTeamID) == nil {
+            defaultTeamID = workspaces.teams.first?.id
         }
+    }
+
+    /// Forget one connection. The default team follows if it lived there.
+    func remove(workspaceID: String) {
+        workspaces.remove(workspaceID: workspaceID)
+        LinearWorkspaceCache.save(workspaces)
+        if workspaces.team(id: defaultTeamID) == nil {
+            defaultTeamID = workspaces.teams.first?.id
+        }
+        if workspaces.teams.isEmpty { isConnected = false }
     }
 
     func markConnected() {
@@ -77,7 +89,7 @@ final class LinearSettings: ObservableObject {
 
     func markDisconnected() {
         isConnected = false
-        workspace = .empty
+        workspaces = .empty
         defaultTeamID = nil
         LinearWorkspaceCache.clear()
     }

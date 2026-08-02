@@ -12,11 +12,11 @@ import Foundation
 actor LinearClient {
     static let endpoint = URL(string: "https://api.linear.app/graphql")!
 
-    private var tokens: LinearKeychain.Tokens?
-    /// The token is read on FIRST USE, not at init. This client is
-    /// constructed when the app builds its UI, and reading the secret there
-    /// is what put a modal keychain dialog in front of a user who had merely
-    /// launched the app.
+    /// Every connection, read on FIRST USE rather than at init. This client
+    /// is constructed when the app builds its UI, and reading the secret
+    /// there is what put a modal Keychain dialog in front of a user who had
+    /// merely launched the app.
+    private var tokens: [String: LinearKeychain.Tokens] = [:]
     private var didLoadTokens = false
     private let clientID: String?
     private let session: URLSession
@@ -31,15 +31,21 @@ actor LinearClient {
         self.session = session
     }
 
-    /// Reading the secret can raise the system keychain dialog when the
-    /// item's ACL doesn't trust this binary, so it happens only here — inside
-    /// a request the user explicitly asked for.
-    private func currentTokens() -> LinearKeychain.Tokens? {
+    /// Reading a secret can raise the system Keychain dialog, so it happens
+    /// only here — inside a request the user explicitly asked for.
+    ///
+    /// `migrateInto` folds a pre-multi-workspace connection into the keyed
+    /// store on the first request that needs it. The organization id has to
+    /// come from the caller, because the legacy item never recorded one.
+    private func currentTokens(for workspaceID: String, migrateInto legacy: String? = nil) -> LinearKeychain.Tokens? {
         if !didLoadTokens {
-            tokens = LinearKeychain.load()
+            tokens = LinearKeychain.loadAll()
+            if tokens.isEmpty, let legacy, let migrated = LinearKeychain.migrateLegacy(into: legacy) {
+                tokens = [legacy: migrated]
+            }
             didLoadTokens = true
         }
-        return tokens
+        return tokens[workspaceID]
     }
 
     var isConnected: Bool { LinearKeychain.hasStoredTokens() }
@@ -48,7 +54,8 @@ actor LinearClient {
 
     /// The full PKCE dance: open the browser, catch the loopback redirect,
     /// exchange the code. Returns once tokens are in the Keychain.
-    func connect(openURL: @Sendable @escaping (URL) -> Void) async throws {
+    @discardableResult
+    func connect(openURL: @Sendable @escaping (URL) -> Void) async throws -> LinearWorkspace {
         guard let clientID, !clientID.isEmpty else { throw LinearOAuthError.notConfigured }
         let pkce = PKCEChallenge()
         let listener = LinearCallbackListener()
@@ -72,10 +79,19 @@ actor LinearClient {
         }
         let code = try LinearOAuth.authorizationCode(from: path, expectedState: pkce.state)
         let body = LinearOAuth.tokenRequestBody(clientID: clientID, code: code, verifier: pkce.verifier)
-        let tokens = try await exchange(body: body, url: LinearOAuth.tokenURL)
-        try LinearKeychain.save(tokens)
-        self.tokens = tokens
-        self.didLoadTokens = true
+        let exchanged = try await exchange(body: body, url: LinearOAuth.tokenURL)
+        // The workspace this token belongs to isn't known until we ask, and
+        // the answer is what the token is FILED under — so the identity call
+        // happens before anything is persisted.
+        let workspace = try await fetchWorkspace(using: exchanged)
+        guard let workspaceID = workspace.organizationID else {
+            throw LinearClientError.api("Linear didn't say which workspace this is")
+        }
+        try LinearKeychain.save(exchanged, workspaceID: workspaceID)
+        if !didLoadTokens { tokens = LinearKeychain.loadAll() }
+        tokens[workspaceID] = exchanged
+        didLoadTokens = true
+        return workspace
     }
 
     /// Abandon a connect in flight. Safe to call when none is running.
@@ -83,18 +99,27 @@ actor LinearClient {
         await activeListener?.stop()
     }
 
-    /// Disconnect. Revocation is best-effort — the local token is cleared
-    /// either way, because a user who pressed Disconnect must end up
-    /// disconnected regardless of whether Linear's endpoint answered.
-    func disconnect() async {
-        if let token = currentTokens()?.accessToken {
+    /// Disconnect ONE workspace. Revocation is best-effort — the local token
+    /// is cleared either way, because a user who pressed Disconnect must end
+    /// up disconnected regardless of whether Linear's endpoint answered.
+    func disconnect(workspaceID: String) async {
+        if let token = currentTokens(for: workspaceID)?.accessToken {
             var request = URLRequest(url: LinearOAuth.revokeURL)
             request.httpMethod = "POST"
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             _ = try? await session.data(for: request)
         }
+        LinearKeychain.remove(workspaceID: workspaceID)
+        tokens.removeValue(forKey: workspaceID)
+        didLoadTokens = true
+    }
+
+    func disconnectAll() async {
+        for id in (didLoadTokens ? tokens : LinearKeychain.loadAll()).keys {
+            await disconnect(workspaceID: id)
+        }
         LinearKeychain.clear()
-        tokens = nil
+        tokens = [:]
         didLoadTokens = true
     }
 
@@ -127,8 +152,10 @@ actor LinearClient {
     /// Refresh if the stored token has expired and we have the means to.
     /// Without a refresh token the only honest outcome is to make the user
     /// reconnect, so say that rather than failing the request opaquely.
-    private func validAccessToken() async throws -> String {
-        guard let current = currentTokens() else { throw LinearClientError.notConnected }
+    private func validAccessToken(for workspaceID: String, migrateInto legacy: String? = nil) async throws -> String {
+        guard let current = currentTokens(for: workspaceID, migrateInto: legacy) else {
+            throw LinearClientError.notConnected
+        }
         guard current.isExpired else { return current.accessToken }
         guard let refreshToken = current.refreshToken, let clientID else {
             throw LinearClientError.reconnectRequired
@@ -139,9 +166,8 @@ actor LinearClient {
         // connection doesn't silently become single-use.
         var merged = refreshed
         if merged.refreshToken == nil { merged.refreshToken = refreshToken }
-        try LinearKeychain.save(merged)
-        tokens = merged
-        didLoadTokens = true
+        try LinearKeychain.save(merged, workspaceID: workspaceID)
+        tokens[workspaceID] = merged
         return merged.accessToken
     }
 
@@ -150,9 +176,19 @@ actor LinearClient {
     private func perform<T: Decodable & Sendable>(
         query: String,
         variables: [String: any Sendable] = [:],
-        decoding: T.Type
+        decoding: T.Type,
+        workspaceID: String,
+        rawToken: String? = nil
     ) async throws -> T {
-        let token = try await validAccessToken()
+        // rawToken is the just-exchanged one, used for the identity call that
+        // discovers which workspace it belongs to — before it has a key to
+        // be stored under.
+        let token: String
+        if let rawToken {
+            token = rawToken
+        } else {
+            token = try await validAccessToken(for: workspaceID, migrateInto: workspaceID)
+        }
         var request = URLRequest(url: Self.endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -183,7 +219,17 @@ actor LinearClient {
     /// The answer key for the composer: the teams and projects that actually
     /// exist in this workspace. Archived projects are excluded — routing a
     /// new capture into a finished project is never right.
-    func fetchWorkspace() async throws -> LinearWorkspace {
+    func fetchWorkspace(workspaceID: String) async throws -> LinearWorkspace {
+        try await fetchWorkspace(workspaceID: workspaceID, rawToken: nil)
+    }
+
+    /// Identity call for a token that has just been exchanged and does not
+    /// yet have a workspace to be filed under.
+    private func fetchWorkspace(using tokens: LinearKeychain.Tokens) async throws -> LinearWorkspace {
+        try await fetchWorkspace(workspaceID: "", rawToken: tokens.accessToken)
+    }
+
+    private func fetchWorkspace(workspaceID: String, rawToken: String?) async throws -> LinearWorkspace {
         struct Response: Decodable, Sendable {
             struct Teams: Decodable, Sendable { let nodes: [LinearTeam] }
             struct Projects: Decodable, Sendable { let nodes: [ProjectNode] }
@@ -218,7 +264,10 @@ actor LinearClient {
               }
             }
             """
-        let response = try await perform(query: query, decoding: Response.self)
+        let response = try await perform(
+            query: query, decoding: Response.self,
+            workspaceID: workspaceID, rawToken: rawToken
+        )
         // Routing a new capture into a finished project is never right.
         let closed: Set<String> = ["completed", "canceled", "cancelled"]
         let projects = response.projects.nodes
@@ -248,7 +297,7 @@ actor LinearClient {
     /// blocks it from a page), and a native client doing an ordinary HTTPS
     /// PUT is not a browser. Verified by the shape of the thing: the signed
     /// URL carries its own auth in the returned headers.
-    func uploadFile(_ data: Data, filename: String, contentType: String) async throws -> String {
+    func uploadFile(_ data: Data, filename: String, contentType: String, workspaceID: String) async throws -> String {
         struct Response: Decodable, Sendable {
             struct Payload: Decodable, Sendable {
                 struct UploadFile: Decodable, Sendable {
@@ -276,7 +325,8 @@ actor LinearClient {
         let response = try await perform(
             query: mutation,
             variables: ["contentType": contentType, "filename": filename, "size": data.count],
-            decoding: Response.self
+            decoding: Response.self,
+            workspaceID: workspaceID
         )
         guard response.fileUpload.success, let upload = response.fileUpload.uploadFile,
               let url = URL(string: upload.uploadUrl) else {
@@ -325,7 +375,10 @@ actor LinearClient {
               }
             }
             """
-        let response = try await perform(query: mutation, variables: ["input": input], decoding: Response.self)
+        let response = try await perform(
+            query: mutation, variables: ["input": input],
+            decoding: Response.self, workspaceID: draft.workspaceID
+        )
         guard response.issueCreate.success, let issue = response.issueCreate.issue else {
             throw LinearClientError.api("Linear declined to create the issue")
         }

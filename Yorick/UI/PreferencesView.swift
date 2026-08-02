@@ -270,31 +270,27 @@ struct SettingsView: View {
         settingsRow {
             VStack(alignment: .leading, spacing: 3) {
                 rowLabel(linear.isConnected
-                    ? "Connected to \(linear.workspace.organizationName ?? "Linear")"
+                    ? (linear.workspaces.all.count > 1
+                       ? "Connected to \(linear.workspaces.all.count) Linear workspaces"
+                       : "Connected to \(linear.workspaces.all.first?.organizationName ?? "Linear")")
                     : "Send captures to Linear")
                 caption(linear.isConnected
-                    ? "Saved captures get a Send button. You see the issue — title, team, project, and every line of context — before anything is sent, and nothing is sent until you press Create issue. A Linear connection covers one workspace; connecting again switches to that one."
+                    ? "Saved captures get a Send button. You see the issue — title, team, project, and every line of context — before anything is sent, and nothing is sent until you press Create issue. Each connection covers one workspace; add as many as you like and pick the team on every send."
                     : "Off by default. Connecting lets you turn a saved capture into a Linear issue, and does two things Yorick otherwise never does: saved captures start recording what was on screen around them — what was selected, the page open, what you pointed at — and pressing Send transmits that capture to Linear. Both are shown to you in full before anything is sent, and neither happens while this is off.")
             }
             Spacer(minLength: 16)
             if linear.isConnected {
-                VStack(alignment: .trailing, spacing: 6) {
-                    pillButton("Disconnect") {
-                        Task { await sendController.disconnect() }
-                    }
-                    // Switching is a real action people will want (multiple
-                    // workspaces are common), so it gets a button rather than
-                    // being an undocumented side effect of pressing Connect
-                    // again — which is what it used to be.
-                    if connecting {
-                        pillButton("Cancel") { sendController.cancelConnect() }
-                    } else {
-                        pillButton("Switch workspace") {
-                            connecting = true
-                            Task {
-                                await sendController.connect()
-                                connecting = false
-                            }
+                // ADD, not switch. Connecting a second workspace used to
+                // replace the first silently; now each one is its own
+                // connection with its own row below.
+                if connecting {
+                    pillButton("Cancel") { sendController.cancelConnect() }
+                } else {
+                    pillButton("Add workspace") {
+                        connecting = true
+                        Task {
+                            await sendController.connect()
+                            connecting = false
                         }
                     }
                 }
@@ -328,6 +324,21 @@ struct SettingsView: View {
         }
 
         if linear.isConnected {
+            ForEach(linear.workspaces.all, id: \.organizationID) { workspace in
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        rowLabel(workspace.organizationName ?? "Linear")
+                        caption("\(workspace.teams.count) team\(workspace.teams.count == 1 ? "" : "s"), "
+                                + "\(workspace.projects.count) project\(workspace.projects.count == 1 ? "" : "s")")
+                    }
+                    Spacer(minLength: 16)
+                    pillButton("Disconnect") {
+                        if let id = workspace.organizationID {
+                            Task { await sendController.disconnect(workspaceID: id) }
+                        }
+                    }
+                }
+            }
             settingsRow {
                 VStack(alignment: .leading, spacing: 3) {
                     rowLabel("Default team")
@@ -336,8 +347,9 @@ struct SettingsView: View {
                 Spacer(minLength: 16)
                 Picker("", selection: $linear.defaultTeamID) {
                     Text("—").tag(String?.none)
-                    ForEach(linear.workspace.teams) { team in
-                        Text(team.name).tag(String?.some(team.id))
+                    ForEach(linear.workspaces.teams) { ref in
+                        Text(ref.label(qualified: linear.workspaces.needsWorkspaceQualifier))
+                            .tag(String?.some(ref.team.id))
                     }
                 }
                 .labelsHidden()
@@ -363,7 +375,7 @@ struct SettingsView: View {
                 }
                 Spacer(minLength: 16)
                 pillButton("Refresh projects") {
-                    Task { await sendController.refreshWorkspace() }
+                    Task { await sendController.refreshWorkspaces() }
                 }
             }
             settingsRow {

@@ -446,8 +446,13 @@ final class IssueComposerRouteTests: XCTestCase {
     private let engineering = LinearTeam(id: "t1", name: "Engineering", key: "ENG")
     private let design = LinearTeam(id: "t2", name: "Design", key: "DES")
 
+    private var workspaces: LinearWorkspaces {
+        LinearWorkspaces(all: [workspace])
+    }
+
     private var workspace: LinearWorkspace {
         LinearWorkspace(
+            organizationID: "org-1", organizationName: "Acme",
             teams: [engineering, design],
             projects: [
                 LinearProject(id: "p1", name: "Onboarding", summary: "First-run flow", teamIDs: ["t1"]),
@@ -460,13 +465,13 @@ final class IssueComposerRouteTests: XCTestCase {
     /// "No specific project" must always be reachable, so a model with no
     /// good match can decline to guess instead of picking a wrong project.
     func testEveryTeamAppearsWithoutAProject() {
-        let options = IssueComposer.routeOptions(workspace: workspace)
+        let options = IssueComposer.routeOptions(workspaces: workspaces)
         XCTAssertTrue(options.contains { $0.teamID == "t1" && $0.projectID == nil })
         XCTAssertTrue(options.contains { $0.teamID == "t2" && $0.projectID == nil })
     }
 
     func testProjectsAppearUnderTheirOwnTeam() {
-        let options = IssueComposer.routeOptions(workspace: workspace)
+        let options = IssueComposer.routeOptions(workspaces: workspaces)
         let onboarding = options.first { $0.projectID == "p1" }
         XCTAssertEqual(onboarding?.teamID, "t1")
         XCTAssertTrue(onboarding?.label.contains("Engineering › Onboarding") == true)
@@ -478,8 +483,8 @@ final class IssueComposerRouteTests: XCTestCase {
     /// problem, which is not what a small model is good at.
     func testMenuIsCapped() {
         let manyTeams = (0..<50).map { LinearTeam(id: "t\($0)", name: "Team \($0)", key: "T\($0)") }
-        let big = LinearWorkspace(teams: manyTeams, projects: [], fetchedAt: Date())
-        XCTAssertLessThanOrEqual(IssueComposer.routeOptions(workspace: big).count, 30)
+        let big = LinearWorkspace(organizationID: "o", organizationName: "Big", teams: manyTeams, projects: [], fetchedAt: Date())
+        XCTAssertLessThanOrEqual(IssueComposer.routeOptions(workspaces: LinearWorkspaces(all: [big])).count, 30)
     }
 
     func testPromptCarriesTheNoteContextAndNumberedMenu() {
@@ -490,7 +495,7 @@ final class IssueComposerRouteTests: XCTestCase {
                 ContextFact(kind: "selection", value: "welcome step", detail: "AXTextArea", phase: "start")
             ])
         )
-        let prompt = IssueComposer.routePrompt(input, options: IssueComposer.routeOptions(workspace: workspace))
+        let prompt = IssueComposer.routePrompt(input, options: IssueComposer.routeOptions(workspaces: workspaces))
         XCTAssertTrue(prompt.contains("the first-run flow drops you on a blank screen"))
         XCTAssertTrue(prompt.contains("- Spoken in Xcode · OnboardingView.swift"))
         XCTAssertTrue(prompt.contains("- Selected text: \"welcome step\""))

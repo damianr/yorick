@@ -49,8 +49,11 @@ final class IssueComposerEval: XCTestCase {
                       teamIDs: ["t-ops"]),
     ]
 
-    private static var workspace: LinearWorkspace {
-        LinearWorkspace(teams: teams, projects: projects, fetchedAt: Date())
+    private static var workspaces: LinearWorkspaces {
+        LinearWorkspaces(all: [LinearWorkspace(
+            organizationID: "org", organizationName: "Acme",
+            teams: teams, projects: projects, fetchedAt: Date()
+        )])
     }
 
     // MARK: - Cases
@@ -257,8 +260,8 @@ final class IssueComposerEval: XCTestCase {
         )
         try XCTSkipUnless(IssueComposer.isAvailable, "On-device model unavailable on this Mac")
 
-        let workspace = Self.workspace
-        let options = IssueComposer.routeOptions(workspace: workspace)
+        let workspaces = Self.workspaces
+        let options = IssueComposer.routeOptions(workspaces: workspaces)
         // Three passes per case. Measured the hard way: three single-pass
         // runs of this eval scored 7/11, 5/11, 7/11, and WHICH cases passed
         // shuffled each time. A single pass cannot tell a prompt change from
@@ -284,7 +287,7 @@ final class IssueComposerEval: XCTestCase {
 
             for _ in 0..<passes {
                 let route = await IssueComposer.proposeRoute(
-                    input, workspace: workspace, fallbackTeamID: "t-prod",
+                    input, workspaces: workspaces, fallbackTeamID: "t-prod",
                     strategy: Self.strategyUnderTest
                 )
                 var draft = base
@@ -295,8 +298,8 @@ final class IssueComposerEval: XCTestCase {
                 routeTotal += 1
                 if testCase.accepts(draft.projectID) { caseHits += 1; routeHits += 1 }
 
-                let name = workspace.project(id: draft.projectID)?.name
-                    ?? "team:\(workspace.team(id: draft.teamID)?.name ?? "?")"
+                let name = workspaces.project(id: draft.projectID)?.name
+                    ?? "team:\(workspaces.team(id: draft.teamID)?.team.name ?? "?")"
                 let conf = result.route?.confidence.map { "\($0)" } ?? "-"
                 picks.append("\(name)(c\(conf))")
 

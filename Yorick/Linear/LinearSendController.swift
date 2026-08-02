@@ -45,7 +45,7 @@ final class LinearSendController: ObservableObject {
     private let settings = LinearSettings.shared
     private var composeTask: Task<Void, Never>?
 
-    var workspace: LinearWorkspace { settings.workspace }
+    var workspaces: LinearWorkspaces { settings.workspaces }
 
     var isComposing: Bool {
         if case .proposing(let composing) = phase { return composing }
@@ -61,7 +61,8 @@ final class LinearSendController: ObservableObject {
     /// Open the proposal for a capture. Returns immediately with the
     /// deterministic draft; the model pass, if any, lands a moment later.
     func beginReview(of capture: Capture, store: CaptureStore) {
-        guard let teamID = settings.defaultTeamID ?? settings.workspace.teams.first?.id else {
+        guard let teamRef = settings.workspaces.team(id: settings.defaultTeamID)
+                ?? settings.workspaces.teams.first else {
             phase = .failed("No Linear team available. Reconnect in Settings.")
             captureID = capture.id
             return
@@ -69,7 +70,9 @@ final class LinearSendController: ObservableObject {
         composeTask?.cancel()
         captureID = capture.id
         let input = IssueComposer.Input(capture)
-        let base = IssueComposer.deterministicDraft(input, teamID: teamID)
+        let base = IssueComposer.deterministicDraft(
+            input, teamID: teamRef.team.id, workspaceID: teamRef.workspaceID
+        )
         draft = base
 
         guard settings.composeWithModel, IssueComposer.isAvailable else {
@@ -77,7 +80,7 @@ final class LinearSendController: ObservableObject {
             return
         }
         phase = .proposing(composing: true)
-        let workspace = settings.workspace
+        let workspaces = settings.workspaces
         let shotURLs = capture.screenshotFileNames.indices.map {
             store.screenshotURL(for: capture, index: $0)
         }
@@ -88,7 +91,7 @@ final class LinearSendController: ObservableObject {
             // on screen while this runs.
             var enriched = input
             enriched.screenshotText = await Self.textFromScreenshots(shotURLs)
-            let composed = await IssueComposer.compose(enriched, workspace: workspace, base: base)
+            let composed = await IssueComposer.compose(enriched, workspaces: workspaces, base: base)
             guard let self, !Task.isCancelled, self.captureID == capture.id else { return }
             // Only adopt the model's work if the user hasn't started editing —
             // text changing under someone's cursor is the exact failure the
@@ -135,7 +138,9 @@ final class LinearSendController: ObservableObject {
                     // time. The trust model is that nothing leaves until you
                     // commit, and an image uploaded to show you a preview
                     // would have already left.
-                    outgoing.description = try await self.attachScreenshots(shots, to: draft.description)
+                    outgoing.description = try await self.attachScreenshots(
+                        shots, to: draft.description, workspaceID: draft.workspaceID
+                    )
                 }
                 let issue = try await self?.client.createIssue(outgoing)
                 guard let self, let issue else { return }
@@ -162,11 +167,12 @@ final class LinearSendController: ObservableObject {
     /// An upload that fails does NOT fail the send. A ticket without its
     /// screenshot is worth far more than no ticket at all, and the capture
     /// keeps the image either way.
-    private func attachScreenshots(_ shots: [Data], to description: String) async -> String {
+    private func attachScreenshots(_ shots: [Data], to description: String, workspaceID: String) async -> String {
         var markdown: [String] = []
         for (index, data) in shots.enumerated() {
             guard let url = try? await client.uploadFile(
-                data, filename: "yorick-screenshot-\(index + 1).jpg", contentType: "image/jpeg"
+                data, filename: "yorick-screenshot-\(index + 1).jpg",
+                contentType: "image/jpeg", workspaceID: workspaceID
             ) else { continue }
             markdown.append("![screenshot \(index + 1)](\(url))")
         }
@@ -198,47 +204,55 @@ final class LinearSendController: ObservableObject {
 
     func connect() async {
         connectionStatus = nil
-        let previous = settings.workspace.organizationID
+        let known = Set(settings.workspaces.organizationIDs)
         do {
-            try await client.connect(openURL: { url in
+            let workspace = try await client.connect(openURL: { url in
                 NSWorkspace.shared.open(url)
             })
             settings.markConnected()
-            await refreshWorkspace()
-            let name = settings.workspace.organizationName ?? "Linear"
-            // Name what actually happened. Reconnecting to the SAME workspace
-            // is a real outcome and has to read differently from a switch,
-            // or the button looks broken when it worked exactly as asked.
-            if let previous, previous == settings.workspace.organizationID {
-                connectionStatus = "Reconnected to \(name) — same workspace as before."
-            } else {
-                connectionStatus = "Connected to \(name)."
-                // A proposal open against the old workspace holds team and
-                // project ids that no longer exist here; sending it would
-                // fail at the API with something unhelpful.
-                cancelReview()
-            }
+            settings.adopt(workspace: workspace)
+            let name = workspace.organizationName ?? "Linear"
+            // ADDING is now the normal outcome, so reconnecting the same
+            // workspace has to read differently from connecting a new one —
+            // otherwise "Add workspace" looks broken when it refreshed
+            // exactly the one you already had.
+            connectionStatus = known.contains(workspace.organizationID ?? "")
+                ? "Refreshed \(name) — already connected."
+                : "Connected to \(name)."
         } catch LinearOAuthError.cancelled {
-            connectionStatus = "Connection cancelled. Still connected to "
-                + (settings.workspace.organizationName ?? "the previous workspace") + "."
+            connectionStatus = "Connection cancelled. Nothing changed."
         } catch {
             connectionStatus = error.localizedDescription
         }
     }
 
-    func disconnect() async {
-        await client.disconnect()
+    /// Forget every connection.
+    func disconnectAll() async {
+        await client.disconnectAll()
         settings.markDisconnected()
         cancelReview()
         connectionStatus = nil
     }
 
+    /// Forget one, leaving the others alone.
+    func disconnect(workspaceID: String) async {
+        let name = settings.workspaces.workspace(id: workspaceID)?.organizationName ?? "that workspace"
+        await client.disconnect(workspaceID: workspaceID)
+        settings.remove(workspaceID: workspaceID)
+        // A proposal open against a workspace that just went away holds ids
+        // nothing can resolve; sending it would fail at the API.
+        cancelReview()
+        connectionStatus = "Disconnected \(name)."
+    }
+
     /// Re-read the answer key. Cheap, and a stale mirror is the difference
     /// between routing into this quarter's project and last quarter's.
-    func refreshWorkspace() async {
+    func refreshWorkspaces() async {
         do {
-            let workspace = try await client.fetchWorkspace()
-            settings.adopt(workspace: workspace)
+            for id in settings.workspaces.organizationIDs {
+                let refreshed = try await client.fetchWorkspace(workspaceID: id)
+                settings.adopt(workspace: refreshed)
+            }
         } catch {
             // Surfaces in the Settings row rather than `phase`, which belongs
             // to a capture's proposal and isn't on screen during a refresh.
@@ -246,8 +260,8 @@ final class LinearSendController: ObservableObject {
         }
     }
 
-    func refreshWorkspaceIfStale() async {
-        guard settings.collectsContext, settings.workspace.isStale else { return }
-        await refreshWorkspace()
+    func refreshWorkspacesIfStale() async {
+        guard settings.collectsContext, settings.workspaces.isStale else { return }
+        await refreshWorkspaces()
     }
 }

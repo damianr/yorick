@@ -135,18 +135,27 @@ struct LinearProposalView: View {
         }
     }
 
+    /// Teams from EVERY connected workspace, qualified only when more than
+    /// one is connected. Picking a team also picks the workspace, so there is
+    /// no separate workspace control to get out of sync with this one.
     private func teamPicker(_ draft: Binding<LinearIssueDraft>) -> some View {
-        Picker("", selection: draft.teamID) {
-            ForEach(controller.workspace.teams) { team in
-                Text(team.name).tag(team.id)
+        let workspaces = controller.workspaces
+        let qualify = workspaces.needsWorkspaceQualifier
+        return Picker("", selection: draft.teamID) {
+            ForEach(workspaces.teams) { ref in
+                Text(ref.label(qualified: qualify)).tag(ref.team.id)
             }
         }
         .labelsHidden()
         .font(.system(size: 11))
         .onChange(of: draft.wrappedValue.teamID) { _, newTeam in
+            // The workspace follows the team, always — a draft whose
+            // workspace disagreed with its team would be created with the
+            // wrong token and fail at the API with something unhelpful.
+            draft.wrappedValue.workspaceID = workspaces.team(id: newTeam)?.workspaceID ?? ""
             // A project belongs to its teams; switching teams must not leave
             // a project selected that the new team can't see.
-            let valid = controller.workspace.projects(forTeam: newTeam).map(\.id)
+            let valid = workspaces.projects(forTeam: newTeam).map(\.id)
             if let project = draft.wrappedValue.projectID, !valid.contains(project) {
                 draft.wrappedValue.projectID = nil
             }
@@ -154,7 +163,7 @@ struct LinearProposalView: View {
     }
 
     private func projectPicker(_ draft: Binding<LinearIssueDraft>) -> some View {
-        let projects = controller.workspace.projects(forTeam: draft.wrappedValue.teamID)
+        let projects = controller.workspaces.projects(forTeam: draft.wrappedValue.teamID)
         return Picker("", selection: draft.projectID) {
             Text("No project").tag(String?.none)
             ForEach(projects) { project in

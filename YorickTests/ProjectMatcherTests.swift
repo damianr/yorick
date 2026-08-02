@@ -5,7 +5,8 @@ import XCTest
 /// looked right in isolation and was wrong in company.
 final class ProjectMatcherTests: XCTestCase {
 
-    private let workspace = LinearWorkspace(
+    private let single = LinearWorkspace(
+        organizationID: "org-1", organizationName: "Acme",
         teams: [LinearTeam(id: "t-prod", name: "Products", key: "P")],
         projects: [
             LinearProject(id: "p-yorick", name: "Yorick",
@@ -19,6 +20,7 @@ final class ProjectMatcherTests: XCTestCase {
         ],
         fetchedAt: Date()
     )
+    private var workspaces: LinearWorkspaces { LinearWorkspaces(all: [single]) }
 
     private func input(
         _ transcript: String, source: String = "Notes", page: String? = nil
@@ -39,7 +41,7 @@ final class ProjectMatcherTests: XCTestCase {
         let hits = ProjectMatcher.matches(
             input("this whole section reads badly",
                   source: "Chrome · heyyorick.com", page: "https://heyyorick.com"),
-            workspace: workspace
+            workspaces: workspaces
         )
         XCTAssertEqual(hits.count, 1)
         XCTAssertEqual(hits.first?.projectID, "p-site")
@@ -52,7 +54,7 @@ final class ProjectMatcherTests: XCTestCase {
     func testAProjectNameDoesNotMatchInsideAnotherWord() {
         let hits = ProjectMatcher.matches(
             input("something", source: "Chrome · heyyorick.com"),
-            workspace: workspace
+            workspaces: workspaces
         )
         XCTAssertFalse(hits.contains { $0.projectID == "p-yorick" })
     }
@@ -63,14 +65,14 @@ final class ProjectMatcherTests: XCTestCase {
         let hits = ProjectMatcher.matches(
             input("the railbird thing", source: "Chrome · heyyorick.com",
                   page: "https://heyyorick.com"),
-            workspace: workspace
+            workspaces: workspaces
         )
         XCTAssertEqual(hits.map(\.projectID), ["p-site"])
     }
 
     func testWwwIsIgnoredWhenMatchingHosts() {
         let hits = ProjectMatcher.matches(
-            input("x", page: "https://www.heyyorick.com/pricing"), workspace: workspace
+            input("x", page: "https://www.heyyorick.com/pricing"), workspaces: workspaces
         )
         XCTAssertEqual(hits.first?.projectID, "p-site")
     }
@@ -79,7 +81,7 @@ final class ProjectMatcherTests: XCTestCase {
     /// Railbird does its empty states is nice, we should do that in the saved
     /// list" is a note about the saved list.
     func testASpokenNameIsACandidateButNotDecisive() {
-        let hits = ProjectMatcher.matches(input("the railbird numbers look off"), workspace: workspace)
+        let hits = ProjectMatcher.matches(input("the railbird numbers look off"), workspaces: workspaces)
         XCTAssertEqual(hits.first?.projectID, "p-railbird")
         XCTAssertFalse(ProjectMatcher.isDecisive(hits[0]))
     }
@@ -87,13 +89,13 @@ final class ProjectMatcherTests: XCTestCase {
     /// No evidence means no opinion: the model decides, from everything.
     func testNoSignalYieldsNoMatches() {
         XCTAssertTrue(ProjectMatcher.matches(
-            input("we should write down how we decide what to build"), workspace: workspace
+            input("we should write down how we decide what to build"), workspaces: workspaces
         ).isEmpty)
     }
 
     func testAnUnrelatedHostMatchesNothing() {
         XCTAssertTrue(ProjectMatcher.matches(
-            input("x", page: "https://news.ycombinator.com"), workspace: workspace
+            input("x", page: "https://news.ycombinator.com"), workspaces: workspaces
         ).isEmpty)
     }
 }

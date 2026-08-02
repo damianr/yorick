@@ -6,6 +6,11 @@ import Foundation
 struct LinearIssueDraft: Sendable, Equatable {
     var title: String
     var description: String
+    /// Which connection creates this issue. A Linear token is scoped to ONE
+    /// workspace, so the destination is only fully specified once this is
+    /// known — and picking a team already picks it, since a team belongs to
+    /// exactly one workspace.
+    var workspaceID: String = ""
     var teamID: String
     var projectID: String?
 }

@@ -19,6 +19,7 @@ enum ProjectMatcher {
     struct Match: Sendable, Equatable {
         let projectID: String
         let teamID: String
+        let workspaceID: String
         /// Why it matched, for the eval and for diagnostics.
         let reason: String
     }
@@ -28,8 +29,20 @@ enum ProjectMatcher {
     /// Empty is the common case and means "ask the model." One match means
     /// there is nothing to ask. Several means the model chooses, but only
     /// among these — a shortlist it cannot escape.
+    /// Across every connected workspace. Matching earns most here: a work
+    /// domain and a personal domain are unambiguous signals, and they are
+    /// exactly what tells apart two workspaces with identically-named teams.
+    static func matches(_ input: IssueComposer.Input, workspaces: LinearWorkspaces) -> [Match] {
+        workspaces.all.flatMap { matches(input, workspace: $0) }
+            .reduce(into: [Match]()) { out, match in
+                if !out.contains(match) { out.append(match) }
+            }
+            .sorted { isDecisive($0) && !isDecisive($1) }
+    }
+
     static func matches(_ input: IssueComposer.Input, workspace: LinearWorkspace) -> [Match] {
         var found: [Match] = []
+        let workspaceID = workspace.organizationID ?? ""
         let facts = input.context?.facts ?? []
 
         // Hosts the capture was actually on. A URL is the least ambiguous
@@ -50,7 +63,7 @@ enum ProjectMatcher {
 
             // 1. The project names the domain you were on.
             if let host = hosts.first(where: { haystack.contains($0) }) {
-                found.append(Match(projectID: project.id, teamID: teamID, reason: "host:\(host)"))
+                found.append(Match(projectID: project.id, teamID: teamID, workspaceID: workspaceID, reason: "host:\(host)"))
                 continue
             }
             // 2. You said the project's name. Whole words, so "Admin" doesn't
@@ -58,7 +71,7 @@ enum ProjectMatcher {
             //    half the dictionary.
             let nameWords = words(project.name)
             if !nameWords.isEmpty, nameWords.allSatisfy({ spoken.contains($0) }) {
-                found.append(Match(projectID: project.id, teamID: teamID, reason: "named"))
+                found.append(Match(projectID: project.id, teamID: teamID, workspaceID: workspaceID, reason: "named"))
                 continue
             }
             // 3. The project's name is in the file or window you were in —
@@ -71,7 +84,7 @@ enum ProjectMatcher {
             //    "heyyorick.com", so a capture on the marketing site matched
             //    BOTH projects and stopped being decidable.
             if project.name.count >= 4, containsWord(place, project.name.lowercased()) {
-                found.append(Match(projectID: project.id, teamID: teamID, reason: "place"))
+                found.append(Match(projectID: project.id, teamID: teamID, workspaceID: workspaceID, reason: "place"))
             }
         }
         // Precedence: a host match is a project SAYING what it is for, and
