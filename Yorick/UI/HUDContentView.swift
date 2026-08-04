@@ -187,6 +187,28 @@ struct HUDContentView: View {
                     .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
                 Spacer(minLength: 12)
+                // Work in flight, reported HERE rather than only in the
+                // panel. The card exists so a capture can be dealt with
+                // without opening anything, and a card that goes quiet while
+                // something is still happening sends you looking for it.
+                if ticketState(for: capture) != nil {
+                    ProgressView().controlSize(.mini).scaleEffect(0.7)
+                }
+            }
+
+            // The title Yorick built, before you have opened anything. This
+            // is the moment the product is for — a ramble coming back named —
+            // and it should not require a trip into the UI to see.
+            if let state = ticketState(for: capture) {
+                Text(state)
+                    .font(Theme.mono(9.5))
+                    .foregroundStyle(Theme.glow)
+            } else if let title = composedTitle(for: capture), !title.isEmpty {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.bone)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             // Shared presentation with the saved list: the words, exactly
             // as spoken.
@@ -239,11 +261,15 @@ struct HUDContentView: View {
             if hovering {
                 cardDismissTask?.cancel()
             } else {
-                scheduleCardDismiss(capture.id, after: 2.5)
+                scheduleCardDismiss(capture.id, after: 4)
             }
         }
         .onAppear {
-            scheduleCardDismiss(capture.id, after: 6)
+            // Longer than it was (6s): the card now carries the title and the
+            // ticket's progress, which is more than a glance's worth, and the
+            // whole point is to keep a capture dealt with from here rather
+            // than from the panel. Hover still holds it indefinitely.
+            scheduleCardDismiss(capture.id, after: 12)
         }
         // New identity per capture, so a replacing card restarts its own clock.
         .id(capture.id)
@@ -251,6 +277,23 @@ struct HUDContentView: View {
 
 
 
+
+    /// The deterministic title for a capture — instant, no model, no waiting.
+    private func composedTitle(for capture: Capture) -> String? {
+        guard !capture.needsTranscription else { return nil }
+        return TitleComposer.deterministicTitle(IssueComposer.Input(capture))
+    }
+
+    /// What the ticket flow is doing for THIS capture, if anything.
+    private func ticketState(for capture: Capture) -> String? {
+        let controller = LinearSendController.shared
+        guard controller.captureID == capture.id else { return nil }
+        switch controller.phase {
+        case .proposing(let composing): return composing ? "Building the ticket…" : nil
+        case .sending: return "Filing…"
+        default: return nil
+        }
+    }
 
     private func scheduleCardDismiss(_ captureId: UUID, after seconds: Double) {
         cardDismissTask?.cancel()
