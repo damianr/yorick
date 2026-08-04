@@ -206,12 +206,13 @@ struct HUDContentView: View {
                 // and editing a title needs keyboard focus and as long as you
                 // want; the HUD card is non-activating and fades on a clock.
                 // Glance-grab-go stays glance-grab-go.
-                if LinearSettings.shared.canSend {
-                    CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
-                        session.lastSavedCapture = nil
-                        LinearSendController.shared.beginReview(of: capture, store: session.captureStore)
-                        PanelRouter.shared.openDetail(capture.id)
-                    }
+                // Same one action as the detail page, connected or not. The
+                // card hands off to the panel because reviewing and editing a
+                // title needs keyboard focus and as long as you want.
+                CardActionButton(icon: "doc.text", label: "Make ticket") {
+                    session.lastSavedCapture = nil
+                    LinearSendController.shared.beginReview(of: capture, store: session.captureStore)
+                    PanelRouter.shared.openDetail(capture.id)
                 }
                 Spacer()
                 CardActionButton(icon: "xmark", label: "Dismiss") {

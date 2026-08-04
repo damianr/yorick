@@ -24,6 +24,33 @@ struct LinearProposalView: View {
     /// model settles this: it proposes, the cursor is already in the field,
     /// and correcting is the expected gesture rather than the recovery.
     @FocusState private var titleFocused: Bool
+    @State private var copied = false
+
+    /// The reviewed ticket, with the title as edited. copyBundle so a rich
+    /// target renders the screenshot alongside the text.
+    private func copyTicket(_ title: String) {
+        let text = TicketClipboard.text(
+            title: title,
+            transcript: capture.transcript.isEmpty ? capture.bestText : capture.transcript,
+            sourceLine: capture.sourceLine,
+            windowTitle: capture.windowTitle,
+            context: capture.context,
+            screenshotCount: capture.screenshotFileNames.count
+        )
+        let images = capture.screenshotFileNames.indices.compactMap {
+            captureStore.screenshotImage(for: capture, index: $0)
+        }
+        if images.isEmpty {
+            ClipboardOutput.copy(text)
+        } else {
+            ClipboardOutput.copyBundle(text: text, images: images)
+        }
+        copied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            copied = false
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -53,7 +80,7 @@ struct LinearProposalView: View {
     private var proposalForm: some View {
         if let draft = Binding($controller.draft) {
             HStack(spacing: 6) {
-                Text("SEND TO LINEAR")
+                Text("TICKET")
                     .font(Theme.mono(9, weight: .semibold))
                     .foregroundStyle(Theme.textTertiary)
                 if controller.isComposing {
@@ -99,32 +126,59 @@ struct LinearProposalView: View {
                 .help(deterministicTitle)
             }
 
-            HStack(spacing: 8) {
-                teamPicker(draft)
-                projectPicker(draft)
+            // Destination pickers exist only when there IS a destination.
+            // Without a connection this is still a ticket — it just has one
+            // exit instead of two.
+            if controller.canFile {
+                HStack(spacing: 8) {
+                    teamPicker(draft)
+                    projectPicker(draft)
+                }
             }
 
             disclosureRow
 
+            // BOTH exits sit at the end of the same review, which is the
+            // point: the ticket is a thing you construct and check, and only
+            // then decide where to put. Copy used to fire immediately without
+            // a preview — the same unreviewed shortcut the title work proved
+            // you don't want.
             HStack(spacing: 8) {
-                Button(action: { controller.send(capture: capture, store: captureStore) }) {
-                    HStack(spacing: 5) {
-                        if controller.phase == .sending {
-                            ProgressView().controlSize(.small).scaleEffect(0.6)
-                        } else {
-                            Image(systemName: "arrow.up.forward.app")
-                                .font(.system(size: 9, weight: .semibold))
+                if controller.canFile {
+                    Button(action: { controller.send(capture: capture, store: captureStore) }) {
+                        HStack(spacing: 5) {
+                            if controller.phase == .sending {
+                                ProgressView().controlSize(.small).scaleEffect(0.6)
+                            } else {
+                                Image(systemName: "arrow.up.forward.app")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            Text(controller.phase == .sending ? "Sending…" : "Send to Linear")
+                                .font(.system(size: 10.5, weight: .semibold))
                         }
-                        Text(controller.phase == .sending ? "Sending…" : "Create issue")
+                        .foregroundStyle(Theme.bgPrimary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Theme.bone))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(controller.phase == .sending || draft.wrappedValue.title.isEmpty)
+                }
+
+                Button(action: { copyTicket(draft.wrappedValue.title) }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(copied ? "Copied" : "Copy ticket")
                             .font(.system(size: 10.5, weight: .semibold))
                     }
-                    .foregroundStyle(Theme.bgPrimary)
+                    .foregroundStyle(controller.canFile ? Theme.textPrimary : Theme.bgPrimary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Capsule().fill(Theme.bone))
+                    .background(Capsule().fill(controller.canFile ? Theme.bgElevated : Theme.bone))
                 }
                 .buttonStyle(.plain)
-                .disabled(controller.phase == .sending || draft.wrappedValue.title.isEmpty)
+                .disabled(draft.wrappedValue.title.isEmpty)
 
                 Button("Cancel") { controller.cancelReview() }
                     .buttonStyle(.plain)

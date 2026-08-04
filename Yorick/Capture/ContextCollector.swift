@@ -94,9 +94,13 @@ enum ContextCollector {
 
         // Page identity: climb from the focused element to a web area, read
         // its URL. Climb only — descending a web page costs hundreds of ms.
+        // 20 rungs, not 10: focus in a composite web control (Chrome's date
+        // field focuses an inner stepper) starts deeper than 10 parents
+        // below the web area, and a climb that stops short reads as "no
+        // page" on exactly the forms people point at.
         t = ContinuousClock.now
         if var node = focused {
-            for _ in 0..<10 {
+            for _ in 0..<20 {
                 if str(node, kAXRoleAttribute) == "AXWebArea" {
                     var urlRef: CFTypeRef?
                     AXUIElementCopyAttributeValue(node, "AXURL" as CFString, &urlRef)
@@ -245,9 +249,14 @@ enum ContextCollector {
     /// from hotkey-down to release, exactly while the pill is on screen, so
     /// the watching is announced for its whole duration.
     ///
-    /// Only FRESH pointer positions are sampled: holding the hotkey means
-    /// hands on the keyboard, so a mouse left where it was yesterday is not a
-    /// gesture and contributes nothing.
+    /// The FIRST sample is unconditional: where the pointer sits at
+    /// hotkey-down is intentional no matter how long it has rested there —
+    /// point at the thing, park, press, talk is the natural gesture, and the
+    /// press itself is the pointing. (The freshness gate below used to apply
+    /// here too, and that exact gesture collected nothing.) Every LATER
+    /// sample still requires a fresh pointer: mid-recording, hands are on
+    /// the keyboard, so a mouse that hasn't moved since the press is the
+    /// seed repeating itself, not a sweep.
     actor PointerTimeline {
         private var items: [(value: String, detail: String, at: Double)] = []
         private var sampler: Task<Void, Never>?
@@ -260,9 +269,10 @@ enum ContextCollector {
             startedAt = started
             let deadline = started + .seconds(600)
             sampler = Task {
+                sampleOnce(requiringFreshPointer: false)
                 while !Task.isCancelled, items.count < Self.maxItems, ContinuousClock.now < deadline {
-                    sampleOnce()
                     try? await Task.sleep(nanoseconds: 600_000_000)
+                    sampleOnce()
                 }
             }
         }
@@ -277,12 +287,12 @@ enum ContextCollector {
         func pause() { paused = true }
         func resume() { paused = false }
 
-        private func sampleOnce() {
+        private func sampleOnce(requiringFreshPointer: Bool = true) {
             guard !paused else { return }
+            if requiringFreshPointer, AccessibilityCapture.pointerIdleSeconds() >= 2.0 { return }
             // CGEvent's location is already top-left-origin global coords —
             // matching AX — and both CG calls are thread-safe.
-            guard AccessibilityCapture.pointerIdleSeconds() < 2.0,
-                  let point = CGEvent(source: nil)?.location else { return }
+            guard let point = CGEvent(source: nil)?.location else { return }
             guard let resolved = ContextCollector.resolvePointed(at: point) else { return }
             if items.contains(where: { $0.value == resolved.value }) { return }
             // Seconds since the hotkey went down, so a later pass can line a

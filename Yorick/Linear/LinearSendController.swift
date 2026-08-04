@@ -58,24 +58,27 @@ final class LinearSendController: ObservableObject {
 
     // MARK: - Flow
 
-    /// Open the proposal for a capture. Returns immediately with the
-    /// deterministic draft; the model pass, if any, lands a moment later.
+    /// Build the ticket for a capture and show it for review.
+    ///
+    /// Works with NO integration connected — a ticket is an artifact before
+    /// it is a destination. Without Linear you get the same composed title
+    /// and body and one exit (Copy ticket); with Linear you get the pickers
+    /// and a second exit. Requiring a connection to even SEE the ticket would
+    /// hide the product's whole output behind a login.
     func beginReview(of capture: Capture, store: CaptureStore) {
-        guard let teamRef = settings.workspaces.team(id: settings.defaultTeamID)
-                ?? settings.workspaces.teams.first else {
-            phase = .failed("No Linear team available. Reconnect in Settings.")
-            captureID = capture.id
-            return
-        }
+        let teamRef = settings.workspaces.team(id: settings.defaultTeamID)
+            ?? settings.workspaces.teams.first
         composeTask?.cancel()
         captureID = capture.id
         let input = IssueComposer.Input(capture)
         let base = IssueComposer.deterministicDraft(
-            input, teamID: teamRef.team.id, workspaceID: teamRef.workspaceID
+            input, teamID: teamRef?.team.id ?? "", workspaceID: teamRef?.workspaceID ?? ""
         )
         draft = base
 
-        guard settings.composeWithModel, IssueComposer.isAvailable else {
+        // Routing needs somewhere to route TO. With no connection the
+        // deterministic draft is already the finished ticket.
+        guard teamRef != nil, settings.composeWithModel, IssueComposer.isAvailable else {
             phase = .proposing(composing: false)
             return
         }
@@ -119,6 +122,9 @@ final class LinearSendController: ObservableObject {
         draft = nil
         phase = .idle
     }
+
+    /// Whether this composed ticket can be filed rather than only copied.
+    var canFile: Bool { settings.canSend && !(draft?.teamID.isEmpty ?? true) }
 
     /// The only network call in the flow, and the only one in the app that
     /// carries user content. Everything it sends is on screen when it fires.

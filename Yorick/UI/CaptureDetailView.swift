@@ -19,8 +19,8 @@ struct CaptureDetailView: View {
     @Environment(SessionManager.self) private var session
     @State private var justCopied = false
     @State private var attaching = false
-    @State private var justCopiedTicket = false
 
+    /// Copy stays raw-words-only; the ticket has its own review.
     private var canOfferSend: Bool {
         linear.canSend && capture.linearIssue == nil && !capture.needsTranscription
     }
@@ -111,33 +111,11 @@ struct CaptureDetailView: View {
                     justCopied = false
                 }
             }
-            // Always offered, connected or not. A framed ticket pasted into
-            // a coding agent is its own validated workflow, so this is not
-            // the consolation prize for having no integration — it is the
-            // exit that needs nothing.
-            CardActionButton(icon: justCopiedTicket ? "checkmark" : "doc.text",
-                             label: justCopiedTicket ? "Copied" : "Copy ticket") {
-                // copyBundle, not copy: it puts plain text, PNG, HTML with
-                // the image inline, and RTF on the pasteboard at once. A
-                // terminal takes the text; Claude Mac and Linear's web editor
-                // take the rich version and render the crop with it. Built in
-                // the enrichment era for exactly this paste.
-                let images = capture.screenshotFileNames.indices.compactMap {
-                    captureStore.screenshotImage(for: capture, index: $0)
-                }
-                if images.isEmpty {
-                    ClipboardOutput.copy(ticketText)
-                } else {
-                    ClipboardOutput.copyBundle(text: ticketText, images: images)
-                }
-                justCopiedTicket = true
-                Task {
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    justCopiedTicket = false
-                }
-            }
-            if canOfferSend, !send.isReviewing(capture) {
-                CardActionButton(icon: "arrow.up.forward.app", label: "Send to Linear") {
+            // ONE action to the ticket, whether or not anything is connected.
+            // It opens the review; the exits live at the end of that, so you
+            // always see and can edit what you're about to copy or file.
+            if !capture.needsTranscription, capture.linearIssue == nil, !send.isReviewing(capture) {
+                CardActionButton(icon: "doc.text", label: "Make ticket") {
                     send.beginReview(of: capture, store: captureStore)
                 }
             }
@@ -175,20 +153,6 @@ struct CaptureDetailView: View {
             .help("Delete this capture")
         }
         .animation(.easeOut(duration: 0.15), value: justCopied)
-        .animation(.easeOut(duration: 0.15), value: justCopiedTicket)
-    }
-
-    /// The whole ticket as markdown: the title Yorick would have used, then
-    /// the same body a Linear issue gets.
-    private var ticketText: String {
-        TicketClipboard.text(
-            title: TitleComposer.deterministicTitle(IssueComposer.Input(capture)),
-            transcript: displayText,
-            sourceLine: capture.sourceLine,
-            windowTitle: capture.windowTitle,
-            context: capture.context,
-            screenshotCount: capture.screenshotFileNames.count
-        )
     }
 
     /// Shown only when there is no integration: the education lives HERE,
