@@ -49,6 +49,8 @@ retries and repeats can never double-count.
    `heyyorick.com/api/ping`. Off switch in Settings → Privacy.
 3. **Whisper model download** — only if you opt into the Whisper engine, one
    ~600 MB download.
+4. **Linear** — only with the integration connected, and only when you press
+   Send on a capture you've previewed. See the README's privacy section.
 
 That's the whole list. Your voice and your words never leave your Mac. Run
 Little Snitch; read the source; we insist.
