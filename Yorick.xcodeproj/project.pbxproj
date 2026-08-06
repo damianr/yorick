@@ -26,7 +26,6 @@
 		5A0A92D6292E2EBDD687E571 /* HUDContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD999AF3A2983F6D044382B /* HUDContentView.swift */; };
 		5C6C55EBB6222F84BC08017E /* WhisperServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E650E2D930F26266A7838BE /* WhisperServer.swift */; };
 		6007E64A5E39615DD61BF4AD /* HUDWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC33F800989734476CB1D6D /* HUDWindow.swift */; };
-		658C0035CE77220492BEC49C /* TelemetryDeck in Frameworks */ = {isa = PBXBuildFile; productRef = 30654A8EE2DBB163676099A9 /* TelemetryDeck */; };
 		672E6E5DA3E9F0B483635D80 /* CaptureListComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */; };
 		6AA227E198DF170BDA250AF4 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1644B703BCDFB773ED233BB4 /* AppPaths.swift */; };
 		6EE4DD1788ADD0931036B6C2 /* MenuBarPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3521EDECA142221E50F66A1 /* MenuBarPanelView.swift */; };
@@ -125,7 +124,6 @@
 			files = (
 				B111C360CA38C6CEF5E87E20 /* KeyboardShortcuts in Frameworks */,
 				BFD3A14CCF783E94615CDD3E /* Sparkle in Frameworks */,
-				658C0035CE77220492BEC49C /* TelemetryDeck in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -297,7 +295,6 @@
 			packageProductDependencies = (
 				AEA076117CAB6BC4B6F74431 /* KeyboardShortcuts */,
 				843C685747358500698D6BA3 /* Sparkle */,
-				30654A8EE2DBB163676099A9 /* TelemetryDeck */,
 			);
 			productName = Yorick;
 			productReference = 5E6A73B80A26C6E90C1289E6 /* Yorick.app */;
@@ -351,7 +348,6 @@
 			packageReferences = (
 				2A2019AEFF769CC524CD17FD /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 				463FD30DE595E6AEF31B7E91 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				6DFAAECB5BC6EFDC9424224C /* XCRemoteSwiftPackageReference "SwiftSDK" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 53AB47D08DA65EB29D132C61 /* Products */;
@@ -706,22 +702,9 @@
 				minimumVersion = 2.6.0;
 			};
 		};
-		6DFAAECB5BC6EFDC9424224C /* XCRemoteSwiftPackageReference "SwiftSDK" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/TelemetryDeck/SwiftSDK.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.0.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		30654A8EE2DBB163676099A9 /* TelemetryDeck */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 6DFAAECB5BC6EFDC9424224C /* XCRemoteSwiftPackageReference "SwiftSDK" */;
-			productName = TelemetryDeck;
-		};
 		843C685747358500698D6BA3 /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 463FD30DE595E6AEF31B7E91 /* XCRemoteSwiftPackageReference "Sparkle" */;

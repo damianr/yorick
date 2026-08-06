@@ -21,10 +21,6 @@ ggml conversion via https://huggingface.co/ggml-org/whisper-vad
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com>
 https://github.com/sindresorhus/KeyboardShortcuts
 
-## TelemetryDeck SwiftSDK (Swift package)
-Copyright (c) TelemetryDeck GmbH
-https://github.com/TelemetryDeck/SwiftSDK
-
 ---
 
 ## MIT License (applies to each component above per its copyright holder)
