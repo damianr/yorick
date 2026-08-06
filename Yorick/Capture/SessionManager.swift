@@ -711,7 +711,6 @@ final class SessionManager {
         pendingScreenshots = []
         pendingScreenshotCount = 0
         screenshotInProgress = false
-        startFocusElement = nil
         silentSeconds = 0
         showSilenceWarning = false
         // .common run-loop mode: a default-mode timer stops ticking while a menu
