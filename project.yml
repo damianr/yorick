@@ -13,9 +13,6 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle.git
     from: "2.6.0"
-  TelemetryDeck:
-    url: https://github.com/TelemetryDeck/SwiftSDK.git
-    from: "2.0.0"
 
 targets:
   Yorick:
@@ -33,7 +30,6 @@ targets:
     dependencies:
       - package: KeyboardShortcuts
       - package: Sparkle
-      - package: TelemetryDeck
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.heyyorick.Yorick
