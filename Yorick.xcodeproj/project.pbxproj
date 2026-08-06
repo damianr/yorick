@@ -26,6 +26,7 @@
 		5A0A92D6292E2EBDD687E571 /* HUDContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD999AF3A2983F6D044382B /* HUDContentView.swift */; };
 		5C6C55EBB6222F84BC08017E /* WhisperServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E650E2D930F26266A7838BE /* WhisperServer.swift */; };
 		6007E64A5E39615DD61BF4AD /* HUDWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC33F800989734476CB1D6D /* HUDWindow.swift */; };
+		658C0035CE77220492BEC49C /* TelemetryDeck in Frameworks */ = {isa = PBXBuildFile; productRef = 30654A8EE2DBB163676099A9 /* TelemetryDeck */; };
 		672E6E5DA3E9F0B483635D80 /* CaptureListComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */; };
 		6AA227E198DF170BDA250AF4 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1644B703BCDFB773ED233BB4 /* AppPaths.swift */; };
 		6EE4DD1788ADD0931036B6C2 /* MenuBarPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3521EDECA142221E50F66A1 /* MenuBarPanelView.swift */; };
@@ -36,6 +37,7 @@
 		98CD574C2C2BFAF1CDAB1651 /* AdminMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9508203F2C34F0897692D0F4 /* AdminMode.swift */; };
 		A49F05C46D03C30835F7F541 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */; };
 		A8CD261A3FDF0619338D5566 /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D04D4D581F947FDD13AD5A /* Capture.swift */; };
+		A954C4E35F30860DA4CEE56B /* Telemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D88477D3D846F4B335099B /* Telemetry.swift */; };
 		A957EB88DFD7D005E9D45C79 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28302C5A969B4E66966DBB8 /* OnboardingView.swift */; };
 		AC36DBF389D722369C68760E /* UtteranceRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3956B1F5059C9796A3016FD3 /* UtteranceRouter.swift */; };
 		ADC8B8995481E9F1FDBB6D3E /* YorickApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB8F71B3FB8F2A899FA8638B /* YorickApp.swift */; };
@@ -85,6 +87,7 @@
 		5E6A73B80A26C6E90C1289E6 /* Yorick.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yorick.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldProfilerTests.swift; sourceTree = "<group>"; };
 		6100D199344098CC50AB411D /* AppIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIdentifier.swift; sourceTree = "<group>"; };
+		66D88477D3D846F4B335099B /* Telemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Telemetry.swift; sourceTree = "<group>"; };
 		6AF1CD392440FF27E1B5FD00 /* YorickTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YorickTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6D103354483E5EA671B0C228 /* AppleSpeechAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeechAnalyzer.swift; sourceTree = "<group>"; };
 		6E650E2D930F26266A7838BE /* WhisperServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperServer.swift; sourceTree = "<group>"; };
@@ -122,6 +125,7 @@
 			files = (
 				B111C360CA38C6CEF5E87E20 /* KeyboardShortcuts in Frameworks */,
 				BFD3A14CCF783E94615CDD3E /* Sparkle in Frameworks */,
+				658C0035CE77220492BEC49C /* TelemetryDeck in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -269,6 +273,7 @@
 				1276438ACBDE805AE73A96D8 /* HotkeyManager.swift */,
 				86D3C0B62573CB6B00A999CE /* LoginItem.swift */,
 				2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */,
+				66D88477D3D846F4B335099B /* Telemetry.swift */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -292,6 +297,7 @@
 			packageProductDependencies = (
 				AEA076117CAB6BC4B6F74431 /* KeyboardShortcuts */,
 				843C685747358500698D6BA3 /* Sparkle */,
+				30654A8EE2DBB163676099A9 /* TelemetryDeck */,
 			);
 			productName = Yorick;
 			productReference = 5E6A73B80A26C6E90C1289E6 /* Yorick.app */;
@@ -345,6 +351,7 @@
 			packageReferences = (
 				2A2019AEFF769CC524CD17FD /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 				463FD30DE595E6AEF31B7E91 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				6DFAAECB5BC6EFDC9424224C /* XCRemoteSwiftPackageReference "SwiftSDK" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 53AB47D08DA65EB29D132C61 /* Products */;
@@ -424,6 +431,7 @@
 				007FEC1B6F73F8F3A223852B /* SessionUploader.swift in Sources */,
 				EF12E5AC1C7B78D778526C1D /* ShortcutRecorderView.swift in Sources */,
 				E1C160A45632D6D84926A30C /* SpokenFormNormalizer.swift in Sources */,
+				A954C4E35F30860DA4CEE56B /* Telemetry.swift in Sources */,
 				2E2AFAFEEFD172F632EA9E32 /* Theme.swift in Sources */,
 				16D8C2E4F65531ED0E8FC8A6 /* ToolbarBackdrop.swift in Sources */,
 				C613A4D66858655E5F98A1D8 /* TranscriptQuality.swift in Sources */,
@@ -698,9 +706,22 @@
 				minimumVersion = 2.6.0;
 			};
 		};
+		6DFAAECB5BC6EFDC9424224C /* XCRemoteSwiftPackageReference "SwiftSDK" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/TelemetryDeck/SwiftSDK.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		30654A8EE2DBB163676099A9 /* TelemetryDeck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6DFAAECB5BC6EFDC9424224C /* XCRemoteSwiftPackageReference "SwiftSDK" */;
+			productName = TelemetryDeck;
+		};
 		843C685747358500698D6BA3 /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 463FD30DE595E6AEF31B7E91 /* XCRemoteSwiftPackageReference "Sparkle" */;

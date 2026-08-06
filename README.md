@@ -13,12 +13,16 @@ Nothing you say gets lost — and none of it ever leaves your Mac.
 
 - No audio is ever uploaded. Transcription is Apple's on-device engine
   (zero download) or an optional local Whisper model.
-- No account. No API key. No subscription. No analytics, no telemetry.
+- No account. No API key. No subscription.
 - Works offline. Airplane mode is a supported configuration.
 - Two permissions only: Microphone (to hear you) and Accessibility
   (to type for you). No screen recording.
 - Recordings are discarded after transcription; dictation history fades
   after 7 days, saved items after 30.
+- The only routine network calls are the signed update check and anonymous
+  usage counts — "a dictation happened," never what it said. Every event is
+  enumerated in [TELEMETRY.md](TELEMETRY.md), the whole analytics surface is
+  one auditable source file, and the off switch is in Settings.
 
 This repository is the proof of those claims. Read the source; run
 Little Snitch; we insist.

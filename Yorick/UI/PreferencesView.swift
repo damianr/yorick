@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var whisperDownloading = false
     @AppStorage(AudioDebugSettings.keepAudioKey) private var keepDebugAudio = AudioDebugSettings.defaultKeepAudio
     @AppStorage(SessionManager.cleanupDictationKey) private var cleanupDictation = false
+    @AppStorage(Telemetry.shareUsageCountsKey) private var shareUsageCounts = true
     @AppStorage(HUDPlacement.unanchoredAtTopKey) private var unanchoredPillAtTop = true
     @State private var opensAtLogin = LoginItem.isEnabled
     /// Sparkle reads this key straight from UserDefaults, so binding to it is
@@ -60,6 +61,9 @@ struct SettingsView: View {
                         .toggleStyle(.switch)
                         .labelsHidden()
                         .controlSize(.small)
+                        .onChange(of: cleanupDictation) {
+                            Telemetry.send(.cleanupToggled, ["enabled": String(cleanupDictation)])
+                        }
                 }
                 settingsRow {
                     VStack(alignment: .leading, spacing: 3) {
@@ -171,11 +175,24 @@ struct SettingsView: View {
                     }
                 }
 
+                sectionLabel("PRIVACY")
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        rowLabel("Share anonymous usage counts")
+                        caption("Counts like \"a dictation was typed\" — so we learn what's used. Never your words, your audio, or where you typed them. Every event is listed in TELEMETRY.md in the public repo.")
+                    }
+                    Spacer(minLength: 16)
+                    Toggle("", isOn: $shareUsageCounts)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .controlSize(.small)
+                }
+
                 sectionLabel("UPDATES")
                 settingsRow {
                     VStack(alignment: .leading, spacing: 3) {
                         rowLabel("Version \(version)")
-                        caption("Update checks are the only routine network call Yorick makes, and every update is cryptographically signed. Nothing about what you say is ever sent.")
+                        caption("Update checks and the usage counts above are Yorick's only routine network calls, and every update is cryptographically signed. Nothing about what you say is ever sent.")
                     }
                     Spacer(minLength: 16)
                     pillButton("Check Now") {
@@ -209,7 +226,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Text("yorick \(version) · everything on this Mac · no account · no analytics")
+                Text("yorick \(version) · your words stay on this Mac · no account")
                     .font(Theme.mono(8.5))
                     .tracking(0.4)
                     .foregroundStyle(Theme.textTertiary)

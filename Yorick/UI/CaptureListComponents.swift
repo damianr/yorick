@@ -141,6 +141,7 @@ struct CaptureRow: View {
     private func copyRow() {
         guard !capture.needsTranscription else { return }
         ClipboardOutput.copy(displayText)
+        Telemetry.send(.captureCopied)
         flashCopied()
     }
 

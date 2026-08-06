@@ -105,6 +105,7 @@ final class MenuBarPanelController {
         if panel?.isVisible == true {
             hide()
         } else {
+            Telemetry.send(.panelOpened)
             show()
         }
     }

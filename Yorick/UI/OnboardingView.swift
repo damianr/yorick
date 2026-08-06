@@ -15,9 +15,21 @@ struct OnboardingView: View {
         case setup
         case tryIt
         case done
+
+        var analyticsName: String {
+            switch self {
+            case .welcome: "welcome"
+            case .setup: "setup"
+            case .tryIt: "tryIt"
+            case .done: "done"
+            }
+        }
     }
 
     @State private var step: Step = .welcome
+    /// Furthest step reached, so the funnel signal fires once per step —
+    /// revisiting a passed step via the dots is not progress.
+    @State private var furthestStep: Step = .welcome
     @State private var microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     @State private var accessibilityTrusted = AXIsProcessTrusted()
     @State private var practiceText = ""
@@ -94,6 +106,14 @@ struct OnboardingView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bgPrimary)
+        .onAppear {
+            Telemetry.send(.onboardingStep, ["step": Step.welcome.analyticsName])
+        }
+        .onChange(of: step) {
+            guard step.rawValue > furthestStep.rawValue else { return }
+            furthestStep = step
+            Telemetry.send(.onboardingStep, ["step": step.analyticsName])
+        }
         .onReceive(axPoll) { _ in
             // Granting Accessibility happens in System Settings — poll so the
             // step advances the moment the toggle flips, no relaunch needed.
@@ -305,10 +325,14 @@ struct OnboardingView: View {
             title: "Yorick lives in your menu bar",
             lines: [
                 "This window will close. Your saved items are under the skull.",
-                "The hotkey works everywhere."
+                "The hotkey works everywhere.",
+                "Yorick sends anonymous usage counts, never your words. You can turn this off in Settings."
             ]
         ) {
-            primaryButton("Start using Yorick") { onDone() }
+            primaryButton("Start using Yorick") {
+                Telemetry.send(.onboardingCompleted)
+                onDone()
+            }
         }
     }
 

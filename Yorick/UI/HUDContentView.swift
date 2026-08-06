@@ -155,6 +155,7 @@ struct HUDContentView: View {
                 // lands here, one obvious click from the clipboard.
                 CardActionButton(icon: "doc.on.doc", label: "Copy") {
                     ClipboardOutput.copy(capture.transcript)
+                    Telemetry.send(.captureCopied)
                     session.lastSavedCapture = nil
                 }
                 Spacer()

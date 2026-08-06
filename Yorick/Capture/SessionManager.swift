@@ -1051,6 +1051,12 @@ final class SessionManager {
             lastUtteranceID = capture.id
             print("[Session] Saved \(effectiveMode.rawValue) capture: \(primaryApp), \(duration)s")
 
+            if effectiveKind == .dictation {
+                Telemetry.send(.dictationTyped, ["engine": TranscriptionEngine.preferred.rawValue])
+            } else {
+                Telemetry.send(.catchSaved)
+            }
+
             if effectiveMode == .contextual {
                 lastSavedCapture = capture
             }
