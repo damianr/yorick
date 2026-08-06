@@ -576,6 +576,15 @@ final class SessionManager {
             appName = frontApp.localizedName
             windowTitle = Self.windowTitle(for: frontApp.processIdentifier)
             print("[Session] Start: app=\(appName ?? "nil") windowTitle=\(windowTitle ?? "nil")")
+            // Chromium builds its AX tree lazily, so the first query of a
+            // session pays construction and loses the 80ms field-probe race —
+            // the first dictation into Chrome after a launch got a
+            // bottom-center pill for no reason but timing. Detached, so
+            // warming can never itself delay the pill.
+            let pid = frontApp.processIdentifier
+            Task.detached(priority: .userInitiated) {
+                AccessibilityCapture.warmAssistiveTree(pid: pid)
+            }
         }
 
         silentSeconds = 0

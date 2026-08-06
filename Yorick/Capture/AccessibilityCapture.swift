@@ -255,6 +255,28 @@ enum AccessibilityCapture {
     /// none. Unlocks the app's assistive tree on first use, escalating to the
     /// broader flag only for rich editors that stay opaque under the minimal one
     /// — so most apps never get the heavier signal.
+    /// Nudge an app's assistive tree awake at hotkey-down.
+    ///
+    /// Chromium builds its accessibility tree lazily, so the FIRST query in a
+    /// session pays construction — which lands in the middle of the 80ms
+    /// field probe and loses the race, putting the pill bottom-center in
+    /// Chrome for the first dictation after a launch. Asking early, off the
+    /// main actor, means the tree is warm by the time routing needs it.
+    ///
+    /// Deliberately the MINIMAL flag and one read: escalating
+    /// AXEnhancedUserInterface is a side effect on someone else's process
+    /// (it has caused resize jank), and this fires on every hotkey press
+    /// rather than only where a caret was wanted.
+    nonisolated static func warmAssistiveTree(pid: pid_t) {
+        guard assistiveTreeEnabled[pid] != true else { return }
+        enableAssistiveTree(pid: pid, enhanced: false)
+        // The read is the point: setting the flag alone doesn't build the
+        // tree, asking for something does.
+        let app = AXUIElementCreateApplication(pid)
+        var focused: CFTypeRef?
+        AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused)
+    }
+
     private static func caretRect(
         focusedElement: AXUIElement,
         role: String,

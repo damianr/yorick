@@ -150,7 +150,25 @@ spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1 | grep -q a
 
 # ── 5. EdDSA-sign + appcast ─────────────────────────────────────────────────
 say "Signing update + generating appcast"
-"$SPARKLE_BIN/generate_appcast" "$DIST" --download-url-prefix "$DL_PREFIX" >/dev/null
+# MUST RUN IN THE FOREGROUND. generate_appcast reads the EdDSA private key
+# from the login keychain, which prompts for authorization — and in a
+# background or non-interactive shell that prompt cannot be answered, so the
+# tool fails while the pipeline sails past it. v0.2.0 shipped that way and
+# needed a manual re-run plus an appcast splice to repair. Output is no longer
+# swallowed, the exit status is checked, and the result is verified to
+# actually mention this version before anything downstream trusts it.
+if ! "$SPARKLE_BIN/generate_appcast" "$DIST" --download-url-prefix "$DL_PREFIX"; then
+  echo "✗ generate_appcast failed."
+  echo "  Almost always the EdDSA key: it lives in the login keychain and needs"
+  echo "  an interactive prompt. Re-run this script in a FOREGROUND terminal."
+  exit 1
+fi
+if ! grep -q "$APP_NAME-$VERSION.dmg" "$DIST/appcast.xml"; then
+  echo "✗ appcast.xml has no enclosure for $APP_NAME-$VERSION.dmg."
+  echo "  generate_appcast reported success but produced nothing for this"
+  echo "  version — do not publish this release. Check $DIST/appcast.xml."
+  exit 1
+fi
 cp "$DIST/appcast.xml" appcast.xml
 echo "✓ appcast.xml updated (enclosure → $DL_PREFIX$APP_NAME-$VERSION.dmg)"
 
