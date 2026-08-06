@@ -84,11 +84,25 @@ enum AccessibilityCapture {
         focusedEditability(editableRoles: editableRoles).isEditable
     }
 
+    /// The focused element, for IDENTITY comparison only — never read for
+    /// content. Used to tell "the user clicked somewhere else mid-dictation"
+    /// apart from "this app simply doesn't describe its editor", which look
+    /// identical if you only ask whether the focus is editable.
+    static func focusedElementIdentity() -> AXUIElement? {
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
+        let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            appElement, kAXFocusedUIElementAttribute as CFString, &focusedRef
+        ) == .success, let focused = focusedRef else { return nil }
+        return (focused as! AXUIElement)
+    }
+
     /// Whether the frontmost app has ANY element focused, editable or not
     /// (excluding password fields). Detection routes rather than vetoes: a
-    /// focused element we can't classify is almost always a text field we failed
-    /// to recognize, so a dictation still pastes there — only a truly focus-less
-    /// desktop falls through to the saved list.
+    /// focused element we can't classify is almost always a text field we
+    /// failed to recognize, so a dictation still pastes there — only a truly
+    /// focus-less desktop falls through to the saved list.
     static func hasAnyFocusedElement() -> Bool {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return false }
         let appElement = AXUIElementCreateApplication(frontApp.processIdentifier)

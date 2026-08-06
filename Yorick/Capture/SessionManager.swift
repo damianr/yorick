@@ -117,6 +117,13 @@ final class SessionManager {
     /// The most recently saved utterance — target of the flip key. Falls back
     /// to the newest capture in the store, so there is no expiry window.
     private var lastUtteranceID: UUID?
+
+    /// The element that had keyboard focus when the hotkey went down, kept
+    /// for IDENTITY comparison at stop. See the demotion rule in
+    /// `processCapture` — this is what distinguishes "you clicked away" from
+    /// "this app doesn't describe its editor."
+    private var startFocusElement: AXUIElement?
+
     var showSilenceWarning = false
     /// Non-nil while audio has stopped arriving mid-recording. The pill says
     /// so instead of continuing to claim it's listening.
@@ -582,6 +589,11 @@ final class SessionManager {
         transientNotice = nil
         state = .recording
 
+        // Cleared BEFORE the capture below, never after — a reset placed
+        // after the assignment is how this fix once shipped as dead code
+        // (the identity was nilled 20 lines after it was read, so focusMoved
+        // could never be true).
+        startFocusElement = nil
         if let frontApp = NSWorkspace.shared.frontmostApplication {
             appName = frontApp.localizedName
             windowTitle = Self.windowTitle(for: frontApp.processIdentifier)
@@ -595,6 +607,8 @@ final class SessionManager {
             Task.detached(priority: .userInitiated) {
                 AccessibilityCapture.warmAssistiveTree(pid: pid)
             }
+            startFocusElement = AXIsProcessTrusted()
+                ? AccessibilityCapture.focusedElementIdentity() : nil
         }
 
         silentSeconds = 0
@@ -830,6 +844,19 @@ final class SessionManager {
             if let stopDecision {
                 modeDecisionSummary += ", stopDecision=[\(stopDecision.summary)]"
             }
+            // Did keyboard focus MOVE during the recording? Identity, not
+            // editability — the two look identical if you only ask "is the
+            // focus a field", and conflating them is what once silently saved
+            // dictation in Pages and Mail, whose editors never describe
+            // themselves as fields. Those apps keep the SAME focused element
+            // throughout, so they are untouched by this.
+            let stopFocusElement = AXIsProcessTrusted()
+                ? AccessibilityCapture.focusedElementIdentity() : nil
+            let focusMoved: Bool = {
+                guard let start = startFocusElement, let now = stopFocusElement else { return false }
+                return !CFEqual(start, now)
+            }()
+
             let effectiveMode: CaptureMode
             if modeWasForced || startConfidence == .high {
                 // A note-register opener is the one signal strong enough to
@@ -839,6 +866,21 @@ final class SessionManager {
                    let prefix = UtteranceRouter.leadingNotePrefix(in: cleaned) {
                     effectiveMode = .contextual
                     modeDecisionSummary += ", routed=contextual (register: starts with \"\(prefix)\")"
+                } else if !modeWasForced, mode == .dictation, focusMoved, !focusedEditableNow {
+                    // FIELD-REPORTED: clicking away mid-dictation. You started
+                    // in a field, so start confidence was high and the mode was
+                    // locked — then focus moved to something that isn't a text
+                    // surface (a page, a button), and the paste fired into it.
+                    // Words vanish where nobody can see them, which is the
+                    // failure the whole design calls the dangerous direction.
+                    //
+                    // NARROW on purpose: it demands BOTH that focus moved AND
+                    // that where it moved isn't editable. A brief flicker back
+                    // into the same field can't trip it, and an AX-opaque
+                    // editor can't either.
+                    effectiveMode = .contextual
+                    modeDecisionSummary += ", routed=contextual (focus left the field mid-dictation)"
+                    print("[Session] Focus moved to a non-field mid-dictation — saving instead of typing")
                 } else {
                     effectiveMode = mode
                 }
