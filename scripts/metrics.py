@@ -17,12 +17,17 @@ for feeding whatever the real analytics store ends up being.
 
 Usage:
   TELEMETRYDECK_TOKEN=tdpat_... scripts/metrics.py [--days 14] [--json]
+
+Or store the token once in the login keychain and forget it:
+  security add-generic-password -s telemetrydeck-token -a yorick -w 'tdpat_...'
+The env var wins when both exist.
 """
 
 import argparse
 import datetime as dt
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -76,6 +81,17 @@ def telemetry(token, days):
     return {"dau": dau.get("result", dau), "signals_by_type": by_type.get("result", by_type)}
 
 
+def keychain_token():
+    try:
+        out = subprocess.run(
+            ["security", "find-generic-password", "-s", "telemetrydeck-token", "-w"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return out.stdout.strip() or None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
 def downloads():
     rels = http_json(f"https://api.github.com/repos/{GITHUB_REPO}/releases")
     out, total = [], 0
@@ -98,7 +114,7 @@ def main():
 
     report = {"generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
 
-    token = os.environ.get("TELEMETRYDECK_TOKEN")
+    token = os.environ.get("TELEMETRYDECK_TOKEN") or keychain_token()
     if token:
         try:
             report["telemetry"] = telemetry(token, args.days)
