@@ -27,9 +27,9 @@ enum Telemetry {
     /// plain words — the same posture as Sparkle's update check.
     static let shareUsageCountsKey = "shareUsageCounts"
 
-    /// The public TelemetryDeck app identifier. Empty until the TelemetryDeck
-    /// app exists; empty means telemetry never runs.
-    private static let appID = ""
+    /// The public TelemetryDeck app identifier. Empty means telemetry never
+    /// runs — strip it to build a telemetry-free Yorick.
+    private static let appID = "26130247-F076-4B1A-8F69-5890A249D3B6"
 
     /// Every signal Yorick can send. Adding a case is a product decision:
     /// document it in TELEMETRY.md in the same commit.
