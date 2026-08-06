@@ -194,6 +194,19 @@ struct SettingsView: View {
 
                 linearSection
 
+                sectionLabel("PRIVACY")
+                settingsRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        rowLabel("Share anonymous usage counts")
+                        caption("Counts like \"a dictation was typed\" — so we learn what's used. Never your words, your audio, or where you typed them. Every event is listed in TELEMETRY.md in the public repo.")
+                    }
+                    Spacer(minLength: 16)
+                    Toggle("", isOn: $shareUsageCounts)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .controlSize(.small)
+                }
+
                 sectionLabel("UPDATES")
                 settingsRow {
                     VStack(alignment: .leading, spacing: 3) {

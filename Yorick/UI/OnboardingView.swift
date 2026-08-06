@@ -30,7 +30,8 @@ struct OnboardingView: View {
             switch self {
             case .welcome: "welcome"
             case .setup: "setup"
-            case .tryIt: "tryIt"
+            case .capture: "capture"
+            case .connect: "connect"
             case .done: "done"
             }
         }
