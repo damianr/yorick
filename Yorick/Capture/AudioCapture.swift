@@ -104,6 +104,46 @@ final class AudioCapture: NSObject, @unchecked Sendable {
 
     var onLevelUpdate: (@Sendable (Float) -> Void)?
 
+    // MARK: - Keeping the recording alive
+    //
+    // FIELD-REPORTED: recordings stopped mid-sentence while the key was still
+    // held, silently. Nothing here observed AVCaptureSession failing, so when
+    // the session died — another app taking the device, a wireless mic
+    // dropping or power-saving, a runtime error, a device re-enumerating —
+    // `isActive` stayed true, the pill kept saying "Listening…", and the WAV
+    // simply stopped growing. On release you got a truncated transcript with
+    // no sign anything had gone wrong.
+    //
+    // Silent truncation is the worst failure this app can have: it is
+    // invisible at the moment it matters and only discovered later, when the
+    // words are gone. Three layers now stand against it — named notifications
+    // for causes we know, a STARVATION WATCHDOG for causes we don't, and a
+    // callback so the UI can stop claiming to listen when it isn't.
+
+    /// Fires when audio stops arriving, with a human-readable reason. The
+    /// recording is NOT ended — the key is still held, so the contract holds
+    /// and Yorick keeps trying.
+    var onAudioStalled: (@Sendable (String) -> Void)?
+    /// Fires when buffers resume after a stall.
+    var onAudioResumed: (@Sendable () -> Void)?
+
+    private let stallLog = Logger(subsystem: "com.heyyorick.Yorick", category: "audioStall")
+    /// Last time a sample buffer arrived. Read by the watchdog, written by the
+    /// capture queue — a lock rather than an actor because the delegate is a
+    /// hot path and must not await anything.
+    private let bufferClock = NSLock()
+    private var lastBufferAt: ContinuousClock.Instant?
+    private var watchdog: DispatchSourceTimer?
+    private var stalled = false
+    private var preferredUID: String?
+    private var observers: [NSObjectProtocol] = []
+
+    /// How long silence-from-the-device counts as normal before it counts as
+    /// broken. Long enough that a pause in speech never trips it (buffers keep
+    /// arriving during silence — a working mic sends zeros), short enough that
+    /// a stall is caught inside a sentence.
+    private static let stallThreshold: Duration = .seconds(2)
+
     /// Spin-up diagnostics: speech between the hotkey and the FIRST sample
     /// buffer is never captured — AVCaptureSession.startRunning is the
     /// dominant cost and gets slower when the device renegotiates (voice
@@ -159,10 +199,138 @@ final class AudioCapture: NSObject, @unchecked Sendable {
         self.smoothedLevel = 0
         self.isActive = true
 
+        self.preferredUID = preferredDeviceUID
+        observeFailures(of: session)
+
         session.startRunning()
+        markBufferArrived()
+        startWatchdog()
         print("[AudioCapture] start() → session running, file=\(url.lastPathComponent)")
 
         return url
+    }
+
+    // MARK: Failure detection
+
+    /// The causes macOS will actually tell us about.
+    private func observeFailures(of session: AVCaptureSession) {
+        removeObservers()
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(
+            forName: .AVCaptureSessionRuntimeError, object: session, queue: nil
+        ) { [weak self] note in
+            let error = note.userInfo?[AVCaptureSessionErrorKey] as? Error
+            self?.handleStall("runtime error: \(error?.localizedDescription ?? "unknown")")
+        })
+        observers.append(center.addObserver(
+            forName: .AVCaptureSessionWasInterrupted, object: session, queue: nil
+        ) { [weak self] _ in
+            self?.handleStall("another app took the microphone")
+        })
+        observers.append(center.addObserver(
+            forName: .AVCaptureSessionInterruptionEnded, object: session, queue: nil
+        ) { [weak self] _ in
+            self?.attemptRecovery(reason: "interruption ended")
+        })
+        observers.append(center.addObserver(
+            forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.handleStall("the microphone disconnected")
+        })
+    }
+
+    private func removeObservers() {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers.removeAll()
+    }
+
+    /// The catch-all, and the reason this is bulletproof rather than merely
+    /// better: it does not care WHY audio stopped. A working microphone sends
+    /// buffers continuously — zeros during silence — so a gap means the
+    /// pipeline is broken however it broke, including in ways nobody has
+    /// thought of yet.
+    private func startWatchdog() {
+        watchdog?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: captureQueue)
+        timer.schedule(deadline: .now() + 0.5, repeating: 0.5)
+        timer.setEventHandler { [weak self] in
+            guard let self, self.isActive else { return }
+            bufferClock.lock()
+            let last = lastBufferAt
+            bufferClock.unlock()
+            guard let last else { return }
+            if ContinuousClock.now - last > Self.stallThreshold, !stalled {
+                handleStall("no audio from the microphone")
+            }
+        }
+        timer.resume()
+        watchdog = timer
+    }
+
+    private func markBufferArrived() {
+        bufferClock.lock()
+        lastBufferAt = ContinuousClock.now
+        let wasStalled = stalled
+        stalled = false
+        bufferClock.unlock()
+        if wasStalled {
+            stallLog.notice("resumed")
+            print("[AudioCapture] audio resumed")
+            onAudioResumed?()
+        }
+    }
+
+    private func handleStall(_ reason: String) {
+        bufferClock.lock()
+        let alreadyStalled = stalled
+        stalled = true
+        bufferClock.unlock()
+        guard !alreadyStalled, isActive else { return }
+        stallLog.error("stalled reason=\(reason, privacy: .public)")
+        print("[AudioCapture] STALLED: \(reason)")
+        onAudioStalled?(reason)
+        attemptRecovery(reason: reason)
+    }
+
+    /// Rebuild the session and keep writing to the SAME file.
+    ///
+    /// The WAV writer is deliberately untouched, so recovered audio APPENDS.
+    /// There is a gap where the device was gone, but the words after it are
+    /// captured — which is the whole point. Truncating at the failure would
+    /// throw away everything the user said afterwards, which is what made the
+    /// original bug infuriating.
+    private func attemptRecovery(reason: String) {
+        captureQueue.async { [weak self] in
+            guard let self, self.isActive else { return }
+            guard let url = self.fileURL else { return }
+            self.captureSession?.stopRunning()
+            self.captureSession = nil
+
+            guard let device = self.preferredUID.flatMap(AVCaptureDevice.init(uniqueID:))
+                    ?? AVCaptureDevice.default(for: .audio),
+                  let input = try? AVCaptureDeviceInput(device: device) else {
+                self.stallLog.error("recovery failed: no device")
+                return
+            }
+            let session = AVCaptureSession()
+            guard session.canAddInput(input) else {
+                self.stallLog.error("recovery failed: cannot add input")
+                return
+            }
+            session.addInput(input)
+            let output = AVCaptureAudioDataOutput()
+            output.setSampleBufferDelegate(self, queue: self.captureQueue)
+            guard session.canAddOutput(output) else {
+                self.stallLog.error("recovery failed: cannot add output")
+                return
+            }
+            session.addOutput(output)
+            self.captureSession = session
+            self.observeFailures(of: session)
+            session.startRunning()
+            self.stallLog.notice("recovery attempted for \(reason, privacy: .public) file=\(url.lastPathComponent, privacy: .public)")
+            print("[AudioCapture] recovery attempted after: \(reason)")
+        }
     }
 
     func stop() -> URL? {
@@ -179,6 +347,13 @@ final class AudioCapture: NSObject, @unchecked Sendable {
     @discardableResult
     private func cleanStop() -> URL? {
         isActive = false
+        watchdog?.cancel()
+        watchdog = nil
+        removeObservers()
+        bufferClock.lock()
+        lastBufferAt = nil
+        stalled = false
+        bufferClock.unlock()
 
         captureSession?.stopRunning()
         captureQueue.sync {} // drain any in-flight callbacks
@@ -262,6 +437,7 @@ extension AudioCapture: AVCaptureAudioDataOutputSampleBufferDelegate {
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         guard isActive else { return }
+        markBufferArrived()
 
         if let started = spinupStart {
             spinupStart = nil

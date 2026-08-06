@@ -252,11 +252,16 @@ struct HUDContentView: View {
                 skullMark(16)
                     .frame(height: 19) // seat at button height so hover adds no vertical jump
                 if unanchored {
-                    Text(transcribing
-                         ? (session.cleanupRunning ? "Cleaning up…" : "Transcribing…")
-                         : "Listening…")
+                    // A stalled mic must never read as "Listening…". The
+                    // whole bug was the pill claiming to hear you while
+                    // nothing was arriving.
+                    Text(session.audioStallReason != nil
+                         ? "Mic stopped — reconnecting…"
+                         : (transcribing
+                            ? (session.cleanupRunning ? "Cleaning up…" : "Transcribing…")
+                            : "Listening…"))
                         .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(Theme.bone)
+                        .foregroundStyle(session.audioStallReason != nil ? Theme.accentAmber : Theme.bone)
                         .lineLimit(1)
                 }
                 if transcribing {

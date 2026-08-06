@@ -118,6 +118,16 @@ final class SessionManager {
     /// to the newest capture in the store, so there is no expiry window.
     private var lastUtteranceID: UUID?
     var showSilenceWarning = false
+    /// Non-nil while audio has stopped arriving mid-recording. The pill says
+    /// so instead of continuing to claim it's listening.
+    ///
+    /// The recording is NOT ended by a stall. The contract the user relies on
+    /// is "while the key is held, we are recording" — so Yorick keeps the
+    /// session open, keeps trying to recover, and keeps writing to the same
+    /// file, while being honest on screen that something is wrong. Ending it
+    /// automatically would turn a recoverable glitch into exactly the silent
+    /// truncation this exists to prevent.
+    private(set) var audioStallReason: String?
 
     var formattedDuration: String {
         let mins = elapsedSeconds / 60
@@ -607,6 +617,25 @@ final class SessionManager {
         RunLoop.main.add(timer, forMode: .common)
         recordingTimer = timer
 
+        audioCapture.onAudioStalled = { [weak self] reason in
+            Task { @MainActor in
+                guard let self, self.state == .recording else { return }
+                self.audioStallReason = reason
+                // Sticky: a stall the user doesn't notice is the entire bug.
+                self.transientNotice = TransientNotice(
+                    message: "Recording interrupted — \(reason)",
+                    detail: "Still holding? Yorick is trying to reconnect. Everything so far is safe.",
+                    sticky: true
+                )
+            }
+        }
+        audioCapture.onAudioResumed = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.audioStallReason = nil
+                self.transientNotice = nil
+            }
+        }
         audioCapture.onLevelUpdate = { [weak self] level in
             Task { @MainActor [weak self] in
                 self?.audioLevel = level
@@ -651,6 +680,9 @@ final class SessionManager {
         recordingTimer = nil
         audioLevel = 0
         audioCapture.onLevelUpdate = nil
+        audioCapture.onAudioStalled = nil
+        audioCapture.onAudioResumed = nil
+        audioStallReason = nil
 
         let audioURL = audioCapture.stop()
         state = .transcribing
