@@ -126,12 +126,6 @@ final class SessionManager {
 
     // MARK: - Screen context (Linear integration only)
 
-    /// The element that had keyboard focus when the hotkey went down, kept
-    /// for IDENTITY comparison at stop. See the demotion rule in
-    /// `processCapture` — this is what distinguishes "you clicked away" from
-    /// "this app doesn't describe its editor."
-    private var startFocusElement: AXUIElement?
-
     /// Evidence collection runs ONLY while the Linear integration is on. A
     /// user who never connects Linear has an app that reads nothing beyond
     /// "is a field focused" — the collector is never even started.
