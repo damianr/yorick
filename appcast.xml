@@ -3,6 +3,17 @@
     <channel>
         <title>Yorick</title>
         <item>
+            <title>0.2.4</title>
+            <pubDate>Wed, 12 Aug 2026 14:19:48 -0700</pubDate>
+            <sparkle:version>10</sparkle:version>
+            <sparkle:shortVersionString>0.2.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/damianr/yorick/releases/download/v0.2.4/Yorick-0.2.4.dmg" length="5637871" type="application/octet-stream" sparkle:edSignature="eqPRA8HCAs5vMub67rE8bwu/p/bcv0VXNpAz8wm6nCY/xlOwgDpbXlyCKOvNJiEHN12cUmz/kI9ujeij9OccBw=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/damianr/yorick/releases/download/v0.2.4/Yorick10-9.delta" sparkle:deltaFrom="9" length="440626" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="oEzuGklt5D6RPrISWOsyl4YvNW1vL6e9IxdPEe3Xh6JrwocyS1B1jGjgnICIWihQnBf5kRtg6s94T8NMqa/UDg=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>0.2.3</title>
             <pubDate>Fri, 31 Jul 2026 13:39:42 -0700</pubDate>
             <sparkle:version>9</sparkle:version>
