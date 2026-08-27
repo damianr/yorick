@@ -62,6 +62,7 @@ xcodebuild -project "$APP_NAME.xcodeproj" -scheme "$SCHEME" -configuration Relea
   -derivedDataPath "$DERIVED" clean build >/dev/null
 APP="$DERIVED/Build/Products/Release/$APP_NAME.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
 DL_PREFIX="https://github.com/$REPO/releases/download/v$VERSION/"
 
 # ── 2. Sign inside-out with Developer ID + hardened runtime ─────────────────
@@ -157,6 +158,10 @@ say "Signing update + generating appcast"
 # needed a manual re-run plus an appcast splice to repair. Output is no longer
 # swallowed, the exit status is checked, and the result is verified to
 # actually mention this version before anything downstream trusts it.
+# The stable-named copy from the PREVIOUS release still sits in $DIST and is
+# byte-identical to its versioned DMG — generate_appcast refuses duplicate
+# archives and dies. It's recreated from this release's DMG below.
+rm -f "$DIST/$APP_NAME.dmg"
 if ! "$SPARKLE_BIN/generate_appcast" "$DIST" --download-url-prefix "$DL_PREFIX"; then
   echo "✗ generate_appcast failed."
   echo "  Almost always the EdDSA key: it lives in the login keychain and needs"
@@ -169,6 +174,14 @@ if ! grep -q "$APP_NAME-$VERSION.dmg" "$DIST/appcast.xml"; then
   echo "  version — do not publish this release. Check $DIST/appcast.xml."
   exit 1
 fi
+# generate_appcast stamps EVERY archive in $DIST with this release's URL
+# prefix, but older DMGs live under their own tags — point them back so the
+# historical entries don't 404.
+for f in "$DIST/$APP_NAME"-*.dmg; do
+  v="$(basename "$f" | sed -E "s/^$APP_NAME-(.+)\.dmg$/\1/")"
+  [ "$v" = "$VERSION" ] && continue
+  sed -i '' "s|download/v$VERSION/$APP_NAME-$v\.dmg|download/v$v/$APP_NAME-$v.dmg|" "$DIST/appcast.xml"
+done
 cp "$DIST/appcast.xml" appcast.xml
 echo "✓ appcast.xml updated (enclosure → $DL_PREFIX$APP_NAME-$VERSION.dmg)"
 
@@ -187,7 +200,8 @@ cat <<DONE
   Appcast:   appcast.xml   (EdDSA-signed, points at the v$VERSION release asset)
 
   Ship it:
-    1. gh release create v$VERSION "$DMG" "$STABLE_DMG" --title "Yorick $VERSION" --notes "…"
+    1. gh release create v$VERSION "$DMG" "$STABLE_DMG" $(ls "$DIST/$APP_NAME$BUILD"-*.delta 2>/dev/null | tr '\n' ' ')--title "Yorick $VERSION" --notes "…"
+       (this release's .delta files ride along — the appcast's delta enclosures point at this tag)
        (the second asset keeps a version-free download URL for the marketing site:
         github.com/$REPO/releases/latest/download/$APP_NAME.dmg)
     2. git add appcast.xml && git commit -m "release: v$VERSION" && git push
