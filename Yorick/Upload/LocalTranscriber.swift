@@ -28,8 +28,6 @@ enum LocalTranscriber {
         let jsonOutputPath = audioURL.path + ".json"
         defer { try? FileManager.default.removeItem(atPath: jsonOutputPath) }
 
-        let whisperDir = Bundle.main.resourcePath! + "/Whisper"
-
         let process = Process()
         process.executableURL = URL(fileURLWithPath: whisperCLI)
         process.arguments = [
@@ -44,10 +42,8 @@ enum LocalTranscriber {
             "--prompt", WhisperServer.vocabularyPrompt,
         ] + WhisperServer.vadArguments()
 
-        // Set DYLD path for bundled libraries
-        var env = ProcessInfo.processInfo.environment
-        env["DYLD_LIBRARY_PATH"] = whisperDir + "/lib"
-        process.environment = env
+        // The binary finds its dylibs via its own @loader_path/lib rpath —
+        // a DYLD_LIBRARY_PATH here would be stripped by the hardened runtime.
 
         let pipe = Pipe()
         process.standardOutput = pipe

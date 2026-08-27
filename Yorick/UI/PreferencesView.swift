@@ -541,36 +541,51 @@ struct SettingsView: View {
 
     private func selectEngine(_ engine: TranscriptionEngine) {
         selectedEngine = engine
-        TranscriptionEngine.preferred = engine
         switch engine {
         case .whisper:
             ensureWhisperReady()
         case .apple:
+            TranscriptionEngine.preferred = engine
             if !appleSpeechAuthorized {
                 Task { appleSpeechAuthorized = await AppleSpeech.requestAuthorization() }
             }
         case .appleAnalyzer:
-            break
+            TranscriptionEngine.preferred = engine
         }
     }
 
     /// Switching to Whisper mid-run must fetch the model and boot the server —
-    /// launch only does this when Whisper is already the preference.
+    /// launch only does this when Whisper is already the preference. The live
+    /// preference flips only once the model is on disk: dictations during the
+    /// 600 MB download keep using the engine that was already working, and a
+    /// failed download rolls the card back instead of stranding the user on an
+    /// engine that can't run.
     private func ensureWhisperReady() {
         if FileManager.default.fileExists(atPath: WhisperServer.modelPath) {
+            TranscriptionEngine.preferred = .whisper
             Task.detached { WhisperServer.ensureRunning() }
             return
         }
+        let previousEngine = TranscriptionEngine.preferred
         whisperDownloading = true
         Task.detached {
             do {
                 try await WhisperServer.downloadModelIfNeeded { _ in }
                 await WhisperServer.downloadVADModelIfNeeded()
                 WhisperServer.ensureRunning()
+                await MainActor.run {
+                    // Commit only if the user hasn't picked another engine
+                    // while the download ran.
+                    if selectedEngine == .whisper { TranscriptionEngine.preferred = .whisper }
+                    whisperDownloading = false
+                }
             } catch {
                 print("[Settings] Whisper model download failed: \(error)")
+                await MainActor.run {
+                    if selectedEngine == .whisper { selectedEngine = previousEngine }
+                    whisperDownloading = false
+                }
             }
-            await MainActor.run { whisperDownloading = false }
         }
     }
 

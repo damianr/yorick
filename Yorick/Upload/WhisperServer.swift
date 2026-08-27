@@ -114,9 +114,6 @@ enum WhisperServer {
             return
         }
 
-        // Set up environment so the bundled dylibs and backends are found
-        let whisperDir = Bundle.main.resourcePath! + "/Whisper"
-
         let process = Process()
         process.executableURL = URL(fileURLWithPath: serverPath)
         process.arguments = [
@@ -127,10 +124,8 @@ enum WhisperServer {
         ] + vadArguments()
         print("[WhisperServer] Launch args: \(process.arguments?.joined(separator: " ") ?? "")")
 
-        // Set DYLD path so the server finds its bundled libraries
-        var env = ProcessInfo.processInfo.environment
-        env["DYLD_LIBRARY_PATH"] = whisperDir + "/lib"
-        process.environment = env
+        // The binary finds its dylibs via its own @loader_path/lib rpath —
+        // a DYLD_LIBRARY_PATH here would be stripped by the hardened runtime.
 
         // Drain stderr continuously. whisper-server logs every inference there;
         // once the ~64 KB pipe buffer fills, the server blocks on write(2)

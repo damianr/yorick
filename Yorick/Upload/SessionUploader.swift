@@ -125,14 +125,29 @@ enum TranscriptionService {
             do {
                 return try await transcribeWithWhisper(audioURL: audioURL)
             } catch {
-                // If all Whisper options fail, try Apple Speech as last resort
-                if AppleSpeech.isAvailable {
-                    print("[Transcribe] All Whisper options failed, trying Apple Speech")
-                    return try await AppleSpeech.transcribe(audioURL: audioURL)
+                // If all Whisper options fail, try Apple as last resort
+                print("[Transcribe] All Whisper options failed, trying Apple fallback")
+                if let fallback = try? await transcribeWithApple(audioURL: audioURL) {
+                    return fallback
                 }
                 throw error
             }
         }
+    }
+
+    /// Apple fallback that prefers the modern on-device SpeechAnalyzer — the
+    /// zero-setup default on macOS 26 — over the legacy SFSpeechRecognizer
+    /// path, which needs an authorization the user may never have granted.
+    private static func transcribeWithApple(audioURL: URL) async throws -> TranscribeResponse {
+        if #available(macOS 26, *), await AppleSpeechAnalyzer.isSupported() {
+            print("[Transcribe] Falling back to Apple SpeechAnalyzer")
+            return try await AppleSpeechAnalyzer.transcribe(audioURL: audioURL)
+        }
+        if AppleSpeech.isAvailable {
+            print("[Transcribe] Falling back to Apple Speech")
+            return try await AppleSpeech.transcribe(audioURL: audioURL)
+        }
+        throw TranscriptionError.noTranscriberAvailable
     }
 
     private static func transcribeWithWhisper(audioURL: URL) async throws -> TranscribeResponse {
@@ -163,13 +178,8 @@ enum TranscriptionService {
             return try await LocalTranscriber.transcribe(audioURL: audioURL)
         }
 
-        // Last resort: try Apple Speech
-        if AppleSpeech.isAvailable {
-            print("[Transcribe] Falling back to Apple Speech")
-            return try await AppleSpeech.transcribe(audioURL: audioURL)
-        }
-
-        throw TranscriptionError.noTranscriberAvailable
+        // Last resort: whichever Apple engine can run here
+        return try await transcribeWithApple(audioURL: audioURL)
     }
 
     private static func isLikelyIncompleteAppleSpeechResult(
