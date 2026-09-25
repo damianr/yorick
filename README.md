@@ -1,46 +1,59 @@
 # Yorick
 
-**Local-only macOS dictation with a safety net.**
+**Local-only dictation for macOS.**
 
-Hold a hotkey (⌥Space) and talk. One rule:
+Hold ⌥Space, talk, let go. Your words are typed at the cursor.
 
-- **In a text field** → your words are typed at the cursor.
-- **Anywhere else** → they're saved, visibly marked, waiting for you.
+Not in a text field? Nothing is lost. What you said is saved to a list in the
+menu bar, one Copy click from wherever you meant it to go.
 
-Nothing you say gets lost — and none of it ever leaves your Mac.
+Your voice and your words never leave your Mac.
 
 ## Privacy you can check
 
-- No audio is ever uploaded. Transcription is Apple's on-device engine
-  (zero download) or an optional local Whisper model.
+- Transcription runs on your Mac: Apple's on-device engine by default (no
+  download), or an optional local Whisper model.
 - No account. No API key. No subscription.
-- Works offline. Airplane mode is a supported configuration.
-- Two permissions only: Microphone (to hear you) and Accessibility
-  (to type for you). No screen recording.
-- Recordings are discarded after transcription; dictation history fades
+- Works offline.
+- Two permissions: Microphone, to hear you, and Accessibility, to type for you
+  and to tell whether a text field is focused. Yorick never reads what's on
+  your screen, and it never asks for Screen Recording.
+- Audio is deleted as soon as it's transcribed. Dictations leave the list
   after 7 days, saved items after 30.
 - The only routine network calls are the signed update check and anonymous
-  usage counts — "a dictation happened," never what it said. Every event is
-  enumerated in [TELEMETRY.md](TELEMETRY.md), the whole analytics surface is
-  one auditable source file, and the off switch is in Settings.
+  usage counts ("a dictation happened," never what it said). Every call is
+  listed in [TELEMETRY.md](TELEMETRY.md), and the off switch is in Settings.
 
-This repository is the proof of those claims. Read the source; run
-Little Snitch; we insist.
+This repository is the proof. Read the source; run Little Snitch.
 
 ## The details people ask about
 
-- A small glass pill anchors to the focused field while you talk — it shows
-  exactly where your words will land *before* you say them, rides the field
-  as it grows, and offers Undo and on-device Cleanup after insertion.
-- Guessed wrong? One keystroke (⌥⇧`) does the other thing: a typed
-  dictation gets saved; a saved item gets typed wherever your cursor is now.
-- The saved list is deliberately plain: full raw text, where and when you
-  said it, click to copy. No folders, no tags, nothing to organize or tend.
+- **You see where your words will land.** A small pill sits at the caret
+  while you talk, in apps that report where the caret is. Elsewhere it sits
+  at the bottom of the screen.
+- **Your clipboard is left alone.** Yorick pastes through the clipboard and
+  puts yours back right after, so a ⌘V of your own still pastes what you
+  copied. Clipboard managers are told to skip the transcript.
+- **Optional Cleanup.** Turn on "Clean up dictation before it types" and
+  filler words are removed on-device before anything is typed. It never adds
+  a word you didn't say, and the list always keeps exactly what you said.
+  Requires Apple Intelligence on macOS 26.
+- **"Note to self…"** Start with that (or "reminder," "idea," "bug") and
+  Yorick saves it to the list even with a field focused.
+- **The saved list is plain.** Your words, the app you said them in, and a
+  Copy button. Nothing to organize.
 
-## Status
+## Install
 
-Early, and moving fast. Built as its maker's daily driver; notarized
-downloads and a website are on the way. Until then, build from source:
+Download the latest notarized build from
+[GitHub Releases](https://github.com/damianr/yorick/releases/latest) or
+[heyyorick.com](https://heyyorick.com). Updates arrive through the app.
+
+Requires macOS 14 or later. The no-download engine and Cleanup need macOS 26;
+on earlier versions Yorick uses the Whisper engine (a one-time ~600 MB
+download).
+
+To build from source:
 
 ```sh
 brew install xcodegen
@@ -48,12 +61,13 @@ xcodegen generate
 xcodebuild -project Yorick.xcodeproj -scheme Yorick -configuration Release build
 ```
 
-Requires macOS 14+ (the zero-download engine and on-device Cleanup are
-macOS 26 features). Capabilities grow only when users ask — open an issue
-and ask.
+## Status
+
+Yorick is its maker's daily driver, free and maintained. Bug reports are
+welcome in [Issues](https://github.com/damianr/yorick/issues).
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Third-party components are listed in
+MIT, see [LICENSE](LICENSE). Third-party components are listed in
 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md). The Yorick name and
 icon are not covered by the code license.
