@@ -21,16 +21,20 @@ final class MenuBarPanelController {
 
     private static let panelSize = NSSize(width: 420, height: 560)
 
-    private var showObserver: NSObjectProtocol?
+    private var showObservers: [NSObjectProtocol] = []
 
     init(session: SessionManager) {
         self.session = session
         installStatusItem()
         watchState()
-        showObserver = NotificationCenter.default.addObserver(
-            forName: .showMenuBarPanel, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.show() }
+        // .showSavedItems also resets the page, which MenuBarPanelView
+        // handles; here both just mean "bring the panel up."
+        showObservers = [Notification.Name.showMenuBarPanel, .showSavedItems].map { name in
+            NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.show() }
+            }
         }
     }
 

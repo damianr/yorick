@@ -170,9 +170,10 @@ struct HUDContentView: View {
         .frame(maxWidth: 400)
         .contentShape(Rectangle())
         .onTapGesture {
-            // Click anywhere else on the card to open Yorick at the list.
+            // Click anywhere else on the card to open Yorick at the list —
+            // the list, not whatever page the panel was last left on.
             session.lastSavedCapture = nil
-            NSApp.activate(ignoringOtherApps: true)
+            NotificationCenter.default.post(name: .showSavedItems, object: nil)
         }
         .onHover { hovering in
             // Hover holds the card (the skull's pattern); leaving restarts a

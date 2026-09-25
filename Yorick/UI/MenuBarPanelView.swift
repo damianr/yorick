@@ -60,6 +60,11 @@ struct MenuBarPanelView: View {
                 )
         )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // showingSettings outlives the panel closing, so a card click must
+        // say where to land rather than inherit the last page.
+        .onReceive(NotificationCenter.default.publisher(for: .showSavedItems)) { _ in
+            showingSettings = false
+        }
     }
 
     // MARK: - Header

@@ -151,6 +151,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 extension Notification.Name {
     /// Open the menu bar panel (onboarding's final handoff step).
     static let showMenuBarPanel = Notification.Name("showMenuBarPanel")
+    /// Open the menu bar panel AT the saved list, whatever page it was left
+    /// on (a capture card click — landing on Settings reads as broken).
+    static let showSavedItems = Notification.Name("showSavedItems")
     /// Ask Sparkle to check for updates now (panel ⋯ menu).
     static let checkForUpdates = Notification.Name("checkForUpdates")
 }
