@@ -327,11 +327,11 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					623CFD17D0F05F0AFD9C127F = {
-						DevelopmentTeam = JD2ZUW2N95;
+						DevelopmentTeam = QFVQCASSH2;
 						ProvisioningStyle = Automatic;
 					};
 					F2377215FFC17713D6444CF3 = {
-						DevelopmentTeam = JD2ZUW2N95;
+						DevelopmentTeam = QFVQCASSH2;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -449,7 +449,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 11;
-				DEVELOPMENT_TEAM = JD2ZUW2N95;
+				DEVELOPMENT_TEAM = QFVQCASSH2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Yorick/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -475,7 +475,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 11;
-				DEVELOPMENT_TEAM = JD2ZUW2N95;
+				DEVELOPMENT_TEAM = QFVQCASSH2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Yorick/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -561,7 +561,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = JD2ZUW2N95;
+				DEVELOPMENT_TEAM = QFVQCASSH2;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -638,7 +638,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = JD2ZUW2N95;
+				DEVELOPMENT_TEAM = QFVQCASSH2;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
