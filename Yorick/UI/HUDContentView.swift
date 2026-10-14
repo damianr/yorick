@@ -94,6 +94,26 @@ struct HUDContentView: View {
                         .lineLimit(2)
                 }
             }
+            if let action = notice.action {
+                Button {
+                    switch action {
+                    case .openAccessibilitySettings:
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    withAnimation { session.transientNotice = nil }
+                } label: {
+                    Text(action.label)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(.black.opacity(0.85))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(.white.opacity(0.9)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
             if notice.sticky {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .semibold))

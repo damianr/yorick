@@ -33,6 +33,22 @@ struct TransientNotice: Equatable, Identifiable {
     /// Sticky notices stay until clicked — used for failures the user must
     /// see (a 3-second flash after a minutes-long transcription is a miss).
     var sticky: Bool = false
+    /// A one-tap fix shown as a button on the notice.
+    var action: Action? = nil
+
+    enum Action: Equatable {
+        case openAccessibilitySettings
+        var label: String { "Open Settings" }
+    }
+
+    /// macOS shows no prompt when System Settings already lists Yorick (for
+    /// example, a grant left over from a differently signed build), so the
+    /// pill has to say it can't see text fields.
+    static var accessibilityMissing: TransientNotice { TransientNotice(
+        message: "Yorick can’t see text fields, so it’s saving instead of typing",
+        detail: "Turn on Yorick in Privacy & Security › Accessibility",
+        sticky: true,
+        action: .openAccessibilitySettings) }
 }
 
 /// Where the pill sits relative to its anchor, driving both window origin
@@ -176,7 +192,16 @@ final class SessionManager {
     var audioLevel: Float = 0 { didSet { yorickMic.audioLevel = audioLevel } }
     var captureMode: CaptureMode = .contextual
     var lastSavedCapture: Capture?  // For toast display
-    var transientNotice: TransientNotice?  // For dropped-capture HUD notice
+    var transientNotice: TransientNotice? {  // For dropped-capture HUD notice
+        didSet {
+            // Keep the Accessibility warning over later receipts until the
+            // user acts on it, dismisses it, or access comes back.
+            if let old = oldValue, old.action == .openAccessibilitySettings,
+               let new = transientNotice, new.action == nil, !AXIsProcessTrusted() {
+                transientNotice = old
+            }
+        }
+    }
     /// True while the opt-in pre-insert cleanup pass is running — the pill
     /// says "Cleaning up…" so the wait between release and landing is
     /// announced, never a silent stall.
@@ -284,6 +309,9 @@ final class SessionManager {
         // A stuck error state must never soft-lock the hotkey.
         if case .error = state { state = .idle }
         guard state == .idle else { return }
+        if !AXIsProcessTrusted(), UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
+            transientNotice = .accessibilityMissing
+        }
 
         modeWasForced = forcedMode != nil
         captureMode = forcedMode ?? .contextual
