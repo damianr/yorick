@@ -55,6 +55,7 @@ targets:
     sources:
       - path: YorickTests
       - path: Yorick/Output/SpokenFormNormalizer.swift
+      - path: Yorick/Output/Vocabulary.swift
       - path: Yorick/Output/FieldProfiler.swift
       - path: Yorick/Capture/FocusClassifier.swift
     settings:

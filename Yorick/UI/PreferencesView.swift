@@ -20,6 +20,9 @@ struct SettingsView: View {
     @AppStorage(SessionManager.cleanupDictationKey) private var cleanupDictation = false
     @AppStorage(Telemetry.shareUsageCountsKey) private var shareUsageCounts = true
     @AppStorage(HUDPlacement.unanchoredAtTopKey) private var unanchoredPillAtTop = true
+    @AppStorage(VocabularyDefaults.learnFromFixesKey) private var learnFromFixes = true
+    @State private var newTerm = ""
+    @State private var newHeardAs = ""
     @State private var opensAtLogin = LoginItem.isEnabled
     /// Sparkle reads this key straight from UserDefaults, so binding to it is
     /// enough to turn scheduled checks on and off.
@@ -117,10 +120,12 @@ struct SettingsView: View {
                         engine: .whisper,
                         name: "Whisper",
                         sub: "best accuracy · 600 MB download",
-                        desc: "Downloads a 600 MB model once, then runs on this Mac. A touch slower; slightly better with unusual words — and it learns your product names.",
+                        desc: "Downloads a 600 MB model once, then runs on this Mac. A touch slower; slightly better with unusual words, and it leans hardest on your vocabulary.",
                         statusLine: whisperDownloading ? "downloading model…" : nil
                     )
                 }
+
+                vocabularySection
 
                 sectionLabel("PERMISSIONS & SYSTEM")
                 settingsRow {
@@ -251,6 +256,95 @@ struct SettingsView: View {
     /// recognizer otherwise (macOS 14–25).
     private var preferredAppleEngine: TranscriptionEngine {
         TranscriptionEngine.appleAnalyzer.isAvailableOnThisOS ? .appleAnalyzer : .apple
+    }
+
+    // MARK: - Vocabulary
+
+    @ViewBuilder
+    private var vocabularySection: some View {
+        let vocabulary = VocabularyStore.shared
+        sectionLabel("VOCABULARY")
+        VStack(alignment: .leading, spacing: 3) {
+            rowLabel("Your words")
+            caption("Names and terms Yorick should spell your way. Every engine leans toward them, and anything you list under \u{201C}heard as\u{201D} is always swapped for the word.")
+        }
+        .padding(.vertical, 10)
+
+        ForEach(vocabulary.suggestions, id: \.self) { suggestion in
+            settingsRow {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(suggestion.term)
+                        .font(Theme.mono(11.5, weight: .semibold))
+                        .foregroundStyle(Theme.accentPurple)
+                    caption("Suggested: you changed \u{201C}\(suggestion.heard)\u{201D} to this")
+                }
+                Spacer(minLength: 16)
+                pillButton("Always") { vocabulary.accept(suggestion) }
+                pillButton("No thanks") { vocabulary.dismiss(suggestion) }
+            }
+        }
+
+        settingsRow {
+            vocabularyField("Word or name", text: $newTerm)
+            vocabularyField("Heard as (optional)", text: $newHeardAs)
+            pillButton("Add") { addVocabularyEntry() }
+                .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+
+        ForEach(vocabulary.sortedEntries) { entry in
+            settingsRow {
+                VStack(alignment: .leading, spacing: 3) {
+                    rowLabel(entry.term)
+                    if !entry.heardAs.isEmpty {
+                        caption("heard as " + entry.heardAs.map { "\u{201C}\($0)\u{201D}" }.joined(separator: ", "))
+                    }
+                }
+                Spacer(minLength: 16)
+                Button {
+                    vocabulary.remove(entry)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Remove \(entry.term)")
+            }
+        }
+
+        settingsRow {
+            VStack(alignment: .leading, spacing: 3) {
+                rowLabel("Suggest words from my fixes")
+                caption("After Yorick types, it watches that field for two minutes. If you retype a word as one that sounds like it (\u{201C}weights\u{201D} to \u{201C}Waits\u{201D}), it offers to remember the fix. Read on this Mac and never kept; password fields are never watched.")
+            }
+            Spacer(minLength: 16)
+            Toggle("", isOn: $learnFromFixes)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.small)
+        }
+    }
+
+    private func vocabularyField(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .font(Theme.mono(10.5))
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.bgElevated))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderSubtle, lineWidth: 1))
+            .onSubmit { addVocabularyEntry() }
+    }
+
+    /// Heard-as accepts a comma list: "weights, wades".
+    private func addVocabularyEntry() {
+        let heard = newHeardAs.split(separator: ",").map(String.init)
+        VocabularyStore.shared.add(term: newTerm, heardAs: heard)
+        newTerm = ""
+        newHeardAs = ""
     }
 
     // MARK: - Pieces

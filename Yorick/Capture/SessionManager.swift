@@ -124,6 +124,10 @@ final class SessionManager {
     /// "this app doesn't describe its editor."
     private var startFocusElement: AXUIElement?
 
+    /// Watches the field a dictation was just typed into for the user
+    /// fixing a misheard word, and offers the fix as a vocabulary rule.
+    @ObservationIgnored private let correctionWatcher = CorrectionWatcher()
+
     var showSilenceWarning = false
     /// Non-nil while audio has stopped arriving mid-recording. The pill says
     /// so instead of continuing to claim it's listening.
@@ -588,6 +592,8 @@ final class SessionManager {
         startedAt = Date()
         transientNotice = nil
         state = .recording
+        // A new dictation ends the last one's watch (keeping a finished fix).
+        correctionWatcher.stop()
 
         // Cleared BEFORE the capture below, never after — a reset placed
         // after the assignment is how this fix once shipped as dead code
@@ -795,9 +801,15 @@ final class SessionManager {
             // address) corrects transcription artifacts, so it applies to
             // every utterance — typed and saved alike. `spoken` survives for
             // the one field kind that must get the words untouched (secure).
-            let cleaned = SpokenFormNormalizer.normalize(spoken)
-            if cleaned != spoken {
+            let normalized = SpokenFormNormalizer.normalize(spoken)
+            if normalized != spoken {
                 print("[Session] Spoken-form normalization rewrote an address run")
+            }
+            // The user's vocabulary, applied the same on every engine:
+            // heard-as spellings ("weights") become their term ("Waits").
+            let cleaned = VocabularyCorrector.apply(normalized, entries: VocabularyDefaults.entries())
+            if cleaned != normalized {
+                print("[Session] Vocabulary corrected the transcript")
             }
 
             guard isLive() else { return }
@@ -958,6 +970,7 @@ final class SessionManager {
                     Self.insertTextAtCursor(shaped.outbound)
                     effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
                     print("[Session] Text inserted at cursor")
+                    if fieldProfile != .secure { correctionWatcher.watch(typed: shaped.outbound) }
                 } else if AccessibilityCapture.hasAnyFocusedElement() {
                     // Detection couldn't confirm a field, but SOMETHING is focused
                     // — almost always a text field we failed to classify. Trust the
@@ -967,6 +980,7 @@ final class SessionManager {
                     Self.insertTextAtCursor(shaped.outbound)
                     effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
                     print("[Session] Text pasted into unclassified focused element")
+                    if fieldProfile != .secure { correctionWatcher.watch(typed: shaped.outbound) }
                 } else {
                     // Nothing focused at all — genuine no-field. Keep it in the
                     // list, where every transcript already lives one Copy click away.
@@ -1170,10 +1184,13 @@ final class SessionManager {
         Task { [weak self] in
             do {
                 let result = try await TranscriptionService.transcribe(audioURL: audioURL)
-                let cleaned = result.transcript
-                    .replacingOccurrences(of: "\n", with: " ")
-                    .replacingOccurrences(of: "  ", with: " ")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let cleaned = VocabularyCorrector.apply(
+                    result.transcript
+                        .replacingOccurrences(of: "\n", with: " ")
+                        .replacingOccurrences(of: "  ", with: " ")
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                    entries: VocabularyDefaults.entries()
+                )
                 guard let self else { return }
                 guard let current = self.captureStore.captures.first(where: { $0.id == captureID }) else { return }
                 guard !cleaned.isEmpty else {
