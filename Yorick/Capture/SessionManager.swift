@@ -95,6 +95,9 @@ final class SessionManager {
     /// readable caret (single-line exception) — the pill must render as a
     /// capsule there: the pointer corner claims an exact insertion point.
     var hudAnchorApproximate = false
+    /// The pill sits LEFT of the caret (trailing edge on it) because a
+    /// leading-aligned pill would run off the right edge of the screen.
+    var hudPillTrailing = false
     private var audioFileURL: URL?
     private var startTask: Task<Void, Never>?
     private var processingTask: Task<Void, Never>?
@@ -325,6 +328,7 @@ final class SessionManager {
         // must never survive into a new one; only the single-line tier
         // below re-asserts it.
         hudAnchorApproximate = false
+        hudPillTrailing = false
         guard let target else {
             stopAnchorTracking()
             hudPillPlacement = .bottomCenter
@@ -404,6 +408,14 @@ final class SessionManager {
         // content sits at the window's left, inset by the content padding —
         // the padding exists so the glow can fade without clipping).
         var x = field.minX - HUDPlacement.contentPadding
+        // FIELD-REPORTED: near the right edge of the screen, clamping the
+        // fixed-width window shoved the pill left, so it sat over a word
+        // from the previous insertion instead of at the caret. Flip instead:
+        // seat the pill's trailing edge on the caret.
+        hudPillTrailing = x > visible.maxX - size.width
+        if hudPillTrailing {
+            x = field.minX + HUDPlacement.contentPadding - size.width
+        }
         x = min(max(x, visible.minX), visible.maxX - size.width)
 
         // The pill hovers just ABOVE the caret line (8px off its midline) —
@@ -440,7 +452,7 @@ final class SessionManager {
             fieldAX=\(NSStringFromRect(target.frame), privacy: .public) \
             flippedField=\(NSStringFromRect(field), privacy: .public) \
             visible=\(NSStringFromRect(visible), privacy: .public) \
-            placement=\(self.hudPillPlacement.rawValue, privacy: .public) \
+            placement=\(self.hudPillPlacement.rawValue, privacy: .public)\(self.hudPillTrailing ? "-trailing" : "", privacy: .public) \
             origin=\(NSStringFromPoint(origin), privacy: .public)
             """)
         NotificationCenter.default.post(
