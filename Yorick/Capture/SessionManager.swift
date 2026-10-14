@@ -85,6 +85,7 @@ final class SessionManager {
             self?.transientNotice = TransientNotice(message: reason, sticky: true)
         }
         skullBluetooth.restoreIfConfigured()
+        if skullSelected { skullBluetooth.start(pairNew: !SkullBluetoothController.isPaired) }
     }
 
     func connectSkullBluetooth() {
@@ -95,7 +96,7 @@ final class SessionManager {
     }
 
     func skullSelectionChanged() {
-        if skullSelected { configureSkullBluetooth(); skullBluetooth.start() }
+        if skullSelected { configureSkullBluetooth(); skullBluetooth.start(pairNew: !SkullBluetoothController.isPaired) }
         else if skullAudioActive { skullBluetooth.stopListening() }
     }
 

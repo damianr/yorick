@@ -264,13 +264,9 @@ struct YorickDevicesView: View {
         case .pocket:
             session.connectPocketBluetooth()
         case .skull:
-            // Bluetooth is the skull's own link; a wired skull is used only when
-            // it's plugged in and Bluetooth isn't up.
-            if let skull = skullInput, !session.skullBluetooth.connected {
-                session.microphoneManager.selectedDeviceUID = skull.id
-            } else {
-                session.connectSkullBluetooth()
-            }
+            // Bluetooth is the skull's own link. A wired skull stays available
+            // in the microphone picker.
+            session.connectSkullBluetooth()
         }
     }
 }
