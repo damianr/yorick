@@ -90,6 +90,23 @@ struct SettingsView: View {
                     }
                 }
 
+                sectionLabel("TRANSCRIPTION")
+                VStack(spacing: 8) {
+                    engineCard(
+                        engine: preferredAppleEngine,
+                        name: "Apple Speech",
+                        sub: "fastest · recommended",
+                        desc: "Apple's on-device engine. Text appears about as fast as you release the key, and there's nothing to set up."
+                    )
+                    engineCard(
+                        engine: .whisper,
+                        name: "Whisper",
+                        sub: "best accuracy · 600 MB",
+                        desc: "Downloads a 600 MB model once, then runs on this Mac. A touch slower; slightly better with unusual words — and it learns your product names.",
+                        statusLine: whisperDownloading ? "downloading model…" : nil
+                    )
+                }
+
                 sectionLabel("RECORDING")
                 infoRow("cleanup", "Clean up before typing",
                         info: "Removes filler words and false starts on this Mac, then types the result — adds a beat before the text lands. If cleanup can't run, your words are typed exactly as spoken. Your list always keeps the original.") {
@@ -113,23 +130,6 @@ struct SettingsView: View {
                         // Move the live HUD immediately — no relaunch to see it.
                         NotificationCenter.default.post(name: .hudReposition, object: nil)
                     }
-                }
-
-                sectionLabel("TRANSCRIPTION")
-                VStack(spacing: 8) {
-                    engineCard(
-                        engine: preferredAppleEngine,
-                        name: "Apple Speech",
-                        sub: "fastest · recommended",
-                        desc: "Apple's on-device engine. Text appears about as fast as you release the key, and there's nothing to set up."
-                    )
-                    engineCard(
-                        engine: .whisper,
-                        name: "Whisper",
-                        sub: "best accuracy · 600 MB",
-                        desc: "Downloads a 600 MB model once, then runs on this Mac. A touch slower; slightly better with unusual words — and it learns your product names.",
-                        statusLine: whisperDownloading ? "downloading model…" : nil
-                    )
                 }
 
                 sectionLabel("PERMISSIONS & SYSTEM")
