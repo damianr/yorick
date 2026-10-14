@@ -100,9 +100,9 @@ final class AudioCapture: NSObject, @unchecked Sendable {
     private var fileURL: URL?
     private var isActive = false
     private let captureQueue = DispatchQueue(label: "com.heyyorick.audio-capture")
-    private var smoothedLevel: Float = 0
-
-    var onLevelUpdate: (@Sendable (Float) -> Void)?
+    private var inputMeter = AudioInputMeter()
+    var onMeterUpdate: (@Sendable (AudioMeterReading) -> Void)?
+    var onDeviceChanged: (@Sendable (String) -> Void)?
 
     // MARK: - Keeping the recording alive
     //
@@ -196,13 +196,14 @@ final class AudioCapture: NSObject, @unchecked Sendable {
         self.captureSession = session
         self.wavWriter = nil
         self.fileURL = url
-        self.smoothedLevel = 0
+        self.inputMeter = AudioInputMeter()
         self.isActive = true
 
         self.preferredUID = preferredDeviceUID
         observeFailures(of: session)
 
         session.startRunning()
+        onDeviceChanged?(device.localizedName)
         markBufferArrived()
         startWatchdog()
         print("[AudioCapture] start() → session running, file=\(url.lastPathComponent)")
@@ -327,7 +328,9 @@ final class AudioCapture: NSObject, @unchecked Sendable {
             session.addOutput(output)
             self.captureSession = session
             self.observeFailures(of: session)
+            self.inputMeter = AudioInputMeter()
             session.startRunning()
+            self.onDeviceChanged?(device.localizedName)
             self.stallLog.notice("recovery attempted for \(reason, privacy: .public) file=\(url.lastPathComponent, privacy: .public)")
             print("[AudioCapture] recovery attempted after: \(reason)")
         }
@@ -368,66 +371,6 @@ final class AudioCapture: NSObject, @unchecked Sendable {
         return url
     }
 
-    private func computeLevel(from sampleBuffer: CMSampleBuffer) {
-        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee
-        else { return }
-
-        let numSamples = CMSampleBufferGetNumSamples(sampleBuffer)
-        guard numSamples > 0 else { return }
-
-        let channels = max(Int(asbd.mChannelsPerFrame), 1)
-        let isFloat = asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0
-        let isNonInterleaved = asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0
-        let bytesPerSample = Int(asbd.mBitsPerChannel / 8)
-        guard bytesPerSample > 0 else { return }
-
-        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
-        var length = 0
-        var dataPointer: UnsafeMutablePointer<Int8>?
-        guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0,
-                                          lengthAtOffsetOut: nil,
-                                          totalLengthOut: &length,
-                                          dataPointerOut: &dataPointer) == noErr,
-              let rawData = dataPointer, length > 0
-        else { return }
-
-        var sum: Float = 0
-        let frameCount = numSamples
-        let stride = isNonInterleaved ? 1 : channels
-
-        if isFloat && bytesPerSample == 4 {
-            rawData.withMemoryRebound(to: Float.self, capacity: frameCount * stride) { floats in
-                for f in 0..<frameCount {
-                    let s = floats[f * stride]
-                    sum += s * s
-                }
-            }
-        } else if bytesPerSample == 2 {
-            rawData.withMemoryRebound(to: Int16.self, capacity: frameCount * stride) { shorts in
-                for f in 0..<frameCount {
-                    let s = Float(shorts[f * stride]) / 32768.0
-                    sum += s * s
-                }
-            }
-        } else {
-            return
-        }
-
-        let rms = sqrtf(sum / Float(max(frameCount, 1)))
-        guard rms > 0 else { onLevelUpdate?(0); return }
-
-        let db = 20.0 * log10f(rms)
-        let floor: Float = -35
-        let ceiling: Float = -6
-        let raw = max(0, min(1, (db - floor) / (ceiling - floor)))
-
-        let alpha: Float = raw > smoothedLevel ? 0.4 : 0.15
-        smoothedLevel = smoothedLevel + alpha * (raw - smoothedLevel)
-
-        let level = smoothedLevel < 0.05 ? Float(0) : smoothedLevel
-        onLevelUpdate?(level)
-    }
 }
 
 // MARK: - AVCaptureAudioDataOutputSampleBufferDelegate
@@ -502,6 +445,8 @@ extension AudioCapture: AVCaptureAudioDataOutputSampleBufferDelegate {
 
         wavWriter.write(monoSamples)
 
-        computeLevel(from: sampleBuffer)
+        if let reading = inputMeter.update(samples: monoSamples, sampleRate: asbd.mSampleRate) {
+            onMeterUpdate?(reading)
+        }
     }
 }

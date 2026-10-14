@@ -56,8 +56,14 @@ extension Notification.Name {
 @MainActor
 @Observable
 final class SessionManager {
-    var state: SessionState = .idle
-    var audioLevel: Float = 0
+    let yorickMic = YorickMicController()
+    var state: SessionState = .idle {
+        didSet {
+            yorickMic.recording = state == .recording
+            if state != .recording { yorickMic.recordingMicName = nil; yorickMic.audioLevel = 0 }
+        }
+    }
+    var audioLevel: Float = 0 { didSet { yorickMic.audioLevel = audioLevel } }
     var captureMode: CaptureMode = .contextual
     var lastSavedCapture: Capture?  // For toast display
     var transientNotice: TransientNotice?  // For dropped-capture HUD notice
@@ -103,7 +109,6 @@ final class SessionManager {
     private var processingGeneration = 0
     private var recordingTimer: Timer?
     private var elapsedSeconds: Int = 0
-    private var silentSeconds: Int = 0
     private var modeDecisionSummary = ""
     /// Trigger-time evidence quality: .low lets the transcript pick the
     /// disposition after transcription instead of the cursor heuristic.
@@ -134,7 +139,7 @@ final class SessionManager {
     /// file, while being honest on screen that something is wrong. Ending it
     /// automatically would turn a recoverable glitch into exactly the silent
     /// truncation this exists to prevent.
-    private(set) var audioStallReason: String?
+    private(set) var audioStallReason: String? { didSet { yorickMic.stalled = audioStallReason != nil } }
 
     var formattedDuration: String {
         let mins = elapsedSeconds / 60
@@ -611,7 +616,7 @@ final class SessionManager {
                 ? AccessibilityCapture.focusedElementIdentity() : nil
         }
 
-        silentSeconds = 0
+        audioLevel = 0
         showSilenceWarning = false
         // .common run-loop mode: a default-mode timer stops ticking while a menu
         // is open or during drags — exactly when the user is pointing at things.
@@ -619,13 +624,6 @@ final class SessionManager {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.elapsedSeconds += 1
-                if self.audioLevel < 0.001 {
-                    self.silentSeconds += 1
-                } else {
-                    self.silentSeconds = 0
-                    self.showSilenceWarning = false
-                }
-                self.showSilenceWarning = self.silentSeconds >= 10
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -650,9 +648,19 @@ final class SessionManager {
                 self.transientNotice = nil
             }
         }
-        audioCapture.onLevelUpdate = { [weak self] level in
+        audioCapture.onDeviceChanged = { [weak self] name in
             Task { @MainActor [weak self] in
-                self?.audioLevel = level
+                guard let self, self.state == .recording else { return }
+                self.yorickMic.recordingMicName = name
+            }
+        }
+        let recordingStartedAt = startedAt
+        audioCapture.onMeterUpdate = { [weak self] reading in
+            Task { @MainActor [weak self] in
+                guard let self, self.state == .recording,
+                      self.startedAt == recordingStartedAt else { return }
+                self.audioLevel = reading.level
+                self.showSilenceWarning = reading.showSilenceWarning
             }
         }
 
@@ -693,7 +701,8 @@ final class SessionManager {
         recordingTimer?.invalidate()
         recordingTimer = nil
         audioLevel = 0
-        audioCapture.onLevelUpdate = nil
+        showSilenceWarning = false
+        audioCapture.onMeterUpdate = nil
         audioCapture.onAudioStalled = nil
         audioCapture.onAudioResumed = nil
         audioStallReason = nil

@@ -105,6 +105,11 @@ struct SettingsView: View {
                         .padding(.top, 4)
                 }
 
+                if session.yorickMic.showEyeControls {
+                    sectionLabel("YORICK MICROPHONE")
+                    YorickMicSettingsView(mic: session.yorickMic)
+                }
+
                 sectionLabel("TRANSCRIPTION")
                 VStack(spacing: 8) {
                     engineCard(
@@ -239,6 +244,12 @@ struct SettingsView: View {
         }
         // No opaque background: settings render as a page of the menu bar
         // panel, whose glass shows through.
+        .onChange(of: mics.selectedDeviceUID) {
+            session.yorickMic.inputSelectionChanged()
+        }
+        .onChange(of: mics.isSelectedDeviceAvailable) {
+            session.yorickMic.inputSelectionChanged()
+        }
         .onAppear {
             session.microphoneManager.refresh()
             refreshPermissionState()
