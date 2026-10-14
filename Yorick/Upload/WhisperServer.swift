@@ -7,11 +7,6 @@ enum WhisperServer {
     private static let serverURL = "http://127.0.0.1:8178"
     private static let inferenceURL = URL(string: "\(serverURL)/inference")!
 
-    /// Vocabulary hint — biases Whisper toward expected proper nouns and product
-    /// names. Shared by the server and the whisper-cli fallback so transcription
-    /// quality doesn't silently change when the fallback fires.
-    static let vocabularyPrompt = "InfuseFlow, Yorick, Claude, Claude Code, SafeYum, Supabase, SwiftUI, Xcode"
-
     /// The spawned server process, retained so we can terminate it on app quit.
     /// An orphaned server survives the app and can serve a stale model after an
     /// update. Accessed from the launch task and applicationWillTerminate only.
@@ -273,10 +268,14 @@ enum WhisperServer {
         body.append("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n".data(using: .utf8)!)
         body.append("verbose_json\r\n".data(using: .utf8)!)
 
-        // Vocabulary hint — biases Whisper toward expected proper nouns and product names
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(vocabularyPrompt)\r\n".data(using: .utf8)!)
+        // The user's vocabulary as Whisper's initial prompt — biases decoding
+        // toward their names and terms. Shared with the whisper-cli fallback
+        // so quality doesn't silently change when the fallback fires.
+        if let vocabularyPrompt = VocabularyDefaults.whisperPrompt() {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(vocabularyPrompt)\r\n".data(using: .utf8)!)
+        }
 
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 

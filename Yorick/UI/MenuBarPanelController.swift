@@ -28,8 +28,9 @@ final class MenuBarPanelController {
         installStatusItem()
         watchState()
         // .showSavedItems also resets the page, which MenuBarPanelView
-        // handles; here both just mean "bring the panel up."
-        showObservers = [Notification.Name.showMenuBarPanel, .showSavedItems].map { name in
+        // handles (as does .showSettings); here they all just mean "bring
+        // the panel up."
+        showObservers = [Notification.Name.showMenuBarPanel, .showSavedItems, .showSettings].map { name in
             NotificationCenter.default.addObserver(
                 forName: name, object: nil, queue: .main
             ) { [weak self] _ in

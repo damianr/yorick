@@ -17,6 +17,7 @@
 		2CE4AE8B030860497686310F /* SettingsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 859E8929146915671C486F14 /* SettingsSnapshot.swift */; };
 		2E2AFAFEEFD172F632EA9E32 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFDADD63A711A33CB1DAFC49 /* Theme.swift */; };
 		2FC5F1FC0DC65498658B1990 /* AudioVisualLevelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEE4934B44F68520BF425C42 /* AudioVisualLevelTests.swift */; };
+		3117D6647D38ABAB63086A44 /* Vocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B905E97C0FC76543073E0A /* Vocabulary.swift */; };
 		32890F0C1006CF59564E6EBD /* PocketBluetoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F8410FF402D7C071A45DF71 /* PocketBluetoothProtocol.swift */; };
 		341CCEF224DBB126D2ACE707 /* CaptureCardBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF0F174F400DAA6E1AA0200E /* CaptureCardBody.swift */; };
 		3440F8A26977D041B255929B /* PocketBluetoothProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A98849F80C512E14B57DDFF7 /* PocketBluetoothProtocolTests.swift */; };
@@ -30,6 +31,7 @@
 		4F6BC8FACF95E072AFCB4AC0 /* AppleSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF4F07F81C3F7136AFA6E0E7 /* AppleSpeech.swift */; };
 		511A03C41E6CD48D985D05F9 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A47ABE579672A11EBF68F05 /* PreferencesView.swift */; };
 		521D33F72B63D3C30E01A4A8 /* PocketBluetoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F8410FF402D7C071A45DF71 /* PocketBluetoothProtocol.swift */; };
+		527E8FF26BEB47E01C6B9CD3 /* CorrectionWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C79883411FA3B5046899CD /* CorrectionWatcher.swift */; };
 		52CE643B36C72CD5AD101DDD /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6980FB0C748F3D932BB737F /* AppDelegate.swift */; };
 		574C7B188CFD63C4B24C256F /* AppleSpeechAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D103354483E5EA671B0C228 /* AppleSpeechAnalyzer.swift */; };
 		59BA1D0795401D4E78FA1847 /* AccessibilityCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576DB3CE3E387E87C108D6A9 /* AccessibilityCapture.swift */; };
@@ -45,6 +47,7 @@
 		7BF3267C1FAF41F7CD25FF6D /* AudioInputMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02F75CEFEF5B2C3CB857014 /* AudioInputMeter.swift */; };
 		7F369EA3D7469110B47F9B41 /* OnboardingKeyboardMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A281AE9455EFE0250E48405 /* OnboardingKeyboardMap.swift */; };
 		88A8555B35995E7A2FBB83EC /* FieldProfilerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */; };
+		8C0B570227ED5B9896845058 /* VocabularyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7B8A8FFDD8232E510BDAC58 /* VocabularyTests.swift */; };
 		98CD574C2C2BFAF1CDAB1651 /* AdminMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9508203F2C34F0897692D0F4 /* AdminMode.swift */; };
 		9F72D6C73969EE4A1AB7EF1C /* YorickMicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B5ABF94A0025722913188C /* YorickMicController.swift */; };
 		A49F05C46D03C30835F7F541 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */; };
@@ -52,10 +55,12 @@
 		A954C4E35F30860DA4CEE56B /* Telemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D88477D3D846F4B335099B /* Telemetry.swift */; };
 		A957EB88DFD7D005E9D45C79 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28302C5A969B4E66966DBB8 /* OnboardingView.swift */; };
 		AC36DBF389D722369C68760E /* UtteranceRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3956B1F5059C9796A3016FD3 /* UtteranceRouter.swift */; };
+		AD1879A1ED5A7BCB0A21DF5C /* Vocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B905E97C0FC76543073E0A /* Vocabulary.swift */; };
 		ADC8B8995481E9F1FDBB6D3E /* YorickApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB8F71B3FB8F2A899FA8638B /* YorickApp.swift */; };
 		AE0840172F6DDF6E2DA151D7 /* AudioInputMeterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E5EBE15CD2455D5F35D0D3A /* AudioInputMeterTests.swift */; };
 		B111C360CA38C6CEF5E87E20 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = AEA076117CAB6BC4B6F74431 /* KeyboardShortcuts */; };
 		B126E650385A2E63BA4A7532 /* FocusClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC5D45E53DCBF0E30B307567 /* FocusClassifier.swift */; };
+		B1B62E2A16F2FDCE89422A5F /* VocabularyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AE81F4FF437D2F1A2D9E5F4 /* VocabularyStore.swift */; };
 		B35588CC2F1CC03C8CA914AC /* AudioVisualLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DEEAC7EE7C3416DE9AD6001 /* AudioVisualLevel.swift */; };
 		BA3099172BEE8A8E1DE4A5C7 /* YorickEyeSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58180B78D11090B2B9B53C9A /* YorickEyeSettings.swift */; };
 		BF7EFA35441C308FC7521956 /* MenuBarPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C255E175C0826AB7EA2D8175 /* MenuBarPanelController.swift */; };
@@ -118,6 +123,7 @@
 		604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldProfilerTests.swift; sourceTree = "<group>"; };
 		6100D199344098CC50AB411D /* AppIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIdentifier.swift; sourceTree = "<group>"; };
 		66D88477D3D846F4B335099B /* Telemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Telemetry.swift; sourceTree = "<group>"; };
+		69B905E97C0FC76543073E0A /* Vocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vocabulary.swift; sourceTree = "<group>"; };
 		6AF1CD392440FF27E1B5FD00 /* YorickTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YorickTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6D103354483E5EA671B0C228 /* AppleSpeechAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeechAnalyzer.swift; sourceTree = "<group>"; };
 		6E650E2D930F26266A7838BE /* WhisperServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperServer.swift; sourceTree = "<group>"; };
@@ -130,6 +136,7 @@
 		86D3C0B62573CB6B00A999CE /* LoginItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItem.swift; sourceTree = "<group>"; };
 		88C6BDF2913B4E9D9E47D81D /* SkullBluetoothController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkullBluetoothController.swift; sourceTree = "<group>"; };
 		8AD999AF3A2983F6D044382B /* HUDContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDContentView.swift; sourceTree = "<group>"; };
+		8AE81F4FF437D2F1A2D9E5F4 /* VocabularyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyStore.swift; sourceTree = "<group>"; };
 		90791D5CA2974A1236A58247 /* SkullBluetoothProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkullBluetoothProtocolTests.swift; sourceTree = "<group>"; };
 		9508203F2C34F0897692D0F4 /* AdminMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminMode.swift; sourceTree = "<group>"; };
 		9BC530C070F06B8488BD526B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
@@ -147,7 +154,9 @@
 		C405F3C57FEC1B608D64405A /* PocketBluetoothController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketBluetoothController.swift; sourceTree = "<group>"; };
 		C58C46A9BE265AF58064D6D3 /* YorickDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YorickDevicesView.swift; sourceTree = "<group>"; };
 		C6980FB0C748F3D932BB737F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C7C79883411FA3B5046899CD /* CorrectionWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionWatcher.swift; sourceTree = "<group>"; };
 		D28302C5A969B4E66966DBB8 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		D7B8A8FFDD8232E510BDAC58 /* VocabularyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyTests.swift; sourceTree = "<group>"; };
 		D83B4AFCF23F7B482C5B7689 /* ClipboardOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardOutput.swift; sourceTree = "<group>"; };
 		DC5D45E53DCBF0E30B307567 /* FocusClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusClassifier.swift; sourceTree = "<group>"; };
 		DEE4934B44F68520BF425C42 /* AudioVisualLevelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioVisualLevelTests.swift; sourceTree = "<group>"; };
@@ -194,6 +203,7 @@
 				5CF32B481FF059CFF9EBBF9D /* AudioCapture.swift */,
 				2E7B4957DCF515111706FAEC /* AudioDiagnosticsAnalyzer.swift */,
 				F02F75CEFEF5B2C3CB857014 /* AudioInputMeter.swift */,
+				C7C79883411FA3B5046899CD /* CorrectionWatcher.swift */,
 				DC5D45E53DCBF0E30B307567 /* FocusClassifier.swift */,
 				B0B5304D771605BC1F26353E /* PasteboardLease.swift */,
 				2DC34EBB54A844C9F08A9B1C /* SessionManager.swift */,
@@ -260,6 +270,7 @@
 			children = (
 				36D04D4D581F947FDD13AD5A /* Capture.swift */,
 				04445CD4EC91A6F127B5A67C /* CaptureStore.swift */,
+				8AE81F4FF437D2F1A2D9E5F4 /* VocabularyStore.swift */,
 			);
 			path = Model;
 			sourceTree = "<group>";
@@ -274,6 +285,7 @@
 				A98849F80C512E14B57DDFF7 /* PocketBluetoothProtocolTests.swift */,
 				90791D5CA2974A1236A58247 /* SkullBluetoothProtocolTests.swift */,
 				ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */,
+				D7B8A8FFDD8232E510BDAC58 /* VocabularyTests.swift */,
 				2A66EF228332E379202A4EE2 /* YorickEyeSettingsTests.swift */,
 				8129E8CBD7F3EAA5430AB6E3 /* YorickMicControllerTests.swift */,
 			);
@@ -287,6 +299,7 @@
 				F5F87DAB8FBCF6EC788ABBBC /* FieldProfiler.swift */,
 				49C618076D702087B0DDE731 /* NotificationManager.swift */,
 				490B06CED22F61CD387460A4 /* SpokenFormNormalizer.swift */,
+				69B905E97C0FC76543073E0A /* Vocabulary.swift */,
 			);
 			path = Output;
 			sourceTree = "<group>";
@@ -452,6 +465,8 @@
 				CDB552483990C06B1B6614E0 /* SkullBluetoothProtocolTests.swift in Sources */,
 				E826DF35A5F759FC624218CC /* SpokenFormNormalizer.swift in Sources */,
 				F8AFA223D571C4B51C59032A /* SpokenFormNormalizerTests.swift in Sources */,
+				AD1879A1ED5A7BCB0A21DF5C /* Vocabulary.swift in Sources */,
+				8C0B570227ED5B9896845058 /* VocabularyTests.swift in Sources */,
 				BA3099172BEE8A8E1DE4A5C7 /* YorickEyeSettings.swift in Sources */,
 				D2952624231ABDF6410AB35E /* YorickEyeSettingsTests.swift in Sources */,
 				9F72D6C73969EE4A1AB7EF1C /* YorickMicController.swift in Sources */,
@@ -481,6 +496,7 @@
 				25F2794237167E2B86E76872 /* ClipboardOutput.swift in Sources */,
 				34B9653B840BA7EA04FC6914 /* Constants.swift in Sources */,
 				A49F05C46D03C30835F7F541 /* ContentView.swift in Sources */,
+				527E8FF26BEB47E01C6B9CD3 /* CorrectionWatcher.swift in Sources */,
 				EDCECC21E84B22627EC046B2 /* FieldProfiler.swift in Sources */,
 				F6E801CEF56950DB18603144 /* FocusClassifier.swift in Sources */,
 				5A0A92D6292E2EBDD687E571 /* HUDContentView.swift in Sources */,
@@ -512,6 +528,8 @@
 				16D8C2E4F65531ED0E8FC8A6 /* ToolbarBackdrop.swift in Sources */,
 				C613A4D66858655E5F98A1D8 /* TranscriptQuality.swift in Sources */,
 				AC36DBF389D722369C68760E /* UtteranceRouter.swift in Sources */,
+				3117D6647D38ABAB63086A44 /* Vocabulary.swift in Sources */,
+				B1B62E2A16F2FDCE89422A5F /* VocabularyStore.swift in Sources */,
 				5C6C55EBB6222F84BC08017E /* WhisperServer.swift in Sources */,
 				ADC8B8995481E9F1FDBB6D3E /* YorickApp.swift in Sources */,
 				CD0BBA4482C7BD585F58B78B /* YorickDevicesView.swift in Sources */,

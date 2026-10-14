@@ -65,6 +65,9 @@ struct MenuBarPanelView: View {
         .onReceive(NotificationCenter.default.publisher(for: .showSavedItems)) { _ in
             showingSettings = false
         }
+        .onReceive(NotificationCenter.default.publisher(for: .showSettings)) { _ in
+            showingSettings = true
+        }
     }
 
     // MARK: - Header

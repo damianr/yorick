@@ -63,6 +63,7 @@ targets:
       - path: Yorick/Capture/AudioInputMeter.swift
       - path: Yorick/Config/YorickEyeSettings.swift
       - path: Yorick/Output/SpokenFormNormalizer.swift
+      - path: Yorick/Output/Vocabulary.swift
       - path: Yorick/Output/FieldProfiler.swift
       - path: Yorick/Capture/FocusClassifier.swift
     settings:

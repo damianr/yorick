@@ -38,12 +38,7 @@ enum AppleSpeech {
         request.requiresOnDeviceRecognition = true
         request.shouldReportPartialResults = true  // Collect all results including partials
         request.taskHint = .dictation
-        request.contextualStrings = [
-            "Yorick",
-            "Whisper",
-            "Codex",
-            "Xcode"
-        ]
+        request.contextualStrings = VocabularyDefaults.terms()
 
         // Enable punctuation (macOS 13+)
         if #available(macOS 13, *) {
