@@ -56,8 +56,84 @@ extension Notification.Name {
 @MainActor
 @Observable
 final class SessionManager {
-    var state: SessionState = .idle
-    var audioLevel: Float = 0
+    let yorickMic = YorickMicController()
+    let pocketBluetooth = PocketBluetoothController()
+    private var pocketAudioActive = false
+    private var pocketConfigured = false
+    private var pendingPocketReturns: [(pid_t, AXUIElement?)] = []
+
+    func configurePocketBluetooth() {
+        guard !pocketConfigured else { return }; pocketConfigured = true
+        pocketBluetooth.isSelected = { [weak self] in
+            self?.microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID
+        }
+        pocketBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.pocketConnected = connected }
+        pocketBluetooth.onStart = { [weak self] in
+            guard let self, self.microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID,
+                  self.state == .idle else { return false }
+            self.pocketAudioActive = true; self.startIfIdle()
+            return self.state == .recording
+        }
+        pocketBluetooth.onSamples = { [weak self] samples in
+            guard let self, self.pocketAudioActive, self.state == .recording else { return }
+            self.audioCapture.appendExternal(samples)
+        }
+        pocketBluetooth.onStop = { [weak self] in
+            guard let self, self.pocketAudioActive else { return }
+            self.stopIfRecording(); self.pocketAudioActive = false
+        }
+        pocketBluetooth.onReturn = { [weak self] in self?.pocketReturnPressed() }
+        pocketBluetooth.onFailure = { [weak self] reason in
+            self?.pendingPocketReturns.removeAll()
+            self?.transientNotice = TransientNotice(message: reason, sticky: true)
+        }
+        pocketBluetooth.restoreIfConfigured()
+    }
+
+    func connectPocketBluetooth() {
+        configurePocketBluetooth()
+        microphoneManager.selectedDeviceUID = PocketBluetoothProtocol.deviceUID
+        microphoneManager.refresh(); yorickMic.inputSelectionChanged()
+        pocketBluetooth.start(pairNew: true)
+        pocketBluetooth.selectionChanged()
+    }
+
+    private func pocketReturnPressed() {
+        guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication else { return }
+        let target = (app.processIdentifier, AccessibilityCapture.focusedElementIdentity())
+        if state == .recording || state == .transcribing {
+            if pendingPocketReturns.count < 8 { pendingPocketReturns.append(target) }
+        } else { Self.sendPocketReturn() }
+    }
+
+    private func flushPocketReturns() {
+        let pending = pendingPocketReturns; pendingPocketReturns.removeAll()
+        guard microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID,
+              pocketBluetooth.connected, AXIsProcessTrusted() else { return }
+        let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let current = AccessibilityCapture.focusedElementIdentity()
+        for (targetPID, targetField) in pending {
+            guard targetPID == pid else { continue }
+            if let targetField {
+                guard let current, CFEqual(targetField, current) else { continue }
+            }
+            Self.sendPocketReturn()
+        }
+    }
+
+    private static func sendPocketReturn() {
+        let source = CGEventSource(stateID: .hidSystemState)
+        CGEvent(keyboardEventSource: source, virtualKey: 36, keyDown: true)?.post(tap: .cghidEventTap)
+        CGEvent(keyboardEventSource: source, virtualKey: 36, keyDown: false)?.post(tap: .cghidEventTap)
+    }
+
+    var state: SessionState = .idle {
+        didSet {
+            yorickMic.recording = state == .recording
+            if state != .recording { yorickMic.recordingMicName = nil; yorickMic.audioLevel = 0 }
+        }
+    }
+    var audioLevel: Float = 0 { didSet { yorickMic.audioLevel = audioLevel } }
     var captureMode: CaptureMode = .contextual
     var lastSavedCapture: Capture?  // For toast display
     var transientNotice: TransientNotice?  // For dropped-capture HUD notice
@@ -103,7 +179,6 @@ final class SessionManager {
     private var processingGeneration = 0
     private var recordingTimer: Timer?
     private var elapsedSeconds: Int = 0
-    private var silentSeconds: Int = 0
     private var modeDecisionSummary = ""
     /// Trigger-time evidence quality: .low lets the transcript pick the
     /// disposition after transcription instead of the cursor heuristic.
@@ -134,7 +209,7 @@ final class SessionManager {
     /// file, while being honest on screen that something is wrong. Ending it
     /// automatically would turn a recoverable glitch into exactly the silent
     /// truncation this exists to prevent.
-    private(set) var audioStallReason: String?
+    private(set) var audioStallReason: String? { didSet { yorickMic.stalled = audioStallReason != nil } }
 
     var formattedDuration: String {
         let mins = elapsedSeconds / 60
@@ -151,6 +226,10 @@ final class SessionManager {
     /// placement costs nothing: routing re-decides at stop, and every
     /// transcript persists regardless.
     func startIfIdle(forcedMode: CaptureMode? = nil) {
+        if microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID, !pocketAudioActive {
+            transientNotice = TransientNotice(message: "Hold the pocket microphone’s left button to talk")
+            return
+        }
         // A stuck error state must never soft-lock the hotkey.
         if case .error = state { state = .idle }
         guard state == .idle else { return }
@@ -285,6 +364,7 @@ final class SessionManager {
     /// cancel control on the transcribing pill). Nothing is inserted or saved.
     func cancelProcessing() {
         guard state == .transcribing else { return }
+        pendingPocketReturns.removeAll()
         processingTask?.cancel()
         processingTask = nil
         // Invalidate the running task's generation so its unwind can't reset
@@ -611,7 +691,7 @@ final class SessionManager {
                 ? AccessibilityCapture.focusedElementIdentity() : nil
         }
 
-        silentSeconds = 0
+        audioLevel = 0
         showSilenceWarning = false
         // .common run-loop mode: a default-mode timer stops ticking while a menu
         // is open or during drags — exactly when the user is pointing at things.
@@ -619,13 +699,6 @@ final class SessionManager {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.elapsedSeconds += 1
-                if self.audioLevel < 0.001 {
-                    self.silentSeconds += 1
-                } else {
-                    self.silentSeconds = 0
-                    self.showSilenceWarning = false
-                }
-                self.showSilenceWarning = self.silentSeconds >= 10
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -650,12 +723,30 @@ final class SessionManager {
                 self.transientNotice = nil
             }
         }
-        audioCapture.onLevelUpdate = { [weak self] level in
+        audioCapture.onDeviceChanged = { [weak self] name in
             Task { @MainActor [weak self] in
-                self?.audioLevel = level
+                guard let self, self.state == .recording else { return }
+                self.yorickMic.recordingMicName = name
+            }
+        }
+        let recordingStartedAt = startedAt
+        audioCapture.onMeterUpdate = { [weak self] reading in
+            Task { @MainActor [weak self] in
+                guard let self, self.state == .recording,
+                      self.startedAt == recordingStartedAt else { return }
+                self.audioLevel = reading.level
+                self.showSilenceWarning = reading.showSilenceWarning
             }
         }
 
+        if pocketAudioActive {
+            do { audioFileURL = try audioCapture.startExternal() }
+            catch {
+                pocketAudioActive = false; recordingTimer?.invalidate(); recordingTimer = nil
+                state = .idle; transientNotice = TransientNotice(message: "Could not start pocket microphone recording")
+            }
+            return
+        }
         startTask = Task {
             let deviceUID = microphoneManager.effectiveDeviceUID
 
@@ -693,7 +784,8 @@ final class SessionManager {
         recordingTimer?.invalidate()
         recordingTimer = nil
         audioLevel = 0
-        audioCapture.onLevelUpdate = nil
+        showSilenceWarning = false
+        audioCapture.onMeterUpdate = nil
         audioCapture.onAudioStalled = nil
         audioCapture.onAudioResumed = nil
         audioStallReason = nil
@@ -737,6 +829,7 @@ final class SessionManager {
             if generation == processingGeneration {
                 state = .idle
                 processingTask = nil
+                flushPocketReturns()
             }
         }
 

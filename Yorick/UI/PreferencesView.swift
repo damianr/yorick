@@ -100,9 +100,25 @@ struct SettingsView: View {
                     .labelsHidden()
                     .frame(maxWidth: 230)
                 }
-                if mics.selectedDeviceUID != nil, !mics.isSelectedDeviceAvailable {
+                settingsRow {
+                    rowLabel("Pocket Bluetooth")
+                    Spacer()
+                    Text(session.pocketBluetooth.status).font(.caption).foregroundStyle(.secondary)
+                    Button("Connect") { session.connectPocketBluetooth() }
+                }
+                if mics.selectedDeviceUID == PocketBluetoothProtocol.deviceUID {
+                    caption("Hold the left button to talk. The right button presses Return.")
+                        .padding(.top, 4)
+                }
+                if mics.selectedDeviceUID != nil, !mics.isSelectedDeviceAvailable,
+                   mics.selectedDeviceUID != PocketBluetoothProtocol.deviceUID {
                     caption("Selected device is unplugged — using system default until reconnected.")
                         .padding(.top, 4)
+                }
+
+                if session.yorickMic.showEyeControls {
+                    sectionLabel("YORICK MICROPHONE")
+                    YorickMicSettingsView(mic: session.yorickMic)
                 }
 
                 sectionLabel("TRANSCRIPTION")
@@ -239,6 +255,13 @@ struct SettingsView: View {
         }
         // No opaque background: settings render as a page of the menu bar
         // panel, whose glass shows through.
+        .onChange(of: mics.selectedDeviceUID) {
+            session.pocketBluetooth.selectionChanged()
+            session.yorickMic.inputSelectionChanged()
+        }
+        .onChange(of: mics.isSelectedDeviceAvailable) {
+            session.yorickMic.inputSelectionChanged()
+        }
         .onAppear {
             session.microphoneManager.refresh()
             refreshPermissionState()

@@ -22,6 +22,8 @@ targets:
       - path: Yorick
         excludes:
           - Resources
+      - path: Yorick/Resources/YorickEyePreview.html
+        buildPhase: resources
       - path: Yorick/Resources/Assets.xcassets
         buildPhase: resources
       - path: Yorick/Resources/Whisper
@@ -54,6 +56,11 @@ targets:
     platform: macOS
     sources:
       - path: YorickTests
+      - path: Yorick/Config/YorickMicController.swift
+      - path: Yorick/Config/AudioVisualLevel.swift
+      - path: Yorick/Config/PocketBluetoothProtocol.swift
+      - path: Yorick/Capture/AudioInputMeter.swift
+      - path: Yorick/Config/YorickEyeSettings.swift
       - path: Yorick/Output/SpokenFormNormalizer.swift
       - path: Yorick/Output/FieldProfiler.swift
       - path: Yorick/Capture/FocusClassifier.swift
