@@ -336,15 +336,15 @@ final class AudioCapture: NSObject, @unchecked Sendable {
         }
     }
 
-    /// A selected BLE pocket session supplies decoded PCM through this path.
-    func startExternal() throws -> URL {
+    /// A selected BLE pocket or skull session supplies decoded PCM through this path.
+    func startExternal(deviceName: String = PocketBluetoothProtocol.deviceName) throws -> URL {
         cleanStop()
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
         guard let writer = WAVFileWriter(url: url, sampleRate: 16000, channels: 1, bitsPerSample: 16) else {
             throw AudioCaptureError.noDevice
         }
         fileURL = url; wavWriter = writer; isActive = true; inputMeter = AudioInputMeter()
-        onDeviceChanged?(PocketBluetoothProtocol.deviceName)
+        onDeviceChanged?(deviceName)
         return url
     }
 

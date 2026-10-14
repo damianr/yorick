@@ -11,6 +11,7 @@
 		05B2B5ED257533861EFF4CB7 /* LocalTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F1C61EAA403A96AFFBD295 /* LocalTranscriber.swift */; };
 		130A26D516405D0E7760C9E8 /* YorickEyePreview.html in Resources */ = {isa = PBXBuildFile; fileRef = 4CA199053AE0DFF758AE2C15 /* YorickEyePreview.html */; };
 		16D8C2E4F65531ED0E8FC8A6 /* ToolbarBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1FC90D1A3F584F7F795AAC /* ToolbarBackdrop.swift */; };
+		1DC15B0D8ADCB118CCEA88F4 /* SkullBluetoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C139FCF0C65D4B17B3D141 /* SkullBluetoothProtocol.swift */; };
 		1E4A05CAD2B21589B196EB77 /* AudioVisualLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DEEAC7EE7C3416DE9AD6001 /* AudioVisualLevel.swift */; };
 		25F2794237167E2B86E76872 /* ClipboardOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83B4AFCF23F7B482C5B7689 /* ClipboardOutput.swift */; };
 		2CE4AE8B030860497686310F /* SettingsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 859E8929146915671C486F14 /* SettingsSnapshot.swift */; };
@@ -36,6 +37,7 @@
 		5C6C55EBB6222F84BC08017E /* WhisperServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E650E2D930F26266A7838BE /* WhisperServer.swift */; };
 		6007E64A5E39615DD61BF4AD /* HUDWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC33F800989734476CB1D6D /* HUDWindow.swift */; };
 		672E6E5DA3E9F0B483635D80 /* CaptureListComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */; };
+		68EF0A84480DD73E02A1128A /* SkullBluetoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C139FCF0C65D4B17B3D141 /* SkullBluetoothProtocol.swift */; };
 		6AA227E198DF170BDA250AF4 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1644B703BCDFB773ED233BB4 /* AppPaths.swift */; };
 		6EE4DD1788ADD0931036B6C2 /* MenuBarPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3521EDECA142221E50F66A1 /* MenuBarPanelView.swift */; };
 		73013C371F644AF34DF1ABAA /* Whisper in Resources */ = {isa = PBXBuildFile; fileRef = 5D8981771E06E68A6EC7DE29 /* Whisper */; };
@@ -64,12 +66,14 @@
 		C613A4D66858655E5F98A1D8 /* TranscriptQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232F5B10D1C9FAE986C7C864 /* TranscriptQuality.swift */; };
 		C98F3DCBAAC0162408A1B609 /* PasteboardLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B5304D771605BC1F26353E /* PasteboardLease.swift */; };
 		CD0BBA4482C7BD585F58B78B /* YorickDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C58C46A9BE265AF58064D6D3 /* YorickDevicesView.swift */; };
+		CDB552483990C06B1B6614E0 /* SkullBluetoothProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90791D5CA2974A1236A58247 /* SkullBluetoothProtocolTests.swift */; };
 		CF95ECA12953ED4FC0AFA4C3 /* AppIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6100D199344098CC50AB411D /* AppIdentifier.swift */; };
 		D2952624231ABDF6410AB35E /* YorickEyeSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A66EF228332E379202A4EE2 /* YorickEyeSettingsTests.swift */; };
 		DA6EEAFAB95E78E24F215A7F /* MicrophoneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */; };
 		DEAE4E20CE687BB5866E6387 /* LocalIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 813E2EEDBADFF07063F688D3 /* LocalIntelligence.swift */; };
 		DFA546D3EDB08D812550DDBD /* LoginItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D3C0B62573CB6B00A999CE /* LoginItem.swift */; };
 		DFDC74FF9E78386058B75EE4 /* YorickMicControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8129E8CBD7F3EAA5430AB6E3 /* YorickMicControllerTests.swift */; };
+		DFE243164A86B391FEF152B6 /* SkullBluetoothController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C6BDF2913B4E9D9E47D81D /* SkullBluetoothController.swift */; };
 		E1C160A45632D6D84926A30C /* SpokenFormNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 490B06CED22F61CD387460A4 /* SpokenFormNormalizer.swift */; };
 		E826DF35A5F759FC624218CC /* SpokenFormNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 490B06CED22F61CD387460A4 /* SpokenFormNormalizer.swift */; };
 		E8A78DF2EB3268DB6C4FBD1B /* YorickEyeSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58180B78D11090B2B9B53C9A /* YorickEyeSettings.swift */; };
@@ -124,10 +128,13 @@
 		813E2EEDBADFF07063F688D3 /* LocalIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalIntelligence.swift; sourceTree = "<group>"; };
 		859E8929146915671C486F14 /* SettingsSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSnapshot.swift; sourceTree = "<group>"; };
 		86D3C0B62573CB6B00A999CE /* LoginItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItem.swift; sourceTree = "<group>"; };
+		88C6BDF2913B4E9D9E47D81D /* SkullBluetoothController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkullBluetoothController.swift; sourceTree = "<group>"; };
 		8AD999AF3A2983F6D044382B /* HUDContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDContentView.swift; sourceTree = "<group>"; };
+		90791D5CA2974A1236A58247 /* SkullBluetoothProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkullBluetoothProtocolTests.swift; sourceTree = "<group>"; };
 		9508203F2C34F0897692D0F4 /* AdminMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminMode.swift; sourceTree = "<group>"; };
 		9BC530C070F06B8488BD526B /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorderView.swift; sourceTree = "<group>"; };
+		A8C139FCF0C65D4B17B3D141 /* SkullBluetoothProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkullBluetoothProtocol.swift; sourceTree = "<group>"; };
 		A98849F80C512E14B57DDFF7 /* PocketBluetoothProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketBluetoothProtocolTests.swift; sourceTree = "<group>"; };
 		ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenFormNormalizerTests.swift; sourceTree = "<group>"; };
 		B0B5304D771605BC1F26353E /* PasteboardLease.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteboardLease.swift; sourceTree = "<group>"; };
@@ -265,6 +272,7 @@
 				604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */,
 				FDBF384BCCFCABF4918D0DB7 /* FocusClassifierTests.swift */,
 				A98849F80C512E14B57DDFF7 /* PocketBluetoothProtocolTests.swift */,
+				90791D5CA2974A1236A58247 /* SkullBluetoothProtocolTests.swift */,
 				ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */,
 				2A66EF228332E379202A4EE2 /* YorickEyeSettingsTests.swift */,
 				8129E8CBD7F3EAA5430AB6E3 /* YorickMicControllerTests.swift */,
@@ -319,6 +327,8 @@
 				2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */,
 				C405F3C57FEC1B608D64405A /* PocketBluetoothController.swift */,
 				6F8410FF402D7C071A45DF71 /* PocketBluetoothProtocol.swift */,
+				88C6BDF2913B4E9D9E47D81D /* SkullBluetoothController.swift */,
+				A8C139FCF0C65D4B17B3D141 /* SkullBluetoothProtocol.swift */,
 				66D88477D3D846F4B335099B /* Telemetry.swift */,
 				58180B78D11090B2B9B53C9A /* YorickEyeSettings.swift */,
 				20B5ABF94A0025722913188C /* YorickMicController.swift */,
@@ -438,6 +448,8 @@
 				C37632F74592629D5A6EB8A1 /* FocusClassifierTests.swift in Sources */,
 				521D33F72B63D3C30E01A4A8 /* PocketBluetoothProtocol.swift in Sources */,
 				3440F8A26977D041B255929B /* PocketBluetoothProtocolTests.swift in Sources */,
+				68EF0A84480DD73E02A1128A /* SkullBluetoothProtocol.swift in Sources */,
+				CDB552483990C06B1B6614E0 /* SkullBluetoothProtocolTests.swift in Sources */,
 				E826DF35A5F759FC624218CC /* SpokenFormNormalizer.swift in Sources */,
 				F8AFA223D571C4B51C59032A /* SpokenFormNormalizerTests.swift in Sources */,
 				BA3099172BEE8A8E1DE4A5C7 /* YorickEyeSettings.swift in Sources */,
@@ -492,6 +504,8 @@
 				007FEC1B6F73F8F3A223852B /* SessionUploader.swift in Sources */,
 				2CE4AE8B030860497686310F /* SettingsSnapshot.swift in Sources */,
 				EF12E5AC1C7B78D778526C1D /* ShortcutRecorderView.swift in Sources */,
+				DFE243164A86B391FEF152B6 /* SkullBluetoothController.swift in Sources */,
+				1DC15B0D8ADCB118CCEA88F4 /* SkullBluetoothProtocol.swift in Sources */,
 				E1C160A45632D6D84926A30C /* SpokenFormNormalizer.swift in Sources */,
 				A954C4E35F30860DA4CEE56B /* Telemetry.swift in Sources */,
 				2E2AFAFEEFD172F632EA9E32 /* Theme.swift in Sources */,

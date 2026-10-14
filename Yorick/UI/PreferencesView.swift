@@ -73,7 +73,7 @@ struct SettingsView: View {
                     .frame(maxWidth: 210)
                 }
                 if mics.selectedDeviceUID != nil, !mics.isSelectedDeviceAvailable,
-                   mics.selectedDeviceUID != PocketBluetoothProtocol.deviceUID {
+                   !mics.selectedIsBluetooth {
                     caption("Selected device is unplugged — using system default until reconnected.")
                         .padding(.top, 4)
                 }
@@ -215,6 +215,7 @@ struct SettingsView: View {
         // panel, whose glass shows through.
         .onChange(of: mics.selectedDeviceUID) {
             session.pocketBluetooth.selectionChanged()
+            session.skullSelectionChanged()
             session.yorickMic.inputSelectionChanged()
         }
         .onChange(of: mics.isSelectedDeviceAvailable) {

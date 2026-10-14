@@ -5,8 +5,17 @@ import IOKit
 import IOKit.serial
 import Darwin
 
+/// A non-serial eye transport (the skull over Bluetooth). Lines carry no newline.
+@MainActor
+protocol YorickEyeLink: AnyObject {
+    var isLinkReady: Bool { get }
+    func sendEyeLine(_ line: String)
+    func takeEyeLines() -> [String]
+}
+
 /// Audio discovery and serial eye control (direct USB or wireless receiver) are independent. Opening
-/// the control interface never opens an audio stream or changes the chosen mic.
+/// the control interface never opens an audio stream or changes the chosen mic. When the skull's
+/// Bluetooth input is selected, the same eye protocol runs over `bluetoothLink` instead.
 @MainActor @Observable
 final class YorickMicController {
     private(set) var attached = false
@@ -37,6 +46,12 @@ final class YorickMicController {
     @ObservationIgnored private var pendingSequence: UInt32?
     @ObservationIgnored private var pendingSettings: YorickEyeSettings?
     @ObservationIgnored private var audioDeviceCount = 0
+    @ObservationIgnored weak var bluetoothLink: YorickEyeLink?
+    @ObservationIgnored var bluetoothSelected: @MainActor () -> Bool = {
+        UserDefaults.standard.string(forKey: "selectedMicUID") == YorickEyeProtocol.bluetoothDeviceUID
+    }
+    @ObservationIgnored private var usingBluetooth = false
+    @ObservationIgnored private var bluetoothWasReady = false
 
     @ObservationIgnored private(set) var opening = false
     @ObservationIgnored private var openGeneration = UUID()
@@ -83,6 +98,29 @@ final class YorickMicController {
 
     func tick() {
         let now = clock()
+        if let link = bluetoothLink, bluetoothSelected() {
+            if !usingBluetooth { disconnect(); usingBluetooth = true; bluetoothWasReady = false }
+            needsInputSelection = false
+            attached = link.isLinkReady
+            guard attached else {
+                if bluetoothWasReady { disconnect() }
+                bluetoothWasReady = false
+                status = "Turn on the skull to customize its eyes. Yorick reconnects over Bluetooth automatically."
+                return
+            }
+            if !bluetoothWasReady {
+                bluetoothWasReady = true; opened = now; lastHello = .distantPast; lastReply = now
+                status = "Skull connected. Checking eye controls…"
+            }
+        } else {
+            if usingBluetooth { usingBluetooth = false; disconnect(); attached = false; lastDiscovery = .distantPast }
+            guard serialTick(now) else { return }
+        }
+        exchange(now)
+    }
+
+    /// Serial discovery and open. Returns true once a port is open.
+    private func serialTick(_ now: Date) -> Bool {
         if now.timeIntervalSince(lastDiscovery) >= 3 {
             lastDiscovery = now
             let inventory = discover()
@@ -95,16 +133,21 @@ final class YorickMicController {
             if !attached || audioDeviceCount != 1 || ports.count != 1 {
                 disconnect()
                 status = !attached ? "Connect a Yorick microphone to customize its eyes." : audioDeviceCount > 1 || ports.count > 1 ? "Choose the Yorick microphone input above to control its eyes. Keep only one device of that type connected." : "Microphone connected. Eye controls need a powered skull and compatible firmware on the skull and receiver."
-                return
+                return false
             }
             if path != ports.first && !opening { disconnect(); openPort(ports[0]) }
         }
         if opening && now.timeIntervalSince(openingSince) > 3 {
             status = "Eye connection is not responding. Reconnect the skull or receiver; Yorick remains available."
         }
-        guard fd >= 0 else { return }
+        return fd >= 0
+    }
+
+    private var transportOpen: Bool { usingBluetooth ? bluetoothLink?.isLinkReady == true : fd >= 0 }
+
+    private func exchange(_ now: Date) {
         readReplies()
-        guard fd >= 0 else { return }
+        guard transportOpen else { return }
         if now.timeIntervalSince(lastHello) > 1 {
             lastHello = now
             send(YorickEyeProtocol.hello)
@@ -114,7 +157,8 @@ final class YorickMicController {
             return
         }
         if now.timeIntervalSince(lastReply) > 4 {
-            disconnect(); status = "Eye connection lost. Reconnecting…"; return
+            disconnect(); if usingBluetooth { bluetoothWasReady = false }
+            status = "Eye connection lost. Reconnecting…"; return
         }
         if applied && pendingSequence != nil && now.timeIntervalSince(lastSet) > 1 {
             applied = false
@@ -178,6 +222,9 @@ final class YorickMicController {
     }
 
     private func send(_ message: String) {
+        if usingBluetooth {
+            bluetoothLink?.sendEyeLine(message.trimmingCharacters(in: .newlines)); return
+        }
         guard fd >= 0 else { return }
         let bytes = Array(message.utf8)
         let written = bytes.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, bytes.count) }
@@ -193,6 +240,10 @@ final class YorickMicController {
     }
 
     private func readReplies() {
+        if usingBluetooth {
+            for line in bluetoothLink?.takeEyeLines() ?? [] { handleReply(line) }
+            return
+        }
         var bytes = [UInt8](repeating: 0, count: 1024)
         let count = bytes.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
         if count < 0 {
@@ -205,14 +256,18 @@ final class YorickMicController {
         while let newline = buffer.firstIndex(of: "\n") {
             let line = String(buffer[..<newline]).trimmingCharacters(in: .whitespacesAndNewlines)
             buffer.removeSubrange(...newline)
-            if line == YorickEyeProtocol.ready {
-                lastReply = clock(); controlsReady = true
-                status = applied ? "Microphone connected · eyes ready" : "Microphone connected · syncing eyes…"
-            } else if let ack = YorickEyeProtocol.acknowledgedSequence(line), ack == pendingSequence,
-                      pendingSettings == settings.normalized() {
-                applied = true; pendingSequence = nil
-                lastReply = clock(); status = "Microphone connected · eyes ready"
-            }
+            handleReply(line)
+        }
+    }
+
+    private func handleReply(_ line: String) {
+        if line == YorickEyeProtocol.ready {
+            lastReply = clock(); controlsReady = true
+            status = applied ? "Microphone connected · eyes ready" : "Microphone connected · syncing eyes…"
+        } else if let ack = YorickEyeProtocol.acknowledgedSequence(line), ack == pendingSequence,
+                  pendingSettings == settings.normalized() {
+            applied = true; pendingSequence = nil
+            lastReply = clock(); status = "Microphone connected · eyes ready"
         }
     }
 

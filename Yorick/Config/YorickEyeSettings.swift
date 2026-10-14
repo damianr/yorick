@@ -75,6 +75,7 @@ enum YorickEyeProtocol {
         ["Yorick Desk Microphone", "Yorick Wireless Microphone"].contains(name)
     }
     static func isMicrophoneName(_ name: String) -> Bool {
-        ["Yorick Microphone", "Yorick Desk Microphone", "Yorick Wireless Microphone"].contains(name)
+        ["Yorick Microphone", "Yorick Desk Microphone", "Yorick Wireless Microphone", SkullBluetoothProtocol.deviceName].contains(name)
     }
+    static let bluetoothDeviceUID = SkullBluetoothProtocol.deviceUID
 }

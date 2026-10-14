@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         Telemetry.send(.launched)
         registerHotkeys()
         sessionManager.configurePocketBluetooth()
+        sessionManager.configureSkullBluetooth()
         // The menu bar surface: custom status item + card-styled panel.
         menuBarPanel = MenuBarPanelController(session: sessionManager)
 

@@ -6,7 +6,6 @@ import SwiftUI
 struct YorickDevicesView: View {
     var session: SessionManager
     @State private var choosing = false
-    @State private var skullHint = false
     @State private var showEyes = false
 
     enum Device: CaseIterable, Identifiable {
@@ -16,16 +15,21 @@ struct YorickDevicesView: View {
         var blurb: String {
             self == .pocket
                 ? "Handheld · Bluetooth · hold the button to talk"
-                : "Desk mic · eyes that watch you speak"
+                : "Desk mic · Bluetooth · eyes that watch you speak"
         }
         var symbol: String { self == .pocket ? "mic.fill" : "eyes" }
     }
 
     private var mics: MicrophoneManager { session.microphoneManager }
 
-    /// The skull shows up as a regular audio input (USB or its receiver).
+    /// A wired skull (USB or the old receiver) shows up as a regular audio input.
     private var skullInput: MicrophoneDevice? {
-        mics.devices.first { $0.isConnected && YorickEyeProtocol.isMicrophoneName($0.name) }
+        mics.devices.first { $0.isConnected && $0.id != SkullBluetoothProtocol.deviceUID && YorickEyeProtocol.isMicrophoneName($0.name) }
+    }
+
+    private var skullBluetoothKnown: Bool {
+        session.skullBluetooth.connected || mics.selectedDeviceUID == SkullBluetoothProtocol.deviceUID
+            || SkullBluetoothController.isPaired
     }
 
     private var pocketKnown: Bool {
@@ -33,7 +37,7 @@ struct YorickDevicesView: View {
     }
 
     private func isConnected(_ device: Device) -> Bool {
-        device == .pocket ? session.pocketBluetooth.connected : skullInput != nil
+        device == .pocket ? session.pocketBluetooth.connected : session.skullBluetooth.connected || skullInput != nil
     }
 
     private func isListed(_ device: Device) -> Bool {
@@ -41,13 +45,14 @@ struct YorickDevicesView: View {
         // Settings snapshots can show the empty (no hardware) state.
         if ProcessInfo.processInfo.environment["YORICK_SNAPSHOT_NO_DEVICES"] != nil { return false }
         #endif
-        return device == .pocket ? pocketKnown : skullInput != nil
+        return device == .pocket ? pocketKnown : skullBluetoothKnown || skullInput != nil
     }
 
     private func isInUse(_ device: Device) -> Bool {
         switch device {
         case .pocket: mics.selectedDeviceUID == PocketBluetoothProtocol.deviceUID
-        case .skull: skullInput.map { $0.id == mics.selectedDeviceUID } ?? false
+        case .skull: mics.selectedDeviceUID == SkullBluetoothProtocol.deviceUID
+            || (skullInput.map { $0.id == mics.selectedDeviceUID } ?? false)
         }
     }
 
@@ -120,7 +125,7 @@ struct YorickDevicesView: View {
                     .foregroundStyle(Theme.textTertiary)
                 Spacer()
                 Button("Cancel") {
-                    withAnimation(.easeOut(duration: 0.15)) { choosing = false; skullHint = false }
+                    withAnimation(.easeOut(duration: 0.15)) { choosing = false }
                 }
                 .buttonStyle(.plain)
                 .font(Theme.mono(9.5))
@@ -149,12 +154,6 @@ struct YorickDevicesView: View {
                     }
                     .buttonStyle(.plain)
                 }
-            }
-            if skullHint {
-                Text("Plug in the skull or its wireless receiver, then pick it again.")
-                    .font(Theme.mono(9.5))
-                    .foregroundStyle(Theme.accentAmber)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -202,7 +201,7 @@ struct YorickDevicesView: View {
                         .overlay(Capsule().stroke(Theme.bone.opacity(0.35), lineWidth: 1))
                 } else {
                     Button { use(device) } label: {
-                        Text(device == .pocket && !connected ? "Reconnect" : "Use")
+                        Text(!connected ? "Reconnect" : "Use")
                             .font(Theme.mono(9.5))
                             .foregroundStyle(Theme.textSecondary)
                             .padding(.horizontal, 11)
@@ -239,6 +238,10 @@ struct YorickDevicesView: View {
                 ? "\(s) · left button talks, right presses Return"
                 : s
         case .skull:
+            if mics.selectedDeviceUID == SkullBluetoothProtocol.deviceUID || skullInput == nil {
+                let s = session.skullBluetooth.status
+                return session.skullBluetooth.connected && session.yorickMic.showEyeControls ? "\(s) · eyes ready" : s
+            }
             return session.yorickMic.showEyeControls ? "Connected · eyes ready" : "Connected"
         }
     }
@@ -251,11 +254,7 @@ struct YorickDevicesView: View {
             session.connectPocketBluetooth()
             choosing = false
         case .skull:
-            if skullInput != nil {
-                use(.skull); choosing = false; skullHint = false
-            } else {
-                skullHint = true
-            }
+            use(.skull); choosing = false
         }
     }
 
@@ -265,8 +264,13 @@ struct YorickDevicesView: View {
         case .pocket:
             session.connectPocketBluetooth()
         case .skull:
-            guard let skull = skullInput else { return }
-            session.microphoneManager.selectedDeviceUID = skull.id
+            // Bluetooth is the skull's own link; a wired skull is used only when
+            // it's plugged in and Bluetooth isn't up.
+            if let skull = skullInput, !session.skullBluetooth.connected {
+                session.microphoneManager.selectedDeviceUID = skull.id
+            } else {
+                session.connectSkullBluetooth()
+            }
         }
     }
 }

@@ -61,6 +61,43 @@ final class SessionManager {
     private var pocketAudioActive = false
     private var pocketConfigured = false
     private var pendingPocketReturns: [(pid_t, AXUIElement?)] = []
+    let skullBluetooth = SkullBluetoothController()
+    private var skullAudioActive = false
+    private var skullConfigured = false
+
+    private var skullSelected: Bool { microphoneManager.selectedDeviceUID == SkullBluetoothProtocol.deviceUID }
+
+    func configureSkullBluetooth() {
+        guard !skullConfigured else { return }; skullConfigured = true
+        yorickMic.bluetoothLink = skullBluetooth
+        skullBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.skullConnected = connected }
+        skullBluetooth.onSamples = { [weak self] samples in
+            guard let self, self.skullAudioActive, self.state == .recording else { return }
+            self.audioCapture.appendExternal(samples)
+        }
+        // The skull flushed its tail (or gave up); only now finalize the WAV.
+        skullBluetooth.onStop = { [weak self] in
+            guard let self, self.skullAudioActive else { return }
+            self.skullAudioActive = false
+            if self.state == .recording { self.stopCapture() }
+        }
+        skullBluetooth.onFailure = { [weak self] reason in
+            self?.transientNotice = TransientNotice(message: reason, sticky: true)
+        }
+        skullBluetooth.restoreIfConfigured()
+    }
+
+    func connectSkullBluetooth() {
+        configureSkullBluetooth()
+        microphoneManager.selectedDeviceUID = SkullBluetoothProtocol.deviceUID
+        microphoneManager.refresh(); yorickMic.inputSelectionChanged()
+        skullBluetooth.start(pairNew: true)
+    }
+
+    func skullSelectionChanged() {
+        if skullSelected { configureSkullBluetooth(); skullBluetooth.start() }
+        else if skullAudioActive { skullBluetooth.stopListening() }
+    }
 
     func configurePocketBluetooth() {
         guard !pocketConfigured else { return }; pocketConfigured = true
@@ -130,6 +167,8 @@ final class SessionManager {
     var state: SessionState = .idle {
         didSet {
             yorickMic.recording = state == .recording
+            // Leaving recording any other way abandons the skull's session.
+            if state != .recording, skullAudioActive { skullAudioActive = false; skullBluetooth.stopListening() }
             if state != .recording { yorickMic.recordingMicName = nil; yorickMic.audioLevel = 0 }
         }
     }
@@ -228,6 +267,10 @@ final class SessionManager {
     func startIfIdle(forcedMode: CaptureMode? = nil) {
         if microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID, !pocketAudioActive {
             transientNotice = TransientNotice(message: "Hold the pocket microphone’s left button to talk")
+            return
+        }
+        if skullSelected, !skullBluetooth.connected, state == .idle {
+            transientNotice = TransientNotice(message: "The skull isn’t connected. Turn it on and Yorick reconnects over Bluetooth.")
             return
         }
         // A stuck error state must never soft-lock the hotkey.
@@ -357,6 +400,8 @@ final class SessionManager {
     /// Stop capture — transcribes and either types text or saves capture.
     func stopIfRecording() {
         guard case .recording = state else { return }
+        // Keep recording until the skull's last frames arrive; onStop finishes.
+        if skullAudioActive { skullBluetooth.stopListening(); return }
         stopCapture()
     }
 
@@ -739,6 +784,18 @@ final class SessionManager {
             }
         }
 
+        if skullSelected {
+            do {
+                audioFileURL = try audioCapture.startExternal(deviceName: SkullBluetoothProtocol.deviceName)
+                skullAudioActive = skullBluetooth.listen()
+                if !skullAudioActive { throw AudioCaptureError.noDevice }
+            } catch {
+                _ = audioCapture.stop(); skullAudioActive = false
+                recordingTimer?.invalidate(); recordingTimer = nil
+                state = .idle; transientNotice = TransientNotice(message: "Could not start the skull microphone")
+            }
+            return
+        }
         if pocketAudioActive {
             do { audioFileURL = try audioCapture.startExternal() }
             catch {
