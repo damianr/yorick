@@ -741,6 +741,16 @@ final class SessionManager {
         showSilenceWarning = false
         // .common run-loop mode: a default-mode timer stops ticking while a menu
         // is open or during drags — exactly when the user is pointing at things.
+        //
+        // FIELD-REPORTED: "No audio detected" on mics that were working. The
+        // warning used to fire after 10s of the pill's EQ reading zero — but
+        // the EQ is a display meter that reads zero below about -33 dBFS, so
+        // a thinking pause, a quiet room, a lapel mic at chest height, or a
+        // wireless receiver whose noise gate outputs silence between words
+        // all looked like a dead mic. The warning now means what it says:
+        // nothing usable has arrived since the key went down. Once the mic
+        // has proven itself, a quiet stretch is a pause. (A mic that dies
+        // MID-recording is the stall watchdog's job, in AudioCapture.)
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -905,7 +915,10 @@ final class SessionManager {
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int) ?? 0
         guard fileSize > 1000 else {
             print("[Session] Audio too small (\(fileSize) bytes), skipping")
-            presentNotice(.noAudio, generation: generation)
+            // Mic spin-up can take most of a second; a hold shorter than that
+            // never reaches the first buffer. That's a tap, not a dead mic —
+            // blaming the microphone for it was one source of false alarms.
+            presentNotice(duration < 2 ? .tooShort : .noAudio, generation: generation)
             return
         }
 
