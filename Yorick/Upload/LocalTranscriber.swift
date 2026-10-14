@@ -37,10 +37,12 @@ enum LocalTranscriber {
             "--no-prints",   // Suppress progress output
             "-t", "\(WhisperServer.recommendedThreadCount)",
             "-l", "en",      // English
-            // Same vocabulary bias as the server path — fallback quality must
-            // not silently differ on proper nouns.
-            "--prompt", WhisperServer.vocabularyPrompt,
         ] + WhisperServer.vadArguments()
+        // Same vocabulary bias as the server path — fallback quality must
+        // not silently differ on proper nouns.
+        if let vocabularyPrompt = VocabularyDefaults.whisperPrompt() {
+            process.arguments? += ["--prompt", vocabularyPrompt]
+        }
 
         // The binary finds its dylibs via its own @loader_path/lib rpath —
         // a DYLD_LIBRARY_PATH here would be stripped by the hardened runtime.

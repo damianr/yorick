@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		685A474EE21ABC380C4B614D /* VocabularyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E4B9B19EF070AE34AD78BCA /* VocabularyTests.swift */; };
+		3BEF352FFC57F208CF25A039 /* CorrectionWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5335DD55150186B82F13C1D6 /* CorrectionWatcher.swift */; };
+		3C782C7F79D015D6DB76C911 /* VocabularyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A5D0B3BE0D5701499F32414 /* VocabularyStore.swift */; };
+		2DD06CD2AFDBE05AFE33AB26 /* Vocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97AF25C50DAA6F2F30A56C2 /* Vocabulary.swift */; };
+		75168BF09C8E309653278F72 /* Vocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97AF25C50DAA6F2F30A56C2 /* Vocabulary.swift */; };
 		007FEC1B6F73F8F3A223852B /* SessionUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0979581E9EFC6EBE464219A1 /* SessionUploader.swift */; };
 		05B2B5ED257533861EFF4CB7 /* LocalTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F1C61EAA403A96AFFBD295 /* LocalTranscriber.swift */; };
 		16D8C2E4F65531ED0E8FC8A6 /* ToolbarBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1FC90D1A3F584F7F795AAC /* ToolbarBackdrop.swift */; };
@@ -64,6 +69,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		7E4B9B19EF070AE34AD78BCA /* VocabularyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyTests.swift; sourceTree = "<group>"; };
+		5335DD55150186B82F13C1D6 /* CorrectionWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionWatcher.swift; sourceTree = "<group>"; };
+		3A5D0B3BE0D5701499F32414 /* VocabularyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyStore.swift; sourceTree = "<group>"; };
+		A97AF25C50DAA6F2F30A56C2 /* Vocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vocabulary.swift; sourceTree = "<group>"; };
 		04445CD4EC91A6F127B5A67C /* CaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStore.swift; sourceTree = "<group>"; };
 		0979581E9EFC6EBE464219A1 /* SessionUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionUploader.swift; sourceTree = "<group>"; };
 		0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureListComponents.swift; sourceTree = "<group>"; };
@@ -147,6 +156,7 @@
 		23EF00B79690B51BDC3BEA64 /* Capture */ = {
 			isa = PBXGroup;
 			children = (
+				5335DD55150186B82F13C1D6 /* CorrectionWatcher.swift */,
 				576DB3CE3E387E87C108D6A9 /* AccessibilityCapture.swift */,
 				6100D199344098CC50AB411D /* AppIdentifier.swift */,
 				5CF32B481FF059CFF9EBBF9D /* AudioCapture.swift */,
@@ -212,6 +222,7 @@
 		79A8ABE7CC8BAD8AEABA84C2 /* Model */ = {
 			isa = PBXGroup;
 			children = (
+				3A5D0B3BE0D5701499F32414 /* VocabularyStore.swift */,
 				36D04D4D581F947FDD13AD5A /* Capture.swift */,
 				04445CD4EC91A6F127B5A67C /* CaptureStore.swift */,
 			);
@@ -221,6 +232,7 @@
 		954CCCEC4782EFA08CD7DC3B /* YorickTests */ = {
 			isa = PBXGroup;
 			children = (
+				7E4B9B19EF070AE34AD78BCA /* VocabularyTests.swift */,
 				604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */,
 				FDBF384BCCFCABF4918D0DB7 /* FocusClassifierTests.swift */,
 				ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */,
@@ -231,6 +243,7 @@
 		A5FC7261B512D0BAF8371C3D /* Output */ = {
 			isa = PBXGroup;
 			children = (
+				A97AF25C50DAA6F2F30A56C2 /* Vocabulary.swift */,
 				D83B4AFCF23F7B482C5B7689 /* ClipboardOutput.swift */,
 				F5F87DAB8FBCF6EC788ABBBC /* FieldProfiler.swift */,
 				49C618076D702087B0DDE731 /* NotificationManager.swift */,
@@ -377,6 +390,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				685A474EE21ABC380C4B614D /* VocabularyTests.swift in Sources */,
+				2DD06CD2AFDBE05AFE33AB26 /* Vocabulary.swift in Sources */,
 				41E54384A29FECBA90F55D04 /* FieldProfiler.swift in Sources */,
 				88A8555B35995E7A2FBB83EC /* FieldProfilerTests.swift in Sources */,
 				B126E650385A2E63BA4A7532 /* FocusClassifier.swift in Sources */,
@@ -390,6 +405,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3BEF352FFC57F208CF25A039 /* CorrectionWatcher.swift in Sources */,
+				3C782C7F79D015D6DB76C911 /* VocabularyStore.swift in Sources */,
+				75168BF09C8E309653278F72 /* Vocabulary.swift in Sources */,
 				59BA1D0795401D4E78FA1847 /* AccessibilityCapture.swift in Sources */,
 				98CD574C2C2BFAF1CDAB1651 /* AdminMode.swift in Sources */,
 				52CE643B36C72CD5AD101DDD /* AppDelegate.swift in Sources */,
