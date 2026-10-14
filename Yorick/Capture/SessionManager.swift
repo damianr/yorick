@@ -359,19 +359,27 @@ final class SessionManager {
         // the right field — seated at its top-leading corner, as a capsule,
         // never the pointer corner. Exact selection-start geometry still
         // wins wherever the app provides it (native fields, Mail).
-        let selectionEdge: CGRect? = target.hasSelection && target.frame.width > 0
+        //
+        // An EMPTY field opens the same tier for the same reason: with no
+        // text in it, the insertion point can only be the leading edge, so
+        // claiming the field claims the landing spot. This is the common
+        // "click into a fresh composer and talk" case in Chromium apps
+        // that expose no caret geometry for an empty editor.
+        let leadingEdgeHonest = target.hasSelection || target.isEmpty
+        let selectionEdge: CGRect? = leadingEdgeHonest && target.frame.width > 0
             ? CGRect(x: target.frame.minX + 4, y: target.frame.minY, width: 0, height: min(target.frame.height, 24))
             : nil
         let singleLineEdge = roleEdge ?? selectionEdge
         guard let caret = exactCaret ?? singleLineEdge else {
-            Self.placementLog.info("no caret → bottom-center (frame=\(NSStringFromRect(target.frame), privacy: .public))")
+            Self.placementLog.info("no caret → bottom-center (role=\(target.role, privacy: .public) frame=\(NSStringFromRect(target.frame), privacy: .public))")
             hudPillPlacement = .bottomCenter
             NotificationCenter.default.post(name: .hudReposition, object: nil)
             return
         }
         hudAnchorApproximate = (exactCaret == nil)
         if hudAnchorApproximate {
-            Self.placementLog.info("no caret, single-line field → leading-edge capsule (frame=\(NSStringFromRect(target.frame), privacy: .public))")
+            let why = roleEdge != nil ? "single-line" : (target.hasSelection ? "selection" : "empty")
+            Self.placementLog.info("no caret, \(why, privacy: .public) field → leading-edge capsule (frame=\(NSStringFromRect(target.frame), privacy: .public))")
         }
 
         // AX coordinates are global top-left; Cocoa windows are bottom-left,
@@ -428,6 +436,7 @@ final class SessionManager {
         }
         Self.placementLog.info("""
             caret placement: caretAX=\(NSStringFromRect(caret), privacy: .public) \
+            source=\(target.caretSource, privacy: .public) \
             fieldAX=\(NSStringFromRect(target.frame), privacy: .public) \
             flippedField=\(NSStringFromRect(field), privacy: .public) \
             visible=\(NSStringFromRect(visible), privacy: .public) \
@@ -525,9 +534,16 @@ final class SessionManager {
         case (nil, nil):
             // No caret either side — but the FIELD may have moved (window
             // drag, composer reflow); keep the tracked identity fresh.
+            // The leading-edge tier switching on or off (a selection made,
+            // the field emptied) re-places too — while recording only: the
+            // paste itself fills an empty field, and the pill must not hop
+            // home in the beat before it fades.
             let old = hudAnchor?.frame ?? .zero
             let f = target.frame
-            if abs(f.minX - old.minX) > 1 || abs(f.minY - old.minY) > 1 ||
+            let tierChanged = state == .recording
+                && (hudAnchor?.isEmpty != target.isEmpty || hudAnchor?.hasSelection != target.hasSelection)
+            if tierChanged ||
+               abs(f.minX - old.minX) > 1 || abs(f.minY - old.minY) > 1 ||
                abs(f.width - old.width) > 1 || abs(f.height - old.height) > 1 {
                 setHUDAnchor(target)
             } else {

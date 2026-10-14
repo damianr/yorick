@@ -145,6 +145,14 @@ enum AccessibilityCapture {
         /// the exact landing spot on screen, so the pill only needs to
         /// claim the field (capsule, never the pointer corner).
         var hasSelection: Bool = false
+        /// Which strategy produced `caret` — placement diagnostics only, so a
+        /// field report says WHY the pill landed where it did.
+        var caretSource: String = "none"
+        /// True when no caret was readable AND the field holds no text. An
+        /// empty field's insertion point is its leading edge by definition,
+        /// so the field itself is an honest (capsule) anchor — the same
+        /// grammar as `hasSelection`. Only computed when `caret` is nil.
+        var isEmpty: Bool = false
 
         /// Whether this is the same field as `other`. Element identity is the
         /// strong signal, but WebKit (Mail's compose body) and some Electron
@@ -205,6 +213,12 @@ enum AccessibilityCapture {
             isRichEditor: isRich,
             fieldFrame: frame
         )
+        // Empty-field tier: only asked when the caret is unreadable, and
+        // never on Google Docs, whose hidden input is permanently "empty"
+        // at a static frame — the confidently-wrong pill described above.
+        let isEmpty = caret == nil
+            && fieldIsEmpty(element)
+            && !isInsideGoogleEditor(element)
         var hasSelection = false
         var rangeRef: CFTypeRef?
         if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
@@ -219,9 +233,44 @@ enum AccessibilityCapture {
             element: element,
             pid: frontApp.processIdentifier,
             role: role,
-            caret: caret,
-            hasSelection: hasSelection
+            caret: caret?.rect,
+            hasSelection: hasSelection,
+            caretSource: caret?.source ?? "none",
+            isEmpty: isEmpty
         )
+    }
+
+    /// Whether the field holds no text. AXNumberOfCharacters is the cheap
+    /// read; the value is only fetched when that's missing or small, and a
+    /// value equal to the placeholder counts as empty (Chromium folds CSS
+    /// placeholder text into some composers' values). Unknown → not empty.
+    private static func fieldIsEmpty(_ element: AXUIElement) -> Bool {
+        let count = attribute(element, "AXNumberOfCharacters") as? Int
+        if count == 0 { return true }
+        if let count, count > 300 { return false }
+        guard let value = attribute(element, kAXValueAttribute) as? String else { return false }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        guard let placeholder = attribute(element, kAXPlaceholderValueAttribute) as? String else { return false }
+        return trimmed == placeholder.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Google Docs/Sheets/Slides type through a hidden, always-empty input
+    /// whose frame never moves. Walk up to the enclosing web areas (the
+    /// input lives in an about:blank iframe, so keep going past it) and
+    /// check the page's host.
+    private static func isInsideGoogleEditor(_ element: AXUIElement) -> Bool {
+        var current = element
+        for _ in 0..<16 {
+            if attribute(current, kAXRoleAttribute) as? String == "AXWebArea",
+               let url = attribute(current, kAXURLAttribute) as? URL,
+               url.host == "docs.google.com" {
+                return true
+            }
+            guard let parent = attribute(current, kAXParentAttribute) else { return false }
+            current = parent as! AXUIElement
+        }
+        return false
     }
 
     // MARK: - Field shaping signals
@@ -297,7 +346,7 @@ enum AccessibilityCapture {
         pid: pid_t,
         isRichEditor: Bool,
         fieldFrame: CGRect
-    ) -> CGRect? {
+    ) -> (rect: CGRect, source: String)? {
         enableAssistiveTree(pid: pid, enhanced: false)
         if let r = resolveCaretRect(focusedElement, role: role, within: fieldFrame) { return r }
         if isRichEditor, assistiveTreeEnabled[pid] != true {
@@ -309,20 +358,48 @@ enum AccessibilityCapture {
         return nil
     }
 
-    private static func resolveCaretRect(_ element: AXUIElement, role: String, within fieldFrame: CGRect) -> CGRect? {
+    private static func resolveCaretRect(
+        _ element: AXUIElement,
+        role: String,
+        within fieldFrame: CGRect
+    ) -> (rect: CGRect, source: String)? {
         // Read the caret ONLY from the focused element's own insertion point.
         // A descendant search looked tempting but returned the first static-text
         // run's bounds — a fixed wrong spot that pinned the pill while the cursor
         // moved. Once the assistive tree is unlocked, focus lands on the real
         // text element (Pages → AXTextArea) whose selected-range bounds tracks
         // the caret; WebKit (Mail) exposes it via text markers instead.
-        if let r = boundsForSelectedRange(element).map(collapsedToFirstLine), isSaneCaret(r, within: fieldFrame) { return r }
-        if let r = boundsForSelectedTextMarker(element).map(collapsedToFirstLine), isSaneCaret(r, within: fieldFrame) { return r }
+        if let r = boundsForSelectedRange(element).map(collapsedToFirstLine), isSaneCaret(r, within: fieldFrame) {
+            return (r, "range")
+        }
+        if let r = boundsForSelectedTextMarker(element).map(collapsedToFirstLine), isSaneCaret(r, within: fieldFrame) {
+            return (r, "marker")
+        }
+        // Chromium/Electron (Chrome, Slack, the Claude app, ChatGPT, Notion…)
+        // answer a COLLAPSED caret with a degenerate rect from both APIs
+        // above — that's why a plain caret with no selection fell to
+        // bottom-center there. A one-character range is real geometry, so
+        // measure the character beside the caret and take its near edge.
+        //
+        // The insertion LINE (when an app exposes it) is the cross-check:
+        // Terminal-class views return garbage for range bounds, and a
+        // neighbor rect that isn't on the caret's own line is that garbage.
+        let line = boundsForInsertionLine(element).flatMap { isSaneCaret($0, within: fieldFrame) ? $0 : nil }
+        func onCaretLine(_ r: CGRect) -> Bool {
+            guard let line else { return true }
+            return r.midY >= line.minY - 2 && r.midY <= line.maxY + 2
+        }
+        if let r = caretFromNeighborCharacters(element), isSaneCaret(r, within: fieldFrame), onCaretLine(r) {
+            return (r, "rangeNeighbor")
+        }
+        if let r = caretFromNeighborMarkers(element), isSaneCaret(r, within: fieldFrame), onCaretLine(r) {
+            return (r, "markerNeighbor")
+        }
         // Widen coverage: some editors expose the caret's LINE but not usable
         // selected-range bounds (or return garbage for them, like Terminal).
         // The line rectangle gives the right vertical position — enough to place
         // the pill on the caret's line rather than falling to bottom-center.
-        if let r = boundsForInsertionLine(element), isSaneCaret(r, within: fieldFrame) { return r }
+        if let line { return (line, "line") }
         return nil
     }
 
@@ -427,6 +504,139 @@ enum AccessibilityCapture {
         var rect = CGRect.zero
         guard AXValueGetValue((out as! AXValue), .cgRect, &rect) else { return nil }
         return rect
+    }
+
+    // MARK: Neighbor-character caret
+
+    /// The caret as the near edge of the character beside it: the trailing
+    /// edge of the character BEFORE the insertion point, else the leading
+    /// edge of the character AT it. Line breaks are skipped — a newline's box
+    /// sits at the end of the previous line, not where the caret is. For a
+    /// selection the insertion point is its start (the paste replaces it).
+    private static func caretFromNeighborCharacters(_ element: AXUIElement) -> CGRect? {
+        guard let rangeRef = attribute(element, kAXSelectedTextRangeAttribute),
+              CFGetTypeID(rangeRef) == AXValueGetTypeID() else { return nil }
+        var selection = CFRange()
+        guard AXValueGetValue((rangeRef as! AXValue), .cfRange, &selection),
+              selection.location >= 0 else { return nil }
+        if selection.location > 0,
+           let before = characterBox(element, at: selection.location - 1),
+           !isLineBreak(before.text) {
+            return caretAfter(before.rect)
+        }
+        if let at = characterBox(element, at: selection.location), !isLineBreak(at.text) {
+            return caretBefore(at.rect)
+        }
+        return nil
+    }
+
+    private static func characterBox(_ element: AXUIElement, at location: Int) -> (rect: CGRect, text: String?)? {
+        var range = CFRange(location: location, length: 1)
+        guard let value = AXValueCreate(.cfRange, &range),
+              let rect = boundsForRangeValue(element, value),
+              isRealBox(rect) else { return nil }
+        let text = parameterized(element, kAXStringForRangeParameterizedAttribute, value) as? String
+        return (rect, text)
+    }
+
+    /// Same idea through WebKit/Chromium text markers. Chromium is the case
+    /// this exists for: it answers bounds for a NON-empty marker range (the
+    /// selection box already works) but a collapsed caret comes back 0×0,
+    /// and it doesn't implement the app-side range-collapse call (probe:
+    /// err -25212). So split the selection range locally with HIServices'
+    /// marker functions, step one character with the app's next/previous
+    /// marker calls, and measure that one-character range.
+    private static func caretFromNeighborMarkers(_ element: AXUIElement) -> CGRect? {
+        guard let selection = attribute(element, "AXSelectedTextMarkerRange"),
+              let start = TextMarkerSPI.startMarker(of: selection) else { return nil }
+        if let previous = parameterized(element, "AXPreviousTextMarkerForTextMarker", start),
+           let range = TextMarkerSPI.range(from: previous, to: start),
+           let rect = rectValue(parameterized(element, "AXBoundsForTextMarkerRange", range)),
+           isRealBox(rect),
+           !isLineBreak(parameterized(element, "AXStringForTextMarkerRange", range) as? String) {
+            return caretAfter(rect)
+        }
+        if let next = parameterized(element, "AXNextTextMarkerForTextMarker", start),
+           let range = TextMarkerSPI.range(from: start, to: next),
+           let rect = rectValue(parameterized(element, "AXBoundsForTextMarkerRange", range)),
+           isRealBox(rect),
+           !isLineBreak(parameterized(element, "AXStringForTextMarkerRange", range) as? String) {
+            return caretBefore(rect)
+        }
+        return nil
+    }
+
+    /// A character box with real extent — not the `(0, y) 0×0` Chromium
+    /// hands back for anything it can't measure.
+    private static func isRealBox(_ r: CGRect) -> Bool {
+        r.origin.x.isFinite && r.origin.y.isFinite && r.height > 1 && r.width >= 0
+            && !(r.origin.x == 0 && r.width == 0)
+    }
+
+    private static func caretAfter(_ char: CGRect) -> CGRect {
+        CGRect(x: char.maxX, y: char.minY, width: 2, height: char.height)
+    }
+
+    private static func caretBefore(_ char: CGRect) -> CGRect {
+        CGRect(x: char.minX, y: char.minY, width: 2, height: char.height)
+    }
+
+    /// Unknown text (the app wouldn't say) is NOT treated as a break — the
+    /// line cross-check in resolveCaretRect still guards the result.
+    private static func isLineBreak(_ text: String?) -> Bool {
+        guard let text, let scalar = text.unicodeScalars.first else { return false }
+        return CharacterSet.newlines.contains(scalar)
+    }
+
+    private static func parameterized(_ element: AXUIElement, _ attr: String, _ param: CFTypeRef) -> CFTypeRef? {
+        var out: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(element, attr as CFString, param, &out) == .success else {
+            return nil
+        }
+        return out
+    }
+
+    private static func rectValue(_ value: CFTypeRef?) -> CGRect? {
+        guard let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue((value as! AXValue), .cgRect, &rect) else { return nil }
+        return rect
+    }
+
+    /// HIServices' text-marker range functions. They ship in
+    /// ApplicationServices (VoiceOver-class clients use them) but aren't in
+    /// the public headers, so resolve them at runtime; if a future macOS
+    /// drops them, the marker-neighbor strategy simply returns nil.
+    private enum TextMarkerSPI {
+        private typealias CopyMarker = @convention(c) (UnsafeRawPointer) -> UnsafeRawPointer?
+        private typealias CreateRange = @convention(c) (UnsafeRawPointer?, UnsafeRawPointer, UnsafeRawPointer) -> UnsafeRawPointer?
+
+        nonisolated(unsafe) private static let copyStart: CopyMarker? = symbol("AXTextMarkerRangeCopyStartMarker")
+        nonisolated(unsafe) private static let createRange: CreateRange? = symbol("AXTextMarkerRangeCreate")
+
+        private static func symbol<T>(_ name: String) -> T? {
+            guard let handle = dlopen(nil, RTLD_NOW), let sym = dlsym(handle, name) else { return nil }
+            return unsafeBitCast(sym, to: T.self)
+        }
+
+        static func startMarker(of range: CFTypeRef) -> CFTypeRef? {
+            guard let copyStart else { return nil }
+            return withExtendedLifetime(range) {
+                copyStart(UnsafeRawPointer(Unmanaged.passUnretained(range).toOpaque()))
+                    .map { Unmanaged<CFTypeRef>.fromOpaque($0).takeRetainedValue() }
+            }
+        }
+
+        static func range(from start: CFTypeRef, to end: CFTypeRef) -> CFTypeRef? {
+            guard let createRange else { return nil }
+            return withExtendedLifetime((start, end)) {
+                createRange(
+                    nil,
+                    UnsafeRawPointer(Unmanaged.passUnretained(start).toOpaque()),
+                    UnsafeRawPointer(Unmanaged.passUnretained(end).toOpaque())
+                ).map { Unmanaged<CFTypeRef>.fromOpaque($0).takeRetainedValue() }
+            }
+        }
     }
 
 
