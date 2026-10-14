@@ -13,6 +13,7 @@
 		16D8C2E4F65531ED0E8FC8A6 /* ToolbarBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1FC90D1A3F584F7F795AAC /* ToolbarBackdrop.swift */; };
 		1E4A05CAD2B21589B196EB77 /* AudioVisualLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DEEAC7EE7C3416DE9AD6001 /* AudioVisualLevel.swift */; };
 		25F2794237167E2B86E76872 /* ClipboardOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83B4AFCF23F7B482C5B7689 /* ClipboardOutput.swift */; };
+		2CE4AE8B030860497686310F /* SettingsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 859E8929146915671C486F14 /* SettingsSnapshot.swift */; };
 		2E2AFAFEEFD172F632EA9E32 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFDADD63A711A33CB1DAFC49 /* Theme.swift */; };
 		2FC5F1FC0DC65498658B1990 /* AudioVisualLevelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEE4934B44F68520BF425C42 /* AudioVisualLevelTests.swift */; };
 		32890F0C1006CF59564E6EBD /* PocketBluetoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F8410FF402D7C071A45DF71 /* PocketBluetoothProtocol.swift */; };
@@ -62,6 +63,7 @@
 		C51B26F837994AF4ADB8AF4E /* YorickMicSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3324578525B5871A3348A0 /* YorickMicSettingsView.swift */; };
 		C613A4D66858655E5F98A1D8 /* TranscriptQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232F5B10D1C9FAE986C7C864 /* TranscriptQuality.swift */; };
 		C98F3DCBAAC0162408A1B609 /* PasteboardLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B5304D771605BC1F26353E /* PasteboardLease.swift */; };
+		CD0BBA4482C7BD585F58B78B /* YorickDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C58C46A9BE265AF58064D6D3 /* YorickDevicesView.swift */; };
 		CF95ECA12953ED4FC0AFA4C3 /* AppIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6100D199344098CC50AB411D /* AppIdentifier.swift */; };
 		D2952624231ABDF6410AB35E /* YorickEyeSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A66EF228332E379202A4EE2 /* YorickEyeSettingsTests.swift */; };
 		DA6EEAFAB95E78E24F215A7F /* MicrophoneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */; };
@@ -120,6 +122,7 @@
 		7DC33F800989734476CB1D6D /* HUDWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDWindow.swift; sourceTree = "<group>"; };
 		8129E8CBD7F3EAA5430AB6E3 /* YorickMicControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YorickMicControllerTests.swift; sourceTree = "<group>"; };
 		813E2EEDBADFF07063F688D3 /* LocalIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalIntelligence.swift; sourceTree = "<group>"; };
+		859E8929146915671C486F14 /* SettingsSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSnapshot.swift; sourceTree = "<group>"; };
 		86D3C0B62573CB6B00A999CE /* LoginItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItem.swift; sourceTree = "<group>"; };
 		8AD999AF3A2983F6D044382B /* HUDContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDContentView.swift; sourceTree = "<group>"; };
 		9508203F2C34F0897692D0F4 /* AdminMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminMode.swift; sourceTree = "<group>"; };
@@ -135,6 +138,7 @@
 		BFDADD63A711A33CB1DAFC49 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		C255E175C0826AB7EA2D8175 /* MenuBarPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanelController.swift; sourceTree = "<group>"; };
 		C405F3C57FEC1B608D64405A /* PocketBluetoothController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketBluetoothController.swift; sourceTree = "<group>"; };
+		C58C46A9BE265AF58064D6D3 /* YorickDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YorickDevicesView.swift; sourceTree = "<group>"; };
 		C6980FB0C748F3D932BB737F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		D28302C5A969B4E66966DBB8 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		D83B4AFCF23F7B482C5B7689 /* ClipboardOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardOutput.swift; sourceTree = "<group>"; };
@@ -238,6 +242,7 @@
 				9D59B535823CBF1862FC457E /* ShortcutRecorderView.swift */,
 				BFDADD63A711A33CB1DAFC49 /* Theme.swift */,
 				BA1FC90D1A3F584F7F795AAC /* ToolbarBackdrop.swift */,
+				C58C46A9BE265AF58064D6D3 /* YorickDevicesView.swift */,
 				2D3324578525B5871A3348A0 /* YorickMicSettingsView.swift */,
 			);
 			path = UI;
@@ -283,6 +288,7 @@
 			children = (
 				C6980FB0C748F3D932BB737F /* AppDelegate.swift */,
 				1644B703BCDFB773ED233BB4 /* AppPaths.swift */,
+				859E8929146915671C486F14 /* SettingsSnapshot.swift */,
 				FB8F71B3FB8F2A899FA8638B /* YorickApp.swift */,
 			);
 			path = App;
@@ -484,6 +490,7 @@
 				511A03C41E6CD48D985D05F9 /* PreferencesView.swift in Sources */,
 				35E56C0FD55F736227AA6C86 /* SessionManager.swift in Sources */,
 				007FEC1B6F73F8F3A223852B /* SessionUploader.swift in Sources */,
+				2CE4AE8B030860497686310F /* SettingsSnapshot.swift in Sources */,
 				EF12E5AC1C7B78D778526C1D /* ShortcutRecorderView.swift in Sources */,
 				E1C160A45632D6D84926A30C /* SpokenFormNormalizer.swift in Sources */,
 				A954C4E35F30860DA4CEE56B /* Telemetry.swift in Sources */,
@@ -493,6 +500,7 @@
 				AC36DBF389D722369C68760E /* UtteranceRouter.swift in Sources */,
 				5C6C55EBB6222F84BC08017E /* WhisperServer.swift in Sources */,
 				ADC8B8995481E9F1FDBB6D3E /* YorickApp.swift in Sources */,
+				CD0BBA4482C7BD585F58B78B /* YorickDevicesView.swift in Sources */,
 				E8A78DF2EB3268DB6C4FBD1B /* YorickEyeSettings.swift in Sources */,
 				EABF2349BF8B3FDF2333DA40 /* YorickMicController.swift in Sources */,
 				C51B26F837994AF4ADB8AF4E /* YorickMicSettingsView.swift in Sources */,

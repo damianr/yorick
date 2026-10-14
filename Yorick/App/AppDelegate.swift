@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if SettingsSnapshot.runIfRequested(session: sessionManager) { return }
+        #endif
         Telemetry.start()
         Telemetry.send(.launched)
         registerHotkeys()
