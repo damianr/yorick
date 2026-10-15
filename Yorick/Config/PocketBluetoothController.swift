@@ -222,7 +222,9 @@ extension PocketBluetoothController: @preconcurrency CBCentralManagerDelegate, @
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, let value = characteristic.value else { return }
         if batteryCharacteristics.contains(characteristic) {
-            battery = DeviceBattery.updated(battery, uuid: characteristic.uuid, value: value); return
+            battery = DeviceBattery.updated(battery, uuid: characteristic.uuid, value: value)
+            if let b = battery { log.notice("battery \(b.percent)% mv=\(b.millivolts ?? 0) charging=\(b.charging) usb=\(b.usbPower)") }
+            return
         }
         if characteristic.uuid == CBUUID(string: PocketBluetoothProtocol.events) { handleEvent(value) }
         else if characteristic.uuid == CBUUID(string: PocketBluetoothProtocol.audio) { handleAudio(value) }
