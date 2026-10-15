@@ -60,6 +60,7 @@ targets:
       - path: Yorick/Config/AudioVisualLevel.swift
       - path: Yorick/Config/PocketBluetoothProtocol.swift
       - path: Yorick/Config/SkullBluetoothProtocol.swift
+      - path: Yorick/Config/DeviceBattery.swift
       - path: Yorick/Capture/AudioInputMeter.swift
       - path: Yorick/Config/YorickEyeSettings.swift
       - path: Yorick/Output/SpokenFormNormalizer.swift

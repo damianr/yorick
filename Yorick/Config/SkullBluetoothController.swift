@@ -10,6 +10,8 @@ import os
 final class SkullBluetoothController: NSObject, YorickEyeLink {
     private(set) var status = "Not connected"
     private(set) var connected = false
+    private(set) var battery: DeviceBattery? { didSet { if battery != oldValue { onBatteryChanged?(battery) } } }
+    var onBatteryChanged: ((DeviceBattery?) -> Void)?
     private(set) var receivedFrames = 0
     private(set) var missingSamples = 0
     var onSamples: (([Int16]) -> Void)?
@@ -31,6 +33,8 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     private var stopDeadline: Date?
     private var lastAudio = Date.distantPast
     private var reconnectAfter = Date.distantPast
+    private var batteryCharacteristics: [CBCharacteristic] = []
+    private var batteryReadAt = Date.distantPast
     private var eyeLines: [String] = []
     private let log = Logger(subsystem: "com.heyyorick.Yorick", category: "skullBLE")
     static let savedPeer = "skullBluetoothPeer"
@@ -116,6 +120,10 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
         central?.scanForPeripherals(withServices: [CBUUID(string: SkullBluetoothProtocol.service)])
     }
     private func tick() {
+        // Notifications carry changes; a slow poll keeps voltage fresh and covers older firmware.
+        if connected, !batteryCharacteristics.isEmpty, Date().timeIntervalSince(batteryReadAt) > 60 {
+            batteryReadAt = Date(); batteryCharacteristics.forEach { peripheral?.readValue(for: $0) }
+        }
         if wanted, peripheral == nil, Date() >= reconnectAfter {
             reconnectAfter = Date().addingTimeInterval(3); connectIfPossible()
         }
@@ -169,7 +177,7 @@ extension SkullBluetoothController: @preconcurrency CBCentralManagerDelegate, @p
     }
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         status = "Preparing encrypted connection…"
-        peripheral.discoverServices([CBUUID(string: SkullBluetoothProtocol.service)])
+        peripheral.discoverServices([CBUUID(string: SkullBluetoothProtocol.service), DeviceBattery.service])
     }
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         self.peripheral = nil; reconnectAfter = Date().addingTimeInterval(3)
@@ -179,19 +187,30 @@ extension SkullBluetoothController: @preconcurrency CBCentralManagerDelegate, @p
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         let was = connected
         connected = false; audio = nil; replies = nil; control = nil; eyeLines.removeAll()
+        battery = nil; batteryCharacteristics.removeAll()
         if was { onConnectionChanged?(false) }
         if assembler != nil { fail("The skull disconnected; the partial recording was kept") }
         self.peripheral = nil; status = "Reconnecting…"
         if wanted { connectIfPossible() }
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        if let bas = peripheral.services?.first(where: { $0.uuid == DeviceBattery.service }) {
+            peripheral.discoverCharacteristics([DeviceBattery.level], for: bas)
+        }
         guard error == nil, let s = peripheral.services?.first(where: { $0.uuid == CBUUID(string: SkullBluetoothProtocol.service) }) else {
             status = "Skull Bluetooth service unavailable. Update the skull firmware."; return
         }
         peripheral.discoverCharacteristics(nil, for: s)
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        if service.uuid == DeviceBattery.service, error != nil { return }
         guard error == nil else { status = "Could not prepare the skull"; return }
+        let batteryUUIDs = [DeviceBattery.level, DeviceBattery.power]
+        for c in service.characteristics ?? [] where batteryUUIDs.contains(c.uuid) {
+            batteryCharacteristics.append(c); peripheral.readValue(for: c)
+            if c.properties.contains(.notify) { peripheral.setNotifyValue(true, for: c) }
+        }
+        if service.uuid == DeviceBattery.service { return }
         for c in service.characteristics ?? [] {
             if c.uuid == CBUUID(string: SkullBluetoothProtocol.audio) { audio = c }
             if c.uuid == CBUUID(string: SkullBluetoothProtocol.replies) { replies = c }
@@ -201,6 +220,7 @@ extension SkullBluetoothController: @preconcurrency CBCentralManagerDelegate, @p
         peripheral.setNotifyValue(true, for: audio); peripheral.setNotifyValue(true, for: replies)
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        if batteryCharacteristics.contains(characteristic) { return }
         guard error == nil else { status = "Bluetooth pairing or subscription failed"; return }
         if audio?.isNotifying == true, replies?.isNotifying == true, !connected {
             connected = true; status = "Connected"; allowNew = false
@@ -210,6 +230,9 @@ extension SkullBluetoothController: @preconcurrency CBCentralManagerDelegate, @p
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, let value = characteristic.value else { return }
+        if batteryCharacteristics.contains(characteristic) {
+            battery = DeviceBattery.updated(battery, uuid: characteristic.uuid, value: value); return
+        }
         if characteristic.uuid == CBUUID(string: SkullBluetoothProtocol.replies) { handleReply(value) }
         else if characteristic.uuid == CBUUID(string: SkullBluetoothProtocol.audio) { handleAudio(value) }
     }

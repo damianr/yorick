@@ -7,6 +7,8 @@ import os
 final class PocketBluetoothController: NSObject {
     private(set) var status = "Not connected"
     private(set) var connected = false
+    private(set) var battery: DeviceBattery? { didSet { if battery != oldValue { onBatteryChanged?(battery) } } }
+    var onBatteryChanged: ((DeviceBattery?) -> Void)?
     private(set) var receivedFrames = 0
     private(set) var missingSamples = 0
     private(set) var rejectedFrames = 0
@@ -34,6 +36,8 @@ final class PocketBluetoothController: NSObject {
     private var seenOrder: [UInt64] = []
     private var lastHeartbeat = Date.distantPast
     private var reconnectAfter = Date.distantPast
+    private var batteryCharacteristics: [CBCharacteristic] = []
+    private var batteryReadAt = Date.distantPast
     private let log = Logger(subsystem: "com.heyyorick.Yorick", category: "pocketBLE")
     private static let savedPeer = "pocketBluetoothPeer"
 
@@ -89,6 +93,10 @@ final class PocketBluetoothController: NSObject {
         onFailure?(reason)
     }
     private func tick() {
+        // Notifications carry changes; a slow poll keeps voltage fresh and covers older firmware.
+        if connected, !batteryCharacteristics.isEmpty, Date().timeIntervalSince(batteryReadAt) > 60 {
+            batteryReadAt = Date(); batteryCharacteristics.forEach { peripheral?.readValue(for: $0) }
+        }
         if wanted, peripheral == nil, Date() >= reconnectAfter {
             reconnectAfter = Date().addingTimeInterval(3); connectIfPossible()
         }
@@ -161,7 +169,7 @@ extension PocketBluetoothController: @preconcurrency CBCentralManagerDelegate, @
     }
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         status = "Preparing encrypted connection…"
-        peripheral.discoverServices([CBUUID(string: PocketBluetoothProtocol.service)])
+        peripheral.discoverServices([CBUUID(string: PocketBluetoothProtocol.service), DeviceBattery.service])
     }
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         self.peripheral = nil; reconnectAfter = Date().addingTimeInterval(3)
@@ -170,19 +178,30 @@ extension PocketBluetoothController: @preconcurrency CBCentralManagerDelegate, @
     }
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         connected = false; armed = false; audio = nil; events = nil; commands = nil
+        battery = nil; batteryCharacteristics.removeAll()
         seen.removeAll(); seenOrder.removeAll(); onConnectionChanged?(false)
         if assembler != nil { fail("Pocket microphone disconnected; the partial recording was kept") }
         self.peripheral = nil; status = "Reconnecting…"
         if wanted { connectIfPossible() }
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        if let bas = peripheral.services?.first(where: { $0.uuid == DeviceBattery.service }) {
+            peripheral.discoverCharacteristics([DeviceBattery.level], for: bas)
+        }
         guard error == nil, let s = peripheral.services?.first(where: { $0.uuid == CBUUID(string: PocketBluetoothProtocol.service) }) else {
             status = "Pocket microphone service unavailable"; return
         }
         peripheral.discoverCharacteristics(nil, for: s)
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        if service.uuid == DeviceBattery.service, error != nil { return }
         guard error == nil else { status = "Could not prepare pocket microphone"; return }
+        let batteryUUIDs = [DeviceBattery.level, DeviceBattery.power]
+        for c in service.characteristics ?? [] where batteryUUIDs.contains(c.uuid) {
+            batteryCharacteristics.append(c); peripheral.readValue(for: c)
+            if c.properties.contains(.notify) { peripheral.setNotifyValue(true, for: c) }
+        }
+        if service.uuid == DeviceBattery.service { return }
         for c in service.characteristics ?? [] {
             if c.uuid == CBUUID(string: PocketBluetoothProtocol.audio) { audio = c }
             if c.uuid == CBUUID(string: PocketBluetoothProtocol.events) { events = c }
@@ -192,6 +211,7 @@ extension PocketBluetoothController: @preconcurrency CBCentralManagerDelegate, @
         peripheral.setNotifyValue(true, for: audio); peripheral.setNotifyValue(true, for: events)
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        if batteryCharacteristics.contains(characteristic) { return }
         guard error == nil else { status = "Bluetooth pairing or subscription failed"; return }
         if audio?.isNotifying == true, events?.isNotifying == true {
             connected = true; status = "Connected"
@@ -201,6 +221,9 @@ extension PocketBluetoothController: @preconcurrency CBCentralManagerDelegate, @
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, let value = characteristic.value else { return }
+        if batteryCharacteristics.contains(characteristic) {
+            battery = DeviceBattery.updated(battery, uuid: characteristic.uuid, value: value); return
+        }
         if characteristic.uuid == CBUUID(string: PocketBluetoothProtocol.events) { handleEvent(value) }
         else if characteristic.uuid == CBUUID(string: PocketBluetoothProtocol.audio) { handleAudio(value) }
     }

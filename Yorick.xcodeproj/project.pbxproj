@@ -38,6 +38,7 @@
 		5A0A92D6292E2EBDD687E571 /* HUDContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD999AF3A2983F6D044382B /* HUDContentView.swift */; };
 		5C6C55EBB6222F84BC08017E /* WhisperServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E650E2D930F26266A7838BE /* WhisperServer.swift */; };
 		6007E64A5E39615DD61BF4AD /* HUDWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC33F800989734476CB1D6D /* HUDWindow.swift */; };
+		66634CA1A9E415F67CA28866 /* DeviceBattery.swift in Sources */ = {isa = PBXBuildFile; fileRef = C443E460B16B7BE4160D4026 /* DeviceBattery.swift */; };
 		672E6E5DA3E9F0B483635D80 /* CaptureListComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */; };
 		68EF0A84480DD73E02A1128A /* SkullBluetoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C139FCF0C65D4B17B3D141 /* SkullBluetoothProtocol.swift */; };
 		6AA227E198DF170BDA250AF4 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1644B703BCDFB773ED233BB4 /* AppPaths.swift */; };
@@ -58,6 +59,7 @@
 		AD1879A1ED5A7BCB0A21DF5C /* Vocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B905E97C0FC76543073E0A /* Vocabulary.swift */; };
 		ADC8B8995481E9F1FDBB6D3E /* YorickApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB8F71B3FB8F2A899FA8638B /* YorickApp.swift */; };
 		AE0840172F6DDF6E2DA151D7 /* AudioInputMeterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E5EBE15CD2455D5F35D0D3A /* AudioInputMeterTests.swift */; };
+		AF351D57F39FEE2228A9E421 /* DeviceBattery.swift in Sources */ = {isa = PBXBuildFile; fileRef = C443E460B16B7BE4160D4026 /* DeviceBattery.swift */; };
 		B111C360CA38C6CEF5E87E20 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = AEA076117CAB6BC4B6F74431 /* KeyboardShortcuts */; };
 		B126E650385A2E63BA4A7532 /* FocusClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC5D45E53DCBF0E30B307567 /* FocusClassifier.swift */; };
 		B1B62E2A16F2FDCE89422A5F /* VocabularyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AE81F4FF437D2F1A2D9E5F4 /* VocabularyStore.swift */; };
@@ -90,6 +92,7 @@
 		F8AFA223D571C4B51C59032A /* SpokenFormNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACCFE38DD3A695CF6B8B4520 /* SpokenFormNormalizerTests.swift */; };
 		F8E173F6B8DB89FC15E4CB18 /* AudioDiagnosticsAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7B4957DCF515111706FAEC /* AudioDiagnosticsAnalyzer.swift */; };
 		FBBC63DD1A56828A26A19364 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49C618076D702087B0DDE731 /* NotificationManager.swift */; };
+		FBE1B2C0707BD3F4527252DF /* DeviceBatteryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6656895E5E06034C360BDF4F /* DeviceBatteryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -122,6 +125,7 @@
 		5E6A73B80A26C6E90C1289E6 /* Yorick.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yorick.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldProfilerTests.swift; sourceTree = "<group>"; };
 		6100D199344098CC50AB411D /* AppIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIdentifier.swift; sourceTree = "<group>"; };
+		6656895E5E06034C360BDF4F /* DeviceBatteryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceBatteryTests.swift; sourceTree = "<group>"; };
 		66D88477D3D846F4B335099B /* Telemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Telemetry.swift; sourceTree = "<group>"; };
 		69B905E97C0FC76543073E0A /* Vocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vocabulary.swift; sourceTree = "<group>"; };
 		6AF1CD392440FF27E1B5FD00 /* YorickTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YorickTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -152,6 +156,7 @@
 		BFDADD63A711A33CB1DAFC49 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		C255E175C0826AB7EA2D8175 /* MenuBarPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanelController.swift; sourceTree = "<group>"; };
 		C405F3C57FEC1B608D64405A /* PocketBluetoothController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketBluetoothController.swift; sourceTree = "<group>"; };
+		C443E460B16B7BE4160D4026 /* DeviceBattery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceBattery.swift; sourceTree = "<group>"; };
 		C58C46A9BE265AF58064D6D3 /* YorickDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YorickDevicesView.swift; sourceTree = "<group>"; };
 		C6980FB0C748F3D932BB737F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		C7C79883411FA3B5046899CD /* CorrectionWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionWatcher.swift; sourceTree = "<group>"; };
@@ -280,6 +285,7 @@
 			children = (
 				2E5EBE15CD2455D5F35D0D3A /* AudioInputMeterTests.swift */,
 				DEE4934B44F68520BF425C42 /* AudioVisualLevelTests.swift */,
+				6656895E5E06034C360BDF4F /* DeviceBatteryTests.swift */,
 				604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */,
 				FDBF384BCCFCABF4918D0DB7 /* FocusClassifierTests.swift */,
 				A98849F80C512E14B57DDFF7 /* PocketBluetoothProtocolTests.swift */,
@@ -335,6 +341,7 @@
 				9508203F2C34F0897692D0F4 /* AdminMode.swift */,
 				3DEEAC7EE7C3416DE9AD6001 /* AudioVisualLevel.swift */,
 				9BC530C070F06B8488BD526B /* Constants.swift */,
+				C443E460B16B7BE4160D4026 /* DeviceBattery.swift */,
 				1276438ACBDE805AE73A96D8 /* HotkeyManager.swift */,
 				86D3C0B62573CB6B00A999CE /* LoginItem.swift */,
 				2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */,
@@ -455,6 +462,8 @@
 				AE0840172F6DDF6E2DA151D7 /* AudioInputMeterTests.swift in Sources */,
 				1E4A05CAD2B21589B196EB77 /* AudioVisualLevel.swift in Sources */,
 				2FC5F1FC0DC65498658B1990 /* AudioVisualLevelTests.swift in Sources */,
+				66634CA1A9E415F67CA28866 /* DeviceBattery.swift in Sources */,
+				FBE1B2C0707BD3F4527252DF /* DeviceBatteryTests.swift in Sources */,
 				41E54384A29FECBA90F55D04 /* FieldProfiler.swift in Sources */,
 				88A8555B35995E7A2FBB83EC /* FieldProfilerTests.swift in Sources */,
 				B126E650385A2E63BA4A7532 /* FocusClassifier.swift in Sources */,
@@ -497,6 +506,7 @@
 				34B9653B840BA7EA04FC6914 /* Constants.swift in Sources */,
 				A49F05C46D03C30835F7F541 /* ContentView.swift in Sources */,
 				527E8FF26BEB47E01C6B9CD3 /* CorrectionWatcher.swift in Sources */,
+				AF351D57F39FEE2228A9E421 /* DeviceBattery.swift in Sources */,
 				EDCECC21E84B22627EC046B2 /* FieldProfiler.swift in Sources */,
 				F6E801CEF56950DB18603144 /* FocusClassifier.swift in Sources */,
 				5A0A92D6292E2EBDD687E571 /* HUDContentView.swift in Sources */,

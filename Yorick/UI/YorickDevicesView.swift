@@ -40,6 +40,10 @@ struct YorickDevicesView: View {
         device == .pocket ? session.pocketBluetooth.connected : session.skullBluetooth.connected || skullInput != nil
     }
 
+    private func battery(_ device: Device) -> DeviceBattery? {
+        device == .pocket ? session.pocketBluetooth.battery : session.skullBluetooth.battery
+    }
+
     private func isListed(_ device: Device) -> Bool {
         #if DEBUG
         // Settings snapshots can show the empty (no hardware) state.
@@ -176,6 +180,9 @@ struct YorickDevicesView: View {
                         .foregroundStyle(connected ? Theme.success : Theme.textTertiary)
                 }
                 Spacer(minLength: 8)
+                if connected, let battery = battery(device) {
+                    BatteryBadge(battery: battery, showsDetail: true)
+                }
                 if device == .skull, session.yorickMic.showEyeControls {
                     Button {
                         withAnimation(.easeOut(duration: 0.15)) { showEyes.toggle() }
@@ -268,5 +275,28 @@ struct YorickDevicesView: View {
             // in the microphone picker.
             session.connectSkullBluetooth()
         }
+    }
+}
+
+/// A device's battery: icon and percent, red when it needs charging.
+struct BatteryBadge: View {
+    let battery: DeviceBattery
+    var showsDetail = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: battery.symbol)
+                .font(.system(size: 11))
+            Text(showsDetail ? battery.label : "\(battery.percent)%")
+                .font(Theme.mono(9))
+        }
+        .foregroundStyle(battery.isLow ? Theme.error : Theme.textSecondary)
+        .help(help)
+    }
+
+    private var help: String {
+        var parts = [battery.isLow ? "Battery low — charge soon" : "Battery \(battery.percent)%"]
+        if let mv = battery.millivolts { parts.append(String(format: "%.2f V", Double(mv) / 1000)) }
+        return parts.joined(separator: " · ")
     }
 }

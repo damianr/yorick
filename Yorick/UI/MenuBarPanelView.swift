@@ -82,6 +82,7 @@ struct MenuBarPanelView: View {
                 .font(Theme.mono(13, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
             Spacer()
+            deviceBatteries
             Button {
                 pinned.toggle()
                 controller.setPinned(pinned)
@@ -129,6 +130,24 @@ struct MenuBarPanelView: View {
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 8)
+    }
+
+    /// Connected Yorick devices' batteries, so a dying Pocket shows before it drops out.
+    @ViewBuilder
+    private var deviceBatteries: some View {
+        let devices: [(String, String, DeviceBattery?)] = [
+            ("mic.fill", "Yorick Pocket", session.pocketBluetooth.connected ? session.pocketBluetooth.battery : nil),
+            ("eyes", "Yorick Skull", session.skullBluetooth.connected ? session.skullBluetooth.battery : nil),
+        ]
+        ForEach(devices.filter { $0.2 != nil }, id: \.1) { symbol, name, battery in
+            HStack(spacing: 3) {
+                Image(systemName: symbol).font(.system(size: 8))
+                BatteryBadge(battery: battery!)
+            }
+            .foregroundStyle(battery!.isLow ? Theme.error : Theme.textTertiary)
+            .help("\(name) · \(battery!.label)")
+            .padding(.trailing, 4)
+        }
     }
 
     // MARK: - Status

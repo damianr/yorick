@@ -81,12 +81,33 @@ final class SessionManager {
     private var skullAudioActive = false
     private var skullConfigured = false
 
+    private var lowBatteryWarned: Set<String> = []
+
+    /// One sticky warning per discharge when a device drops to low; it re-arms
+    /// once the device is plugged in or back above the threshold. The short
+    /// wait lets the level and power readings that arrive together settle.
+    private func warnOnLowBattery(_ name: String, _ current: @escaping () -> DeviceBattery?) -> (DeviceBattery?) -> Void {
+        { [weak self] _ in
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                guard let self, let battery = current() else { return }
+                guard battery.isLow else {
+                    if battery.usbPower || battery.percent > DeviceBattery.lowPercent + 10 { self.lowBatteryWarned.remove(name) }
+                    return
+                }
+                guard self.state == .idle, self.lowBatteryWarned.insert(name).inserted else { return }
+                self.transientNotice = TransientNotice(message: "\(name) battery is at \(battery.percent)%. Charge it soon.", sticky: true)
+            }
+        }
+    }
+
     private var skullSelected: Bool { microphoneManager.selectedDeviceUID == SkullBluetoothProtocol.deviceUID }
 
     func configureSkullBluetooth() {
         guard !skullConfigured else { return }; skullConfigured = true
         yorickMic.bluetoothLink = skullBluetooth
         skullBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.skullConnected = connected }
+        skullBluetooth.onBatteryChanged = warnOnLowBattery("Yorick Skull") { [weak self] in self?.skullBluetooth.battery }
         skullBluetooth.onSamples = { [weak self] samples in
             guard let self, self.skullAudioActive, self.state == .recording else { return }
             self.audioCapture.appendExternal(samples)
@@ -122,6 +143,7 @@ final class SessionManager {
             self?.microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID
         }
         pocketBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.pocketConnected = connected }
+        pocketBluetooth.onBatteryChanged = warnOnLowBattery("Yorick Pocket") { [weak self] in self?.pocketBluetooth.battery }
         pocketBluetooth.onStart = { [weak self] in
             guard let self, self.microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID,
                   self.state == .idle else { return false }
