@@ -111,11 +111,14 @@ struct YorickDevicesView: View {
             Text("Yorick has hardware.")
                 .font(Theme.mono(11.5, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
-            Text("A handheld you hold to talk, and a desk skull whose eyes watch you speak. Both are made for Yorick and nothing else.")
+            Text("A handheld you hold to talk, and a desk skull whose eyes watch you speak. Build one and it connects over Bluetooth, for Yorick alone.")
                 .font(Theme.mono(9.5))
                 .foregroundStyle(Theme.textTertiary)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
+            Link("How to build one", destination: URL(string: "https://github.com/damianr/yorick-mics")!)
+                .font(Theme.mono(9.5))
+                .foregroundStyle(Theme.textSecondary)
             Button {
                 withAnimation(.easeOut(duration: 0.15)) { choosing = true }
             } label: {
