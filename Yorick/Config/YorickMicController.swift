@@ -1,9 +1,11 @@
 import Foundation
 import Observation
+#if YORICK_HARDWARE_LAB
 import AVFoundation
 import IOKit
 import IOKit.serial
 import Darwin
+#endif
 
 /// A non-serial eye transport (the skull over Bluetooth). Lines carry no newline.
 @MainActor
@@ -16,6 +18,9 @@ protocol YorickEyeLink: AnyObject {
 /// Audio discovery and serial eye control (direct USB or wireless receiver) are independent. Opening
 /// the control interface never opens an audio stream or changes the chosen mic. When the skull's
 /// Bluetooth input is selected, the same eye protocol runs over `bluetoothLink` instead.
+///
+/// Public builds (no YORICK_HARDWARE_LAB) carry only the Bluetooth path, with the
+/// default eye settings: no serial ports, no receiver, no tuning UI.
 @MainActor @Observable
 final class YorickMicController {
     private(set) var attached = false
@@ -25,7 +30,12 @@ final class YorickMicController {
     private(set) var needsInputSelection = false
     private(set) var status = "Connect a Yorick microphone to customize its eyes."
     var settings: YorickEyeSettings {
-        didSet { settings.save(to: defaults); applied = false; dirtyAt = clock() }
+        didSet {
+            #if YORICK_HARDWARE_LAB
+            settings.save(to: defaults)
+            #endif
+            applied = false; dirtyAt = clock()
+        }
     }
     var recording = false
     var stalled = false
@@ -33,9 +43,6 @@ final class YorickMicController {
     var audioLevel: Float = 0
 
     @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private var fd: Int32 = -1
-    @ObservationIgnored private var buffer = ""
-    @ObservationIgnored private var path: String?
     @ObservationIgnored private var lastDiscovery = Date.distantPast
     @ObservationIgnored private var opened = Date.distantPast
     @ObservationIgnored private var lastHello = Date.distantPast
@@ -45,14 +52,19 @@ final class YorickMicController {
     @ObservationIgnored private var sequence: UInt32 = 0
     @ObservationIgnored private var pendingSequence: UInt32?
     @ObservationIgnored private var pendingSettings: YorickEyeSettings?
-    @ObservationIgnored private var audioDeviceCount = 0
     @ObservationIgnored weak var bluetoothLink: YorickEyeLink?
     @ObservationIgnored var bluetoothSelected: @MainActor () -> Bool = {
         UserDefaults.standard.string(forKey: "selectedMicUID") == YorickEyeProtocol.bluetoothDeviceUID
     }
     @ObservationIgnored private var usingBluetooth = false
     @ObservationIgnored private var bluetoothWasReady = false
+    @ObservationIgnored private let clock: @MainActor () -> Date
 
+    #if YORICK_HARDWARE_LAB
+    @ObservationIgnored private var fd: Int32 = -1
+    @ObservationIgnored private var buffer = ""
+    @ObservationIgnored private var path: String?
+    @ObservationIgnored private var audioDeviceCount = 0
     @ObservationIgnored private(set) var opening = false
     @ObservationIgnored private var openGeneration = UUID()
     @ObservationIgnored private var openingSince = Date.distantPast
@@ -61,14 +73,25 @@ final class YorickMicController {
     typealias Inventory = (audioCount: Int, ports: [String])
     @ObservationIgnored private let discover: @MainActor () -> Inventory
     @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private let clock: @MainActor () -> Date
     init(monitor: Bool = true, defaults: UserDefaults = .standard, discover: @escaping @MainActor () -> Inventory = YorickMicController.inventory, configurePort: @escaping @Sendable (String) -> Int32 = YorickMicController.configureSerialPort, clock: @escaping @MainActor () -> Date = { Date() }) {
         self.clock = clock
         self.configurePort = configurePort
         self.discover = discover
         self.defaults = defaults
         self.settings = YorickEyeSettings.load(from: defaults)
-        guard monitor else { return }
+        if monitor { startMonitoring() }
+    }
+    deinit { task?.cancel(); if fd >= 0 { Darwin.close(fd) } }
+    #else
+    init(monitor: Bool = true, clock: @escaping @MainActor () -> Date = { Date() }) {
+        self.clock = clock
+        self.settings = YorickEyeSettings()
+        if monitor { startMonitoring() }
+    }
+    deinit { task?.cancel() }
+    #endif
+
+    private func startMonitoring() {
         task = Task { [weak self] in
             while !Task.isCancelled {
                 self?.tick()
@@ -76,7 +99,6 @@ final class YorickMicController {
             }
         }
     }
-    deinit { task?.cancel(); if fd >= 0 { Darwin.close(fd) } }
 
     func retry() { disconnect(); lastDiscovery = .distantPast }
 
@@ -90,10 +112,13 @@ final class YorickMicController {
     }
 
     private func disconnect() {
+        #if YORICK_HARDWARE_LAB
         openGeneration = UUID()
         if fd >= 0 { Self.closeOffMain(fd) }
-        fd = -1; path = nil; controlsReady = false; applied = false
-        pendingSequence = nil; pendingSettings = nil; buffer = ""
+        fd = -1; path = nil; buffer = ""
+        #endif
+        controlsReady = false; applied = false
+        pendingSequence = nil; pendingSettings = nil
     }
 
     func tick() {
@@ -114,10 +139,17 @@ final class YorickMicController {
             }
         } else {
             if usingBluetooth { usingBluetooth = false; disconnect(); attached = false; lastDiscovery = .distantPast }
+            #if YORICK_HARDWARE_LAB
             guard serialTick(now) else { return }
+            #else
+            attached = false; status = "Connect a Yorick Skull over Bluetooth to light its eyes."
+            return
+            #endif
         }
         exchange(now)
     }
+
+    #if YORICK_HARDWARE_LAB
 
     /// Serial discovery and open. Returns true once a port is open.
     private func serialTick(_ now: Date) -> Bool {
@@ -144,6 +176,9 @@ final class YorickMicController {
     }
 
     private var transportOpen: Bool { usingBluetooth ? bluetoothLink?.isLinkReady == true : fd >= 0 }
+    #else
+    private var transportOpen: Bool { usingBluetooth && bluetoothLink?.isLinkReady == true }
+    #endif
 
     private func exchange(_ now: Date) {
         readReplies()
@@ -173,11 +208,19 @@ final class YorickMicController {
             sequence &+= 1; pendingSequence = sequence; pendingSettings = current; lastSet = now
             send(current.command(sequence: sequence))
         }
-        let active = recording && !stalled && recordingMicName.map(YorickEyeProtocol.isMicrophoneName) == true
+        // recordingMicName is AudioCapture's label for the active input; the
+        // Bluetooth skull's is SkullBluetoothProtocol.deviceName.
+        #if YORICK_HARDWARE_LAB
+        let skullRecording = recordingMicName.map(YorickEyeProtocol.isMicrophoneName) == true
+        #else
+        let skullRecording = usingBluetooth && recordingMicName == SkullBluetoothProtocol.deviceName
+        #endif
+        let active = recording && !stalled && skullRecording
         let level = active ? settings.level(audioLevel) : 0
         send("YORICK STATE \(active ? 1 : 0) \(level)\n")
     }
 
+    #if YORICK_HARDWARE_LAB
     private func openPort(_ candidate: String) {
         guard !opening else { return }
         opening = true; openingSince = clock()
@@ -220,11 +263,13 @@ final class YorickMicController {
         return handle
         // Never use the 1200-baud bootloader touch or toggle reset/DTR.
     }
+    #endif
 
     private func send(_ message: String) {
         if usingBluetooth {
             bluetoothLink?.sendEyeLine(message.trimmingCharacters(in: .newlines)); return
         }
+        #if YORICK_HARDWARE_LAB
         guard fd >= 0 else { return }
         let bytes = Array(message.utf8)
         let written = bytes.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, bytes.count) }
@@ -237,6 +282,7 @@ final class YorickMicController {
             // No unbounded queue or partial command retries on the UI thread.
             disconnect(); status = "Eye connection interrupted. Reconnecting…"
         }
+        #endif
     }
 
     private func readReplies() {
@@ -244,6 +290,7 @@ final class YorickMicController {
             for line in bluetoothLink?.takeEyeLines() ?? [] { handleReply(line) }
             return
         }
+        #if YORICK_HARDWARE_LAB
         var bytes = [UInt8](repeating: 0, count: 1024)
         let count = bytes.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
         if count < 0 {
@@ -258,6 +305,7 @@ final class YorickMicController {
             buffer.removeSubrange(...newline)
             handleReply(line)
         }
+        #endif
     }
 
     private func handleReply(_ line: String) {
@@ -271,6 +319,7 @@ final class YorickMicController {
         }
     }
 
+    #if YORICK_HARDWARE_LAB
     struct ControlPort {
         let path: String
         let product: String
@@ -326,4 +375,5 @@ final class YorickMicController {
         }
         return results
     }
+    #endif
 }

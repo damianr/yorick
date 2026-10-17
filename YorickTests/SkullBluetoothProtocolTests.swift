@@ -21,14 +21,21 @@ final class SkullBluetoothProtocolTests: XCTestCase {
         XCTAssertNil(SkullBluetoothProtocol.encode(String(repeating: "x", count: 89)))
         XCTAssertNil(SkullBluetoothProtocol.encode("YORICK\u{7}"))
         XCTAssertEqual(SkullBluetoothProtocol.listen(42), "YORICK LISTEN 42")
+        #if YORICK_HARDWARE_LAB
         XCTAssertTrue(YorickEyeProtocol.isMicrophoneName(SkullBluetoothProtocol.deviceName))
+        #endif
     }
 
     /// Selecting the skull's Bluetooth input runs the eye protocol over the
     /// link, and voice state reaches the eyes only while it is the active mic.
     @MainActor func testEyesOverBluetoothOnlyReactWhenSkullIsRecording() {
+        #if YORICK_HARDWARE_LAB
         let defaults = UserDefaults(suiteName: "SkullBLETests.\(UUID())")!
         let mic = YorickMicController(monitor: false, defaults: defaults, discover: { (0, []) })
+        #else
+        // Public builds: Bluetooth only, default eyes.
+        let mic = YorickMicController(monitor: false)
+        #endif
         let link = FakeEyeLink()
         var selected = true
         mic.bluetoothLink = link; mic.bluetoothSelected = { selected }

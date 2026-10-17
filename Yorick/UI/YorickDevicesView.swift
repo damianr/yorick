@@ -23,8 +23,22 @@ struct YorickDevicesView: View {
     private var mics: MicrophoneManager { session.microphoneManager }
 
     /// A wired skull (USB or the old receiver) shows up as a regular audio input.
+    /// Public builds only know the skull over Bluetooth.
     private var skullInput: MicrophoneDevice? {
+        #if YORICK_HARDWARE_LAB
         mics.devices.first { $0.isConnected && $0.id != SkullBluetoothProtocol.deviceUID && YorickEyeProtocol.isMicrophoneName($0.name) }
+        #else
+        nil
+        #endif
+    }
+
+    /// Eye tuning lives in the hardware lab; public builds run the default eyes.
+    private var showsEyeTuning: Bool {
+        #if YORICK_HARDWARE_LAB
+        session.yorickMic.showEyeControls
+        #else
+        false
+        #endif
     }
 
     private var skullBluetoothKnown: Bool {
@@ -183,7 +197,7 @@ struct YorickDevicesView: View {
                 if connected, let battery = battery(device) {
                     BatteryBadge(battery: battery, showsDetail: true)
                 }
-                if device == .skull, session.yorickMic.showEyeControls {
+                if device == .skull, showsEyeTuning {
                     Button {
                         withAnimation(.easeOut(duration: 0.15)) { showEyes.toggle() }
                     } label: {
@@ -220,10 +234,12 @@ struct YorickDevicesView: View {
                     .buttonStyle(.plain)
                 }
             }
-            if device == .skull, showEyes, session.yorickMic.showEyeControls {
+            #if YORICK_HARDWARE_LAB
+            if device == .skull, showEyes, showsEyeTuning {
                 YorickMicSettingsView(mic: session.yorickMic)
                     .padding(.leading, 28)
             }
+            #endif
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

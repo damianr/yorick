@@ -1,6 +1,9 @@
 import XCTest
 import Darwin
 
+// Wired skull / receiver and eye tuning: hardware-lab builds only.
+#if YORICK_HARDWARE_LAB
+
 final class YorickMicControllerTests: XCTestCase {
     @MainActor func testHandshakeAcknowledgementAndActiveInput() async throws {
         var master: Int32 = -1, slave: Int32 = -1
@@ -161,3 +164,4 @@ final class YorickMicControllerTests: XCTestCase {
         return n > 0 ? String(decoding: bytes.prefix(n), as: UTF8.self) : ""
     }
 }
+#endif

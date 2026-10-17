@@ -1,5 +1,8 @@
 import XCTest
 
+// Wired skull / receiver and eye tuning: hardware-lab builds only.
+#if YORICK_HARDWARE_LAB
+
 final class YorickEyeSettingsTests: XCTestCase {
     func testWirelessDeviceDiscoveryIsExact() {
         XCTAssertTrue(YorickEyeProtocol.isMicrophoneName("Yorick Wireless Microphone"))
@@ -54,3 +57,4 @@ final class YorickEyeSettingsTests: XCTestCase {
         XCTAssertTrue(YorickEyeProtocol.isMicrophoneName("Yorick Microphone"))
     }
 }
+#endif

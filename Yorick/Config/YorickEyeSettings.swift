@@ -64,6 +64,9 @@ enum YorickEyeProtocol {
         guard parts.count == 3, parts[0] == "YORICK", parts[1] == "OK" else { return nil }
         return UInt32(parts[2])
     }
+    #if YORICK_HARDWARE_LAB
+    /// Wired skulls (USB, or the 2.4 GHz receiver) appear as ordinary audio
+    /// inputs and serial ports, matched by their USB product names.
     static func controlProduct(forMicrophoneName name: String) -> String? {
         switch name {
         case "Yorick Microphone", "Yorick Desk Microphone": "Yorick Desk Microphone"
@@ -77,5 +80,6 @@ enum YorickEyeProtocol {
     static func isMicrophoneName(_ name: String) -> Bool {
         ["Yorick Microphone", "Yorick Desk Microphone", "Yorick Wireless Microphone", SkullBluetoothProtocol.deviceName].contains(name)
     }
+    #endif
     static let bluetoothDeviceUID = SkullBluetoothProtocol.deviceUID
 }
