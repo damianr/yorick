@@ -4,9 +4,9 @@ import AVFoundation
 import SwiftUI
 import KeyboardShortcuts
 
-/// Settings in the stream's language: quiet rows, eyebrow section labels,
-/// three disclosure styles — always-visible caption for the row that defines
-/// the product, in-card copy for the engine choice, tooltip for trivia.
+/// Settings in the stream's language: quiet rows, eyebrow section labels.
+/// The hotkey leads, the microphone (Yorick hardware first) follows, and
+/// every description stays folded under its row's caret so the page fits.
 /// Diagnostics exist only for admin builds (`defaults write … adminMode 1`).
 struct SettingsView: View {
     var session: SessionManager
@@ -16,10 +16,16 @@ struct SettingsView: View {
     @State private var accessibilityTrusted = AXIsProcessTrusted()
     @State private var activeMicrophoneMode = SettingsView.currentMicrophoneModeName()
     @State private var whisperDownloading = false
+    /// Rows whose description is unfolded. Descriptions start folded so the
+    /// page fits; the caret (or a hover tooltip) reveals them.
+    @State private var expanded: Set<String> = []
     @AppStorage(AudioDebugSettings.keepAudioKey) private var keepDebugAudio = AudioDebugSettings.defaultKeepAudio
     @AppStorage(SessionManager.cleanupDictationKey) private var cleanupDictation = false
     @AppStorage(Telemetry.shareUsageCountsKey) private var shareUsageCounts = true
     @AppStorage(HUDPlacement.unanchoredAtTopKey) private var unanchoredPillAtTop = true
+    @AppStorage(VocabularyDefaults.learnFromFixesKey) private var learnFromFixes = true
+    @State private var newTerm = ""
+    @State private var newHeardAs = ""
     @State private var opensAtLogin = LoginItem.isEnabled
     /// Sparkle reads this key straight from UserDefaults, so binding to it is
     /// enough to turn scheduled checks on and off.
@@ -37,26 +43,78 @@ struct SettingsView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                sectionLabel("RECORDING")
                 // The onboarding try-it's hotkey block, verbatim: chips, the
                 // live keyboard map, rebinding as a quiet link — teach by
                 // hands here too, not a bare recorder field.
                 VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Hold to talk")
-                        caption("Hold to record, release to finish. In a text field your words are typed; anywhere else they're saved.")
-                    }
+                    disclosureLabel("hold", "Hold to talk",
+                        info: "Hold to record, release to finish. In a text field your words are typed; anywhere else they're saved.")
                     HotkeyEditorView()
                         .environment(session)
                         .padding(.vertical, 4)
                 }
-                .padding(.vertical, 10)
-                settingsRow {
-                    VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Clean up dictation before it types")
-                        caption("Removes filler words and false starts on this Mac, then types the result — adds a beat before the text lands. If cleanup can't run, your words are typed exactly as spoken. Your list always keeps the original.")
+                .padding(.top, 18)
+                .padding(.bottom, 4)
+
+                // Hardware first: which mic Yorick hears is the next thing
+                // anyone checks after the key.
+                sectionLabel("MICROPHONE")
+                YorickDevicesView(session: session)
+                infoRow("input", "Input",
+                        info: "Any microphone this Mac can hear. Picking a Yorick device above selects it here for you.") {
+                    Picker("", selection: $mics.selectedDeviceUID) {
+                        Text("System Default").tag(String?.none)
+                        if !mics.devices.isEmpty {
+                            Divider()
+                            ForEach(mics.devices) { device in
+                                Text(device.isConnected ? device.name : "\(device.name) (unplugged)")
+                                    .tag(Optional(device.id))
+                            }
+                        }
                     }
-                    Spacer(minLength: 16)
+                    .labelsHidden()
+                    .frame(maxWidth: 210)
+                }
+                if mics.selectedDeviceUID != nil, !mics.isSelectedDeviceAvailable,
+                   !mics.selectedIsBluetooth {
+                    caption("Selected device is unplugged — using system default until reconnected.")
+                        .padding(.top, 4)
+                }
+                infoRow("micmode", "Mic mode",
+                        info: "A macOS setting, not ours — it filters your mic before Yorick hears it. Voice Isolation is best for dictation; if transcripts get worse in a noisy room, check here first.") {
+                    Text(activeMicrophoneMode)
+                        .font(Theme.mono(10))
+                        .foregroundStyle(Theme.textTertiary)
+                    pillButton("Open") {
+                        if #available(macOS 12.0, *) {
+                            AVCaptureDevice.showSystemUserInterface(.microphoneModes)
+                        }
+                        activeMicrophoneMode = Self.currentMicrophoneModeName()
+                    }
+                }
+
+                sectionLabel("TRANSCRIPTION")
+                VStack(spacing: 8) {
+                    engineCard(
+                        engine: preferredAppleEngine,
+                        name: "Apple Speech",
+                        sub: "fastest · recommended",
+                        desc: "Apple's on-device engine. Text appears about as fast as you release the key, and there's nothing to set up."
+                    )
+                    engineCard(
+                        engine: .whisper,
+                        name: "Whisper",
+                        sub: "best accuracy · 600 MB",
+                        desc: "Downloads a 600 MB model once, then runs on this Mac. A touch slower; slightly better with unusual words, and it leans hardest on your vocabulary.",
+                        statusLine: whisperDownloading ? "downloading model…" : nil
+                    )
+                }
+
+                vocabularySection
+
+                sectionLabel("RECORDING")
+                infoRow("cleanup", "Clean up before typing",
+                        info: "Removes filler words and false starts on this Mac, then types the result — adds a beat before the text lands. If cleanup can't run, your words are typed exactly as spoken. Your list always keeps the original.") {
                     Toggle("", isOn: $cleanupDictation)
                         .toggleStyle(.switch)
                         .labelsHidden()
@@ -65,12 +123,8 @@ struct SettingsView: View {
                             Telemetry.send(.cleanupToggled, ["enabled": String(cleanupDictation)])
                         }
                 }
-                settingsRow {
-                    VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Saved-note position")
-                        caption("Where the recording pill and saved-note card appear when you're not in a text field. Dictation into a field always shows the pill at the field.")
-                    }
-                    Spacer(minLength: 16)
+                infoRow("position", "Saved-note position",
+                        info: "Where the recording pill and saved-note card appear when you're not in a text field. Dictation into a field always shows the pill at the field.") {
                     Picker("", selection: $unanchoredPillAtTop) {
                         Text("Top center").tag(true)
                         Text("Bottom center").tag(false)
@@ -83,52 +137,9 @@ struct SettingsView: View {
                     }
                 }
 
-                sectionLabel("MICROPHONE")
-                settingsRow {
-                    rowLabel("Input")
-                    Spacer()
-                    Picker("", selection: $mics.selectedDeviceUID) {
-                        Text("System Default").tag(String?.none)
-                        if !mics.devices.isEmpty {
-                            Divider()
-                            ForEach(mics.devices) { device in
-                                Text(device.isConnected ? device.name : "\(device.name) (unplugged)")
-                                    .tag(Optional(device.id))
-                            }
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 230)
-                }
-                if mics.selectedDeviceUID != nil, !mics.isSelectedDeviceAvailable {
-                    caption("Selected device is unplugged — using system default until reconnected.")
-                        .padding(.top, 4)
-                }
-
-                sectionLabel("TRANSCRIPTION")
-                VStack(spacing: 8) {
-                    engineCard(
-                        engine: preferredAppleEngine,
-                        name: "Apple Speech",
-                        sub: "fastest · no download · recommended",
-                        desc: "Apple's on-device engine. Text appears about as fast as you release the key, and there's nothing to set up."
-                    )
-                    engineCard(
-                        engine: .whisper,
-                        name: "Whisper",
-                        sub: "best accuracy · 600 MB download",
-                        desc: "Downloads a 600 MB model once, then runs on this Mac. A touch slower; slightly better with unusual words — and it learns your product names.",
-                        statusLine: whisperDownloading ? "downloading model…" : nil
-                    )
-                }
-
                 sectionLabel("PERMISSIONS & SYSTEM")
-                settingsRow {
-                    VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Open at login")
-                        caption("Yorick only hears the key while it's running.")
-                    }
-                    Spacer(minLength: 16)
+                infoRow("login", "Open at login",
+                        info: "Yorick only hears the key while it's running.") {
                     Toggle("", isOn: Binding(
                         get: { opensAtLogin },
                         set: { opensAtLogin = LoginItem.setEnabled($0) }
@@ -159,66 +170,34 @@ struct SettingsView: View {
                         pillButton("Open") { openPrivacyPane("Privacy_Accessibility") }
                     }
                 }
-                settingsRow {
-                    rowLabel("Mic mode")
-                    Spacer()
-                    Text(activeMicrophoneMode)
-                        .font(Theme.mono(10))
-                        .foregroundStyle(Theme.textTertiary)
-                    infoDot
-                        .help("A macOS setting, not ours — it filters your mic before Yorick hears it. Voice Isolation is best for dictation; if transcripts get worse in a noisy room, check here first.")
-                    pillButton("Open") {
-                        if #available(macOS 12.0, *) {
-                            AVCaptureDevice.showSystemUserInterface(.microphoneModes)
-                        }
-                        activeMicrophoneMode = Self.currentMicrophoneModeName()
-                    }
-                }
 
-                sectionLabel("PRIVACY")
-                settingsRow {
-                    VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Share anonymous usage counts")
-                        caption("Counts like \"a dictation was typed\" — so we learn what's used. Never your words, your audio, or where you typed them. Every event is listed in TELEMETRY.md in the public repo.")
-                    }
-                    Spacer(minLength: 16)
+                sectionLabel("PRIVACY & UPDATES")
+                infoRow("usage", "Share anonymous usage counts",
+                        info: "Counts like \"a dictation was typed\" — so we learn what's used. Never your words, your audio, or where you typed them. Every event is listed in TELEMETRY.md in the public repo.") {
                     Toggle("", isOn: $shareUsageCounts)
                         .toggleStyle(.switch)
                         .labelsHidden()
                         .controlSize(.small)
                 }
-
-                sectionLabel("UPDATES")
-                settingsRow {
-                    VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Version \(version)")
-                        caption("Update checks and the usage counts above are Yorick's only routine network calls, and every update is cryptographically signed. Nothing about what you say is ever sent.")
-                    }
-                    Spacer(minLength: 16)
-                    pillButton("Check Now") {
-                        NotificationCenter.default.post(name: .checkForUpdates, object: nil)
-                    }
-                }
-                settingsRow {
-                    VStack(alignment: .leading, spacing: 3) {
-                        rowLabel("Check automatically")
-                        caption("Looks once a day and asks before installing.")
-                    }
-                    Spacer(minLength: 16)
+                infoRow("autoupdate", "Check for updates daily",
+                        info: "Looks once a day and asks before installing. Update checks and the usage counts are Yorick's only routine network calls, and every update is cryptographically signed. Nothing about what you say is ever sent.") {
                     Toggle("", isOn: $automaticUpdateChecks)
                         .toggleStyle(.switch)
                         .labelsHidden()
                         .controlSize(.small)
                 }
+                settingsRow {
+                    rowLabel("Version \(version)")
+                    Spacer(minLength: 16)
+                    pillButton("Check Now") {
+                        NotificationCenter.default.post(name: .checkForUpdates, object: nil)
+                    }
+                }
 
                 if adminMode {
                     sectionLabel("DIAGNOSTICS · ADMIN BUILD ONLY", tint: Theme.accentCoral.opacity(0.7))
-                    settingsRow {
-                        VStack(alignment: .leading, spacing: 3) {
-                            rowLabel("Keep audio recordings")
-                            caption("Off by default — recordings are discarded the moment transcription finishes. Turn on only to debug microphone problems.")
-                        }
-                        Spacer(minLength: 16)
+                    infoRow("keepaudio", "Keep audio recordings",
+                            info: "Off by default — recordings are discarded the moment transcription finishes. Turn on only to debug microphone problems.") {
                         Toggle("", isOn: $keepDebugAudio)
                             .toggleStyle(.switch)
                             .labelsHidden()
@@ -239,6 +218,14 @@ struct SettingsView: View {
         }
         // No opaque background: settings render as a page of the menu bar
         // panel, whose glass shows through.
+        .onChange(of: mics.selectedDeviceUID) {
+            session.pocketBluetooth.selectionChanged()
+            session.skullSelectionChanged()
+            session.yorickMic.inputSelectionChanged()
+        }
+        .onChange(of: mics.isSelectedDeviceAvailable) {
+            session.yorickMic.inputSelectionChanged()
+        }
         .onAppear {
             session.microphoneManager.refresh()
             refreshPermissionState()
@@ -253,7 +240,125 @@ struct SettingsView: View {
         TranscriptionEngine.appleAnalyzer.isAvailableOnThisOS ? .appleAnalyzer : .apple
     }
 
+    // MARK: - Vocabulary
+
+    @ViewBuilder
+    private var vocabularySection: some View {
+        let vocabulary = VocabularyStore.shared
+        sectionLabel("VOCABULARY")
+        disclosureLabel("vocab", "Your words",
+            info: "Names and terms Yorick should spell your way. Every engine leans toward them, and anything you list under \u{201C}heard as\u{201D} is always swapped for the word.")
+            .padding(.vertical, 10)
+
+        ForEach(vocabulary.suggestions, id: \.self) { suggestion in
+            settingsRow {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(suggestion.term)
+                        .font(Theme.mono(11.5, weight: .semibold))
+                        .foregroundStyle(Theme.accentPurple)
+                    caption("Suggested: you changed \u{201C}\(suggestion.heard)\u{201D} to this")
+                }
+                Spacer(minLength: 16)
+                pillButton("Always") { vocabulary.accept(suggestion) }
+                pillButton("No thanks") { vocabulary.dismiss(suggestion) }
+            }
+        }
+
+        settingsRow {
+            vocabularyField("Word or name", text: $newTerm)
+            vocabularyField("Heard as (optional)", text: $newHeardAs)
+            pillButton("Add") { addVocabularyEntry() }
+                .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+
+        ForEach(vocabulary.sortedEntries) { entry in
+            settingsRow {
+                VStack(alignment: .leading, spacing: 3) {
+                    rowLabel(entry.term)
+                    if !entry.heardAs.isEmpty {
+                        caption("heard as " + entry.heardAs.map { "\u{201C}\($0)\u{201D}" }.joined(separator: ", "))
+                    }
+                }
+                Spacer(minLength: 16)
+                Button {
+                    vocabulary.remove(entry)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Remove \(entry.term)")
+            }
+        }
+
+        infoRow("learnfixes", "Suggest words from my fixes",
+                info: "After Yorick types, it watches that field for two minutes. If you retype a word as one that sounds like it (\u{201C}weights\u{201D} to \u{201C}Waits\u{201D}), it offers to remember the fix. Read on this Mac and never kept; password fields are never watched.") {
+            Toggle("", isOn: $learnFromFixes)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.small)
+        }
+    }
+
+    private func vocabularyField(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .font(Theme.mono(10.5))
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.bgElevated))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderSubtle, lineWidth: 1))
+            .onSubmit { addVocabularyEntry() }
+    }
+
+    /// Heard-as accepts a comma list: "weights, wades".
+    private func addVocabularyEntry() {
+        let heard = newHeardAs.split(separator: ",").map(String.init)
+        VocabularyStore.shared.add(term: newTerm, heardAs: heard)
+        newTerm = ""
+        newHeardAs = ""
+    }
+
     // MARK: - Pieces
+
+    /// A row label with a caret that unfolds its description underneath.
+    /// The description is also the hover tooltip.
+    private func disclosureLabel(_ id: String, _ label: String, info: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Button {
+                withAnimation(.easeOut(duration: 0.12)) {
+                    if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    rowLabel(label)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 7, weight: .semibold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .rotationEffect(.degrees(expanded.contains(id) ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(info)
+            if expanded.contains(id) {
+                caption(info)
+            }
+        }
+    }
+
+    private func infoRow(_ id: String, _ label: String, info: String,
+                         @ViewBuilder control: () -> some View) -> some View {
+        settingsRow {
+            disclosureLabel(id, label, info: info)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            control()
+        }
+    }
 
     private func sectionLabel(_ text: String, tint: Color = Theme.textTertiary) -> some View {
         Text(text)
@@ -265,7 +370,7 @@ struct SettingsView: View {
     }
 
     private func settingsRow(@ViewBuilder content: () -> some View) -> some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
             content()
         }
         .padding(.vertical, 11)
@@ -302,14 +407,6 @@ struct SettingsView: View {
         Text("needs access")
             .font(Theme.mono(10))
             .foregroundStyle(Theme.accentAmber)
-    }
-
-    private var infoDot: some View {
-        Text("i")
-            .font(Theme.mono(8))
-            .foregroundStyle(Theme.textTertiary)
-            .frame(width: 13, height: 13)
-            .overlay(Circle().stroke(Theme.borderSubtle, lineWidth: 1))
     }
 
     private func pillButton(_ label: String, action: @escaping () -> Void) -> some View {
@@ -353,12 +450,6 @@ struct SettingsView: View {
                         .font(Theme.mono(9.5))
                         .foregroundStyle(Theme.textTertiary)
                 }
-                Text(desc)
-                    .font(Theme.mono(9.5))
-                    .foregroundStyle(Theme.textTertiary)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 21)
                 if let statusLine {
                     Text(statusLine)
                         .font(Theme.mono(9.5))
@@ -379,6 +470,7 @@ struct SettingsView: View {
             .contentShape(RoundedRectangle(cornerRadius: 9))
         }
         .buttonStyle(.plain)
+        .help(desc)
     }
 
     // MARK: - Actions

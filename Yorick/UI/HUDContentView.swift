@@ -30,8 +30,8 @@ struct HUDContentView: View {
     private var pillAlignment: Alignment {
         switch session.hudPillPlacement {
         case .bottomCenter: return HUDPlacement.unanchoredAtTop ? .top : .bottom
-        case .aboveField: return .bottomLeading
-        case .belowField: return .topLeading
+        case .aboveField: return session.hudPillTrailing ? .bottomTrailing : .bottomLeading
+        case .belowField: return session.hudPillTrailing ? .topTrailing : .topLeading
         }
     }
 
@@ -93,6 +93,26 @@ struct HUDContentView: View {
                         .foregroundStyle(.white.opacity(0.55))
                         .lineLimit(2)
                 }
+            }
+            if let action = notice.action {
+                Button {
+                    switch action {
+                    case .openAccessibilitySettings:
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    withAnimation { session.transientNotice = nil }
+                } label: {
+                    Text(action.label)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(.black.opacity(0.85))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(.white.opacity(0.9)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
             if notice.sticky {
                 Image(systemName: "xmark")
@@ -231,8 +251,8 @@ struct HUDContentView: View {
         guard !session.hudAnchorApproximate else { return .capsule }
         switch session.hudPillPlacement {
         case .bottomCenter: return .capsule
-        case .aboveField: return .pointer
-        case .belowField: return .pointerBelow
+        case .aboveField: return session.hudPillTrailing ? .pointerTrailing : .pointer
+        case .belowField: return session.hudPillTrailing ? .pointerBelowTrailing : .pointerBelow
         }
     }
 
@@ -350,6 +370,10 @@ enum PillCorners {
     /// Mirror of `pointer` for a pill sitting BELOW its field: the seated
     /// (near-square) corner is the top-left, pointing up at the caret.
     case pointerBelow
+    /// Mirrors of the two above for a pill seated LEFT of the caret (near
+    /// the screen's right edge): the near-square corner is on the right.
+    case pointerTrailing
+    case pointerBelowTrailing
 }
 
 private struct PillShape: InsettableShape {
@@ -373,6 +397,12 @@ private struct PillShape: InsettableShape {
         case .pointerBelow:
             radii = .init(topLeading: min(4, full), bottomLeading: min(12, full),
                           bottomTrailing: full, topTrailing: full)
+        case .pointerTrailing:
+            radii = .init(topLeading: full, bottomLeading: full,
+                          bottomTrailing: min(4, full), topTrailing: min(12, full))
+        case .pointerBelowTrailing:
+            radii = .init(topLeading: full, bottomLeading: full,
+                          bottomTrailing: min(12, full), topTrailing: min(4, full))
         }
         return UnevenRoundedRectangle(cornerRadii: radii, style: .continuous).path(in: r)
     }

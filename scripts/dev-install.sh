@@ -44,9 +44,11 @@ security find-identity -v -p codesigning | grep -q "Developer ID Application" ||
   exit 1
 }
 
-say "Building $APP_NAME (Release)"
+# YORICK_HARDWARE_LAB=YES keeps the hardware lab (eye tuning, the USB serial /
+# receiver path) in your daily driver; release.sh builds without it.
+say "Building $APP_NAME (Release + hardware lab)"
 xcodebuild -project "$APP_NAME.xcodeproj" -scheme "$SCHEME" -configuration Release \
-  -derivedDataPath "$DERIVED" build >/dev/null
+  -derivedDataPath "$DERIVED" YORICK_HARDWARE_LAB=YES build >/dev/null
 APP="$DERIVED/Build/Products/Release/$APP_NAME.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 

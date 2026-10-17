@@ -13,14 +13,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// Sparkle auto-updates. Checks the appcast on a schedule and on demand
     /// (the "Check for Updates…" menu item posts .checkForUpdates). Updates
     /// are EdDSA-signed — a tampered download is rejected even if the host is
-    /// compromised — which keeps the "nothing leaves your Mac" story honest:
+    /// compromised — which keeps the "your voice never leaves your Mac" story honest:
     /// the only network call is fetching the signed appcast.
     private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if SettingsSnapshot.runIfRequested(session: sessionManager) { return }
+        #endif
         Telemetry.start()
         Telemetry.send(.launched)
         registerHotkeys()
+        sessionManager.configurePocketBluetooth()
+        sessionManager.configureSkullBluetooth()
         // The menu bar surface: custom status item + card-styled panel.
         menuBarPanel = MenuBarPanelController(session: sessionManager)
 
@@ -142,6 +147,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
+        let content = response.notification.request.content
+        if content.categoryIdentifier == VocabularyNotification.category,
+           let heard = content.userInfo[VocabularyNotification.heardKey] as? String,
+           let term = content.userInfo[VocabularyNotification.termKey] as? String {
+            let suggestion = VocabularySuggestion(heard: heard, term: term)
+            let action = response.actionIdentifier
+            await MainActor.run {
+                switch action {
+                case VocabularyNotification.acceptAction:
+                    VocabularyStore.shared.accept(suggestion)
+                case VocabularyNotification.dismissAction:
+                    VocabularyStore.shared.dismiss(suggestion)
+                default:
+                    // A plain click: show the suggestion where it's kept.
+                    NotificationCenter.default.post(name: .showSettings, object: nil)
+                }
+            }
+            return
+        }
         await MainActor.run {
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -154,6 +178,8 @@ extension Notification.Name {
     /// Open the menu bar panel AT the saved list, whatever page it was left
     /// on (a capture card click — landing on Settings reads as broken).
     static let showSavedItems = Notification.Name("showSavedItems")
+    /// Open the menu bar panel AT Settings (a vocabulary suggestion click).
+    static let showSettings = Notification.Name("showSettings")
     /// Ask Sparkle to check for updates now (panel ⋯ menu).
     static let checkForUpdates = Notification.Name("checkForUpdates")
 }

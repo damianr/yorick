@@ -7,7 +7,7 @@ Hold ⌥Space, talk, let go. Your words are typed at the cursor.
 Not in a text field? Nothing is lost. What you said is saved to a list in the
 menu bar, one Copy click from wherever you meant it to go.
 
-Your voice and your words never leave your Mac.
+Your voice never leaves your Mac.
 
 ## Privacy you can check
 
@@ -17,7 +17,9 @@ Your voice and your words never leave your Mac.
 - Works offline.
 - Two permissions: Microphone, to hear you, and Accessibility, to type for you
   and to tell whether a text field is focused. Yorick never reads what's on
-  your screen, and it never asks for Screen Recording.
+  your screen, and it never asks for Screen Recording. The one text it reads
+  is the field it just typed into, for two minutes, to notice you fixing a
+  word (see Vocabulary below); nothing is kept, and you can turn it off.
 - Audio is deleted as soon as it's transcribed. Dictations leave the list
   after 7 days, saved items after 30.
 - The only routine network calls are the signed update check and anonymous
@@ -38,10 +40,33 @@ This repository is the proof. Read the source; run Little Snitch.
   filler words are removed on-device before anything is typed. It never adds
   a word you didn't say, and the list always keeps exactly what you said.
   Requires Apple Intelligence on macOS 26.
+- **Your vocabulary.** Add names and terms in Settings and every engine
+  leans toward them. Add what Yorick hears instead ("weights" for "Waits")
+  and it's swapped in every time. When you retype a misheard name yourself,
+  Yorick offers to remember the fix.
 - **"Note to self…"** Start with that (or "reminder," "idea," "bug") and
   Yorick saves it to the list even with a field focused.
 - **The saved list is plain.** Your words, the app you said them in, and a
   Copy button. Nothing to organize.
+
+## Mics
+
+Yorick works with any mic: the one in your Mac, a headset, a USB mic.
+
+You can also build a Yorick Pocket (a handheld with a talk button) or a
+Yorick Skull (a desk mic whose eyes react while you speak). Both connect
+over Bluetooth, and give you:
+
+- **A button on the mic.** Hold the Pocket's button to talk; its second
+  button presses Return. (The Skull listens on your hotkey.)
+- **A mic no other app can use.** It talks only to Yorick, so nothing else
+  can open it.
+- **Your music in full quality.** Your headphones stay in stereo playback
+  instead of dropping to call quality when a mic turns on.
+
+Yorick shows each one's battery and warns you when it's low. Connecting one
+asks for Bluetooth permission. Parts, firmware and enclosures are in
+[yorick-mics](https://github.com/damianr/yorick-mics).
 
 ## Install
 

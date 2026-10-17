@@ -22,6 +22,8 @@ targets:
       - path: Yorick
         excludes:
           - Resources
+      - path: Yorick/Resources/YorickEyePreview.html
+        buildPhase: resources
       - path: Yorick/Resources/Assets.xcassets
         buildPhase: resources
       - path: Yorick/Resources/Whisper
@@ -34,8 +36,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.heyyorick.Yorick
         PRODUCT_NAME: Yorick
-        MARKETING_VERSION: "0.2.5"
-        CURRENT_PROJECT_VERSION: "11"
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "12"
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         ENABLE_HARDENED_RUNTIME: YES
@@ -45,6 +47,19 @@ targets:
         INFOPLIST_FILE: Yorick/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Yorick/Resources/Yorick.entitlements
         SWIFT_STRICT_CONCURRENCY: complete
+        # Hardware lab: tuning for Damian's own mics (eye settings and preview,
+        # the USB serial / 2.4 GHz receiver control path). On in Debug, off in
+        # Release, so public builds carry only the Bluetooth Pocket and Skull.
+        # dev-install.sh turns it back on with YORICK_HARDWARE_LAB=YES.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) $(YORICK_LAB_CONDITION_$(YORICK_HARDWARE_LAB))"
+        EXCLUDED_SOURCE_FILE_NAMES: "$(YORICK_LAB_EXCLUDES_$(YORICK_HARDWARE_LAB))"
+        YORICK_LAB_CONDITION_YES: YORICK_HARDWARE_LAB
+        YORICK_LAB_EXCLUDES_NO: YorickEyePreview.html
+      configs:
+        Debug:
+          YORICK_HARDWARE_LAB: YES
+        Release:
+          YORICK_HARDWARE_LAB: NO
 
   # Logic tests only: compiles the pure Stage-0 sources directly instead of
   # hosting the app, so tests need no signing entitlements, permissions, or
@@ -54,7 +69,15 @@ targets:
     platform: macOS
     sources:
       - path: YorickTests
+      - path: Yorick/Config/YorickMicController.swift
+      - path: Yorick/Config/AudioVisualLevel.swift
+      - path: Yorick/Config/PocketBluetoothProtocol.swift
+      - path: Yorick/Config/SkullBluetoothProtocol.swift
+      - path: Yorick/Config/DeviceBattery.swift
+      - path: Yorick/Capture/AudioInputMeter.swift
+      - path: Yorick/Config/YorickEyeSettings.swift
       - path: Yorick/Output/SpokenFormNormalizer.swift
+      - path: Yorick/Output/Vocabulary.swift
       - path: Yorick/Output/FieldProfiler.swift
       - path: Yorick/Capture/FocusClassifier.swift
     settings:
@@ -66,6 +89,14 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: QFVQCASSH2
         SWIFT_STRICT_CONCURRENCY: complete
+        # Lab sources are compiled in directly; test them in Debug only.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) $(YORICK_LAB_CONDITION_$(YORICK_HARDWARE_LAB))"
+        YORICK_LAB_CONDITION_YES: YORICK_HARDWARE_LAB
+      configs:
+        Debug:
+          YORICK_HARDWARE_LAB: YES
+        Release:
+          YORICK_HARDWARE_LAB: NO
 
 schemes:
   Yorick:

@@ -11,6 +11,13 @@ struct MicrophoneDevice: Identifiable, Hashable {
 @Observable
 final class MicrophoneManager {
     private(set) var devices: [MicrophoneDevice] = []
+    var pocketConnected = false { didSet { refresh() } }
+    var skullConnected = false { didSet { refresh() } }
+
+    /// Bluetooth inputs are Yorick's own devices, not CoreAudio inputs.
+    var selectedIsBluetooth: Bool {
+        selectedDeviceUID == PocketBluetoothProtocol.deviceUID || selectedDeviceUID == SkullBluetoothProtocol.deviceUID
+    }
 
     /// nil means "system default". Persisted even when the device is unplugged
     /// so it auto-switches back when reconnected.
@@ -26,7 +33,8 @@ final class MicrophoneManager {
 
     /// The UID to actually use for recording — selected if available, otherwise nil (system default).
     var effectiveDeviceUID: String? {
-        isSelectedDeviceAvailable ? selectedDeviceUID : nil
+        if selectedIsBluetooth { return selectedDeviceUID }
+        return isSelectedDeviceAvailable ? selectedDeviceUID : nil
     }
 
     /// Name of the selected device for display, even if unplugged.
@@ -59,8 +67,15 @@ final class MicrophoneManager {
             mediaType: .audio,
             position: .unspecified
         )
-        let connectedDevices = session.devices.map {
+        var connectedDevices = session.devices.map {
             MicrophoneDevice(id: $0.uniqueID, name: $0.localizedName, isConnected: true)
+        }
+
+        connectedDevices.append(MicrophoneDevice(id: PocketBluetoothProtocol.deviceUID,
+            name: PocketBluetoothProtocol.deviceName, isConnected: pocketConnected))
+        if skullConnected || SkullBluetoothController.isPaired {
+            connectedDevices.append(MicrophoneDevice(id: SkullBluetoothProtocol.deviceUID,
+                name: SkullBluetoothProtocol.deviceName, isConnected: skullConnected))
         }
 
         // Keep the selected device in the list even if unplugged (so the picker shows it)
