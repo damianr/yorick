@@ -50,5 +50,5 @@ retries and repeats can never double-count.
 3. **Whisper model download** — only if you opt into the Whisper engine, one
    ~600 MB download.
 
-That's the whole list. Your voice and your words never leave your Mac. Run
+That's the whole list. Your voice never leaves your Mac. Run
 Little Snitch; read the source; we insist.

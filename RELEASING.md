@@ -60,7 +60,7 @@ signs, notarizes, and produces the signed appcast.
 - **EdDSA-signed updates** mean a tampered download is rejected even if GitHub or
   the network were compromised — the update installs only if it matches the private
   key that pairs with `SUPublicEDKey`. The only update-related network call is
-  fetching the signed appcast, keeping the "nothing leaves your Mac" claim intact.
+  fetching the signed appcast, keeping the "your voice never leaves your Mac" claim intact.
 
 ## Notes
 

@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// Sparkle auto-updates. Checks the appcast on a schedule and on demand
     /// (the "Check for Updates…" menu item posts .checkForUpdates). Updates
     /// are EdDSA-signed — a tampered download is rejected even if the host is
-    /// compromised — which keeps the "nothing leaves your Mac" story honest:
+    /// compromised — which keeps the "your voice never leaves your Mac" story honest:
     /// the only network call is fetching the signed appcast.
     private var updaterController: SPUStandardUpdaterController?
 
