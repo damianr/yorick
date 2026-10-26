@@ -22,12 +22,16 @@ enum SkullBluetoothProtocol {
         case refused(session: UInt32)
         /// Eye protocol lines (EYES/OK), handled by YorickMicController.
         case eye(String)
+        case buttons(down: Bool, returns: UInt32)
     }
 
     static func parse(_ line: String) -> Reply? {
         let parts = line.split(separator: " ")
         guard parts.first == "YORICK", parts.count >= 2 else { return nil }
         switch parts[1] {
+        case "BUTTON":
+            guard parts.count == 5, parts[2] == "1", ["0", "1"].contains(parts[3]), let n = UInt32(parts[4]) else { return nil }
+            return .buttons(down: parts[3] == "1", returns: n)
         case "END":
             guard parts.count == 4, let s = UInt32(parts[2]), let n = UInt32(parts[3]) else { return nil }
             return .ended(session: s, samples: n)
@@ -48,5 +52,17 @@ enum SkullBluetoothProtocol {
         let bytes = Array(trimmed.utf8)
         guard !bytes.isEmpty, bytes.count <= maxLine, bytes.allSatisfy({ (32...126).contains($0) }) else { return nil }
         return Data(bytes)
+    }
+}
+
+/// First state after reconnect establishes a baseline and never replays actions.
+struct SkullButtonState {
+    private var down: Bool?
+    private var returns: UInt32 = 0
+    mutating func accept(down next: Bool, returns count: UInt32) -> (talk: Bool?, returns: Int) {
+        defer { down = next; returns = count }
+        guard let down else { return (nil, 0) }
+        let delta = count &- returns
+        return (down == next ? nil : next, delta <= 8 ? Int(delta) : 0)
     }
 }

@@ -19,7 +19,9 @@ struct YorickMicSettingsView: View {
             .foregroundStyle(mic.controlsReady ? Theme.success : Theme.textSecondary)
             if mic.showEyeControls {
                 Picker("Eye style", selection: $mic.settings.style) {
-                    ForEach(YorickEyeStyle.allCases) { style in Text(style.title).tag(style) }
+                    ForEach(mic.styleGroups, id: \.0) { group in
+                        Section(group.0) { ForEach(group.1) { style in Text(style.title).tag(style) } }
+                    }
                 }
                 Text(mic.settings.style.detail)
                     .font(Theme.mono(9.5)).foregroundStyle(Theme.textTertiary)
@@ -70,10 +72,54 @@ struct YorickMicSettingsView: View {
     }
 }
 
+/// Always-visible style controls within the skull's device row.
+struct YorickCompactEyeControls: View {
+    @Bindable var mic: YorickMicController
+    @State private var showAdjustments = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 10) {
+            YorickEyePreview(settings: mic.settings, preview: "audio",
+                             reducedMotion: reduceMotion, compact: true)
+                .frame(width: 92, height: 48)
+                .allowsHitTesting(false)
+                .accessibilityLabel("Animated preview of \(mic.settings.style.title); not live microphone input")
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Eye animation")
+                    .font(Theme.mono(8.5))
+                    .foregroundStyle(Theme.textTertiary)
+                Picker("Eye animation", selection: $mic.settings.style) {
+                    ForEach(mic.styleGroups, id: \.0) { group in
+                        Section(group.0) { ForEach(group.1) { style in Text(style.title).tag(style) } }
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("Eye animation")
+            }
+            Button("Adjust…") { showAdjustments = true }
+                .font(Theme.mono(9))
+                .buttonStyle(.borderless)
+                .help("Adjust brightness, size, motion, and voice response")
+                .popover(isPresented: $showAdjustments, arrowEdge: .bottom) {
+                    ScrollView {
+                        YorickMicSettingsView(mic: mic).padding(16)
+                    }
+                    .frame(width: 330, height: 540)
+                }
+        }
+        .padding(.top, 3)
+    }
+}
+
 private struct YorickEyePreview: NSViewRepresentable {
     var settings: YorickEyeSettings
     var preview: String
     var reducedMotion: Bool
+    var compact: Bool = false
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> WKWebView {
         let web = WKWebView()
@@ -87,7 +133,7 @@ private struct YorickEyePreview: NSViewRepresentable {
     }
     func updateNSView(_ web: WKWebView, context: Context) {
         let s = settings.normalized()
-        let payload: [String: Any] = ["style": s.style.rawValue, "brightness": s.brightness,
+        let payload: [String: Any] = ["style": s.style.rawValue, "compact": compact, "brightness": s.brightness,
                                     "size": s.size, "motion": s.motion, "preview": preview,
                                     "reducedMotion": reducedMotion || s.motion == 0, "reactive": s.reactive, "sensitivity": s.sensitivity]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),

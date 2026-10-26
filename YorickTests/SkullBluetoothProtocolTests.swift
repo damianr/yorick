@@ -10,6 +10,36 @@ private final class FakeEyeLink: YorickEyeLink {
 }
 
 final class SkullBluetoothProtocolTests: XCTestCase {
+    func testButtonsIgnoreReconnectAndDuplicateStates() {
+        var state = SkullButtonState()
+        XCTAssertNil(state.accept(down: false, returns: 4).talk)
+        let press = state.accept(down: true, returns: 4)
+        XCTAssertEqual(press.talk, true)
+        XCTAssertEqual(press.returns, 0)
+        XCTAssertNil(state.accept(down: true, returns: 4).talk)
+        let release = state.accept(down: false, returns: 7)
+        XCTAssertEqual(release.talk, false)
+        XCTAssertEqual(release.returns, 3)
+        XCTAssertEqual(state.accept(down: false, returns: 7).returns, 0)
+        XCTAssertEqual(state.accept(down: false, returns: 0).returns, 0)
+        state = SkullButtonState()
+        let reconnect = state.accept(down: true, returns: 99)
+        XCTAssertNil(reconnect.talk)
+        XCTAssertEqual(reconnect.returns, 0)
+        XCTAssertEqual(state.accept(down: false, returns: 99).talk, false)
+    }
+    func testButtonWireValidation() {
+        XCTAssertEqual(SkullBluetoothProtocol.parse("YORICK BUTTON 1 1 3"), .buttons(down: true, returns: 3))
+        for line in ["YORICK BUTTON 1 2 3", "YORICK BUTTON 2 1 3", "YORICK BUTTON 1 1 -1", "YORICK BUTTON 1 1", "YORICK BUTTON 1 1 0 extra"] {
+            XCTAssertNil(SkullBluetoothProtocol.parse(line))
+        }
+    }
+    func testMiniButtonWireValidation() {
+        XCTAssertEqual(SkullMiniBluetoothProtocol.parse("YORICK BUTTON 1 1 3"), .buttons(down: true, returns: 3))
+        for line in ["YORICK BUTTON 1 2 3", "YORICK BUTTON 2 1 3", "YORICK BUTTON 1 1 -1", "YORICK BUTTON 1 1", "YORICK BUTTON 1 1 0 extra"] {
+            XCTAssertNil(SkullMiniBluetoothProtocol.parse(line))
+        }
+    }
     func testRepliesAndLines() {
         XCTAssertEqual(SkullBluetoothProtocol.parse("YORICK END 7 16000"), .ended(session: 7, samples: 16000))
         XCTAssertEqual(SkullBluetoothProtocol.parse("YORICK OVERFLOW 7 0"), .overflowed(session: 7))

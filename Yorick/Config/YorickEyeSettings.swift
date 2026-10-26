@@ -1,16 +1,39 @@
 import Foundation
 
 enum YorickEyeStyle: String, CaseIterable, Codable, Identifiable, Sendable {
-    case ember, curious, wisp, fireflies, ribbon, starstruck, resonance, equalizer, circular
+    case ember, curious, wisp, fireflies, ribbon, starstruck, resonance, equalizer, circular, blaze, torch, soft, hearts, orbit, comet, starburst, lanterns, bubbles, aurora, confetti, bloom, prism, ripples, lava
+    static let allCases: [Self] = [.ember, .soft, .wisp, .blaze, .torch, .equalizer, .circular, .hearts, .starburst, .lanterns, .bubbles, .ripples, .confetti, .bloom, .lava]
+    static let groups: [(String, [Self])] = [
+        ("Eyes", [.ember, .soft]),
+        ("Flames & atmosphere", [.wisp, .blaze, .torch, .ripples]),
+        ("Equalizers", [.equalizer, .circular]),
+        ("Particles", [.hearts, .starburst, .lanterns, .bubbles, .confetti]),
+        ("Gradients", [.bloom, .lava])
+    ]
     var id: String { rawValue }
     // Keep the existing saved/wire key so installed receivers and preferences
     // remain compatible when Wisp is replaced by the Flame artwork.
     var title: String { self == .wisp ? "Flame" : self == .circular ? "Circular EQ" : rawValue.capitalized }
     var detail: String {
         switch self {
+        case .blaze: "A wide, restless bed of fire."
+        case .torch: "Tall, curling tongues of warm light."
+        case .soft: "Simple mint-colored pill eyes, with soft blinks."
+        case .hearts: "Small drifting hearts that burst outward with speech."
+        case .bloom: "Full-screen pools of color bloom with speech and fade when idle."
+        case .ripples: "Concentric blue waves carry the energy of your voice outward."
+        case .lava: "Warm flowing blobs brighten and merge with speech."
+        case .prism: "Sound-driven gradient bands fill the displays."
+        case .starburst: "Tiny golden stars scatter outward with speech."
+        case .lanterns: "A quiet firefly swarm that wakes and spreads with your voice."
+        case .bubbles: "Floating cyan bubbles expand into a lively cloud."
+        case .aurora: "Three colored curtains swell and ripple with speech."
+        case .confetti: "Colorful little fragments tumble outward with your voice."
+        case .orbit: "A small moon surrounded by orbiting lights."
+        case .comet: "A warm comet with a trailing tail."
         case .ember: "Warm, sleepy embers that perk up when listening."
         case .curious: "Small sage eyes with a soft, attentive gaze."
-        case .wisp: "Little amber flames that flicker and rise with your voice."
+        case .wisp: "Broad, overlapping flames that rise with your voice."
         case .fireflies: "Golden lights that gather and respond to sound."
         case .ribbon: "Lilac waves that expand with each syllable."
         case .starstruck: "Small stars that unfold and stretch with speech."
@@ -32,6 +55,7 @@ struct YorickEyeSettings: Codable, Equatable, Sendable {
 
     func normalized() -> Self {
         var s = self
+        if !YorickEyeStyle.allCases.contains(s.style) { s.style = .ember }
         s.brightness = min(100, max(10, brightness))
         s.size = min(115, max(60, size))
         s.motion = min(160, max(0, motion))
@@ -78,7 +102,7 @@ enum YorickEyeProtocol {
         ["Yorick Desk Microphone", "Yorick Wireless Microphone"].contains(name)
     }
     static func isMicrophoneName(_ name: String) -> Bool {
-        ["Yorick Microphone", "Yorick Desk Microphone", "Yorick Wireless Microphone", SkullBluetoothProtocol.deviceName].contains(name)
+        ["Yorick Microphone", "Yorick Desk Microphone", "Yorick Wireless Microphone", SkullBluetoothProtocol.deviceName, SkullMiniBluetoothProtocol.deviceName].contains(name)
     }
     #endif
     static let bluetoothDeviceUID = SkullBluetoothProtocol.deviceUID

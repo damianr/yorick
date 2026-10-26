@@ -3,8 +3,8 @@ import Foundation
 import os
 
 /// The skull over Bluetooth LE: audio while Yorick is listening, and the same
-/// eye-control lines the USB/receiver serial path carries. Unlike the pocket,
-/// the Mac's hotkey starts and stops each session.
+/// eye-control lines the USB/receiver serial path carries. The Mac starts and
+/// stops sessions from its hotkey or the skull’s debounced button states.
 @MainActor
 @Observable
 final class SkullBluetoothController: NSObject, YorickEyeLink {
@@ -14,6 +14,11 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     var onBatteryChanged: ((DeviceBattery?) -> Void)?
     private(set) var receivedFrames = 0
     private(set) var missingSamples = 0
+    var onTalkButton: ((Bool) -> Void)?
+    var onReturnButton: (() -> Void)?
+    private var buttons = SkullButtonState()
+    private var buttonSeenAt = Date.distantPast
+    private var buttonHeld = false
     var onSamples: (([Int16]) -> Void)?
     /// The session's audio is complete (or abandoned); safe to finalize the WAV.
     var onStop: (() -> Void)?
@@ -86,8 +91,10 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
         log.error("\(reason, privacy: .public)")
         let had = assembler != nil
         assembler = nil; stopTarget = nil; stopDeadline = nil
-        if had { onStop?() }
+        // Reason first: onStop finalizes the partial recording, and its
+        // processing must know why it's short instead of blaming the mic.
         onFailure?(reason)
+        if had { onStop?() }
     }
 
     // MARK: YorickEyeLink
@@ -119,7 +126,12 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
         status = "Looking for the skull…"
         central?.scanForPeripherals(withServices: [CBUUID(string: SkullBluetoothProtocol.service)])
     }
+    private func resetButtons() {
+        if buttonHeld { onTalkButton?(false) }
+        buttonHeld = false; buttons = SkullButtonState(); buttonSeenAt = .distantPast
+    }
     private func tick() {
+        if buttonSeenAt != .distantPast, Date().timeIntervalSince(buttonSeenAt) > 1.5 { resetButtons() }
         // Notifications carry changes; a slow poll keeps voltage fresh and covers older firmware.
         if connected, !batteryCharacteristics.isEmpty, Date().timeIntervalSince(batteryReadAt) > 60 {
             batteryReadAt = Date(); batteryCharacteristics.forEach { peripheral?.readValue(for: $0) }
@@ -141,6 +153,11 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     private func handleReply(_ data: Data) {
         guard let line = String(data: data, encoding: .ascii), let reply = SkullBluetoothProtocol.parse(line) else { return }
         switch reply {
+        case .buttons(let down, let count):
+            buttonSeenAt = Date()
+            let events = buttons.accept(down: down, returns: count)
+            if let held = events.talk { buttonHeld = held; onTalkButton?(held) }
+            for _ in 0..<events.returns { onReturnButton?() }
         case .eye(let text):
             if eyeLines.count < 16 { eyeLines.append(text) }
         case .ended(let s, let samples):
@@ -186,6 +203,7 @@ extension SkullBluetoothController: @preconcurrency CBCentralManagerDelegate, @p
     }
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         let was = connected
+        resetButtons()
         connected = false; audio = nil; replies = nil; control = nil; eyeLines.removeAll()
         battery = nil; batteryCharacteristics.removeAll()
         if was { onConnectionChanged?(false) }

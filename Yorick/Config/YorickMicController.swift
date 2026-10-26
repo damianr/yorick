@@ -52,9 +52,11 @@ final class YorickMicController {
     @ObservationIgnored private var sequence: UInt32 = 0
     @ObservationIgnored private var pendingSequence: UInt32?
     @ObservationIgnored private var pendingSettings: YorickEyeSettings?
+    var miniSelected = false
+    var styleGroups: [(String, [YorickEyeStyle])] { miniSelected ? [("OLED", [.circular, .equalizer, .ember])] : YorickEyeStyle.groups }
     @ObservationIgnored weak var bluetoothLink: YorickEyeLink?
     @ObservationIgnored var bluetoothSelected: @MainActor () -> Bool = {
-        UserDefaults.standard.string(forKey: "selectedMicUID") == YorickEyeProtocol.bluetoothDeviceUID
+        [YorickEyeProtocol.bluetoothDeviceUID, SkullMiniBluetoothProtocol.deviceUID].contains(UserDefaults.standard.string(forKey: "selectedMicUID") ?? "")
     }
     @ObservationIgnored private var usingBluetooth = false
     @ObservationIgnored private var bluetoothWasReady = false
@@ -105,6 +107,7 @@ final class YorickMicController {
     /// Hide controls immediately when the input picker changes. Discovery still
     /// polls for system-default changes and physical USB/radio disconnects.
     func inputSelectionChanged() {
+        bluetoothWasReady = false
         disconnect()
         attached = false; needsInputSelection = false
         lastDiscovery = .distantPast
@@ -213,7 +216,7 @@ final class YorickMicController {
         #if YORICK_HARDWARE_LAB
         let skullRecording = recordingMicName.map(YorickEyeProtocol.isMicrophoneName) == true
         #else
-        let skullRecording = usingBluetooth && recordingMicName == SkullBluetoothProtocol.deviceName
+        let skullRecording = usingBluetooth && [SkullBluetoothProtocol.deviceName, SkullMiniBluetoothProtocol.deviceName].contains(recordingMicName ?? "")
         #endif
         let active = recording && !stalled && skullRecording
         let level = active ? settings.level(audioLevel) : 0

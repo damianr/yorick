@@ -4,6 +4,20 @@ import XCTest
 #if YORICK_HARDWARE_LAB
 
 final class YorickEyeSettingsTests: XCTestCase {
+    func testAnimationLabMenuAndLegacyMigration() {
+        for old in [YorickEyeStyle.curious, .resonance, .ribbon, .starstruck, .fireflies, .orbit, .comet, .aurora, .prism] {
+            XCTAssertFalse(YorickEyeStyle.allCases.contains(old))
+            var settings = YorickEyeSettings(); settings.style = old
+            XCTAssertEqual(settings.normalized().style, .ember)
+        }
+        for style in [YorickEyeStyle.blaze, .torch, .soft, .hearts, .starburst, .lanterns, .bubbles, .ripples, .confetti, .bloom, .lava] {
+            var settings = YorickEyeSettings(); settings.style = style
+            XCTAssertTrue(YorickEyeStyle.allCases.contains(style))
+            XCTAssertTrue(settings.command(sequence: 11).contains(style.rawValue))
+            XCTAssertEqual(try! JSONDecoder().decode(YorickEyeSettings.self, from: JSONEncoder().encode(settings)), settings)
+        }
+    }
+
     func testWirelessDeviceDiscoveryIsExact() {
         XCTAssertTrue(YorickEyeProtocol.isMicrophoneName("Yorick Wireless Microphone"))
         XCTAssertTrue(YorickEyeProtocol.isControlProduct("Yorick Wireless Microphone"))

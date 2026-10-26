@@ -137,6 +137,7 @@ struct MenuBarPanelView: View {
     private var deviceBatteries: some View {
         let devices: [(String, String, DeviceBattery?)] = [
             ("mic.fill", "Yorick Pocket", session.pocketBluetooth.connected ? session.pocketBluetooth.battery : nil),
+            ("eyes", "Skull Mini", session.skullMiniBluetooth.connected ? session.skullMiniBluetooth.battery : nil),
             ("eyes", "Yorick Skull", session.skullBluetooth.connected ? session.skullBluetooth.battery : nil),
         ]
         ForEach(devices.filter { $0.2 != nil }, id: \.1) { symbol, name, battery in
