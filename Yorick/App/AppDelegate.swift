@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         sessionManager.configureSkullBluetooth()
         sessionManager.configureSkullMiniBluetooth()
         sessionManager.skullSelectionChanged()
+        sessionManager.configureDeviceDetection()
         // The menu bar surface: custom status item + card-styled panel.
         menuBarPanel = MenuBarPanelController(session: sessionManager)
 

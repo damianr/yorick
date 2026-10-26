@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// The Yorick hardware block: the two microphones made for Yorick, which are
-/// connected, which one is in use, and a one-tap way to add the other. With
-/// nothing connected it doubles as a quiet introduction to the hardware.
+/// The Yorick hardware block: the microphones made for Yorick, which are
+/// connected, which one is in use, and a one-tap way to add another. With
+/// nothing known it shows nothing in public builds: the app never mentions
+/// the hardware until one turns up (see YorickDeviceDetector). The lab build
+/// keeps the introduction card.
 struct YorickDevicesView: View {
     var session: SessionManager
     @State private var choosing = false
@@ -47,6 +49,7 @@ struct YorickDevicesView: View {
 
     private var pocketKnown: Bool {
         session.pocketBluetooth.connected || mics.selectedDeviceUID == PocketBluetoothProtocol.deviceUID
+            || PocketBluetoothController.isPaired
     }
 
     private func isConnected(_ device: Device) -> Bool {
@@ -76,6 +79,14 @@ struct YorickDevicesView: View {
 
     var body: some View {
         let listed = Device.allCases.filter(isListed)
+        #if !YORICK_HARDWARE_LAB
+        if !listed.isEmpty { devices(listed) }
+        #else
+        devices(listed)
+        #endif
+    }
+
+    private func devices(_ listed: [Device]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if listed.isEmpty && !choosing {
                 introCard

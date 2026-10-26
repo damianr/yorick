@@ -23,6 +23,8 @@ struct TransientNotice: Equatable, Identifiable {
     enum Style: Equatable {
         case warning
         case receipt
+        /// An offer, not a failure: a Yorick device turned up.
+        case device
     }
 
     let id = UUID()
@@ -38,7 +40,13 @@ struct TransientNotice: Equatable, Identifiable {
 
     enum Action: Equatable {
         case openAccessibilitySettings
-        var label: String { "Open Settings" }
+        case useYorickDevice(YorickDeviceKind)
+        var label: String {
+            switch self {
+            case .openAccessibilitySettings: "Open Settings"
+            case .useYorickDevice: "Use"
+            }
+        }
     }
 
     /// macOS shows no prompt when System Settings already lists Yorick (for
@@ -49,6 +57,13 @@ struct TransientNotice: Equatable, Identifiable {
         detail: "Turn on Yorick in Privacy & Security › Accessibility",
         sticky: true,
         action: .openAccessibilitySettings) }
+
+    static func yorickDeviceFound(_ kind: YorickDeviceKind) -> TransientNotice { TransientNotice(
+        message: "Looks like you’ve connected a Yorick device",
+        style: .device,
+        detail: kind.name,
+        sticky: true,
+        action: .useYorickDevice(kind)) }
 }
 
 /// Where the pill sits relative to its anchor, driving both window origin
@@ -125,7 +140,7 @@ final class SessionManager {
 
     func configureSkullBluetooth() {
         guard !skullConfigured else { return }; skullConfigured = true
-        skullBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.skullConnected = connected }
+        skullBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.skullConnected = connected; self?.announceIfConnected(.skull, connected) }
         skullBluetooth.onTalkButton = { [weak self] held in
             guard let self else { return }
             if held {
@@ -193,7 +208,7 @@ final class SessionManager {
 
     func configureSkullMiniBluetooth() {
         guard !miniConfigured else { return }; miniConfigured = true
-        skullMiniBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.miniConnected = connected }
+        skullMiniBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.miniConnected = connected; self?.announceIfConnected(.mini, connected) }
         skullMiniBluetooth.onTalkButton = { [weak self] held in
             guard let self else { return }
             if held {
@@ -233,12 +248,79 @@ final class SessionManager {
         skullMiniBluetooth.start(pairNew: true)
     }
 
+    // MARK: Found Yorick devices
+
+    let deviceDetector = YorickDeviceDetector()
+    /// Found while Yorick was busy; offered once it's idle with nothing showing.
+    private var pendingDevicePrompt: YorickDeviceKind?
+    private var acceptingDevicePrompt = false
+    private var dismissingDevicePrompt = false
+    /// The device just picked from the prompt, so its connection gets a receipt.
+    private var announcingDevice: YorickDeviceKind?
+
+    /// Some Yorick device is known: paired, connected, or the selected mic.
+    /// Without one, the app doesn't mention the hardware at all.
+    var hasYorickDevice: Bool {
+        YorickDeviceKind.allCases.contains { $0.isPaired || microphoneManager.selectedDeviceUID == $0.deviceUID }
+            || pocketBluetooth.connected || skullBluetooth.connected || skullMiniBluetooth.connected
+    }
+
+    func configureDeviceDetection() {
+        deviceDetector.isKnown = { [weak self] kind in
+            kind.isPaired || self?.microphoneManager.selectedDeviceUID == kind.deviceUID
+        }
+        deviceDetector.onFound = { [weak self] kind in self?.offerDevice(kind) }
+        deviceDetector.start()
+    }
+
+    private func offerDevice(_ kind: YorickDeviceKind) {
+        guard state == .idle, transientNotice == nil else { pendingDevicePrompt = kind; return }
+        pendingDevicePrompt = nil
+        transientNotice = .yorickDeviceFound(kind)
+    }
+
+    private func offerPendingDeviceSoon() {
+        guard pendingDevicePrompt != nil else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard let self, let kind = self.pendingDevicePrompt else { return }
+            self.offerDevice(kind)
+        }
+    }
+
+    /// "Use" on the prompt: connect it over Bluetooth and make it the mic.
+    func useDetectedDevice(_ kind: YorickDeviceKind) {
+        acceptingDevicePrompt = true
+        transientNotice = nil
+        acceptingDevicePrompt = false
+        announcingDevice = kind
+        switch kind {
+        case .pocket: connectPocketBluetooth()
+        case .skull: connectSkullBluetooth()
+        case .mini: connectSkullMiniBluetooth()
+        }
+    }
+
+    /// A click on a notice. For a device offer, that means "not now, not again".
+    func dismissNotice() {
+        dismissingDevicePrompt = true
+        transientNotice = nil
+        dismissingDevicePrompt = false
+    }
+
+    private func announceIfConnected(_ kind: YorickDeviceKind, _ connected: Bool) {
+        guard connected, announcingDevice == kind else { return }
+        announcingDevice = nil
+        guard state == .idle else { return }
+        transientNotice = TransientNotice(message: "\(kind.name) is your mic now", style: .receipt)
+    }
+
     func configurePocketBluetooth() {
         guard !pocketConfigured else { return }; pocketConfigured = true
         pocketBluetooth.isSelected = { [weak self] in
             self?.microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID
         }
-        pocketBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.pocketConnected = connected }
+        pocketBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.pocketConnected = connected; self?.announceIfConnected(.pocket, connected) }
         pocketBluetooth.onBatteryChanged = warnOnLowBattery("Yorick Pocket") { [weak self] in self?.pocketBluetooth.battery }
         pocketBluetooth.onStart = { [weak self] in
             guard let self, self.microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID,
@@ -309,6 +391,7 @@ final class SessionManager {
             if state != .recording, miniAudioActive { miniAudioActive = false; skullMiniBluetooth.stopListening() }
             if state != .recording, skullAudioActive { skullAudioActive = false; skullBluetooth.stopListening() }
             if state != .recording { yorickMic.recordingMicName = nil; yorickMic.audioLevel = 0 }
+            if state == .idle { offerPendingDeviceSoon() }
         }
     }
     var audioLevel: Float = 0 { didSet { yorickMic.audioLevel = audioLevel } }
@@ -322,6 +405,13 @@ final class SessionManager {
                let new = transientNotice, new.action == nil, !AXIsProcessTrusted() {
                 transientNotice = old
             }
+            // The device offer comes back after anything that pushed it off
+            // screen; only Use or a click on the notice itself ends it.
+            if let old = oldValue, case .useYorickDevice(let kind) = old.action, transientNotice?.id != old.id {
+                if dismissingDevicePrompt { YorickDeviceDetector.dismissed.insert(kind) }
+                else if !acceptingDevicePrompt { pendingDevicePrompt = kind }
+            }
+            if transientNotice == nil { offerPendingDeviceSoon() }
         }
     }
     /// True while the opt-in pre-insert cleanup pass is running — the pill

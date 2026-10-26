@@ -78,10 +78,11 @@ struct HUDContentView: View {
 
     private func droppedCaptureNotice(_ notice: TransientNotice) -> some View {
         let isReceipt = notice.style == .receipt
+        let isDevice = notice.style == .device
         return HStack(spacing: 10) {
-            Image(systemName: isReceipt ? "checkmark.circle.fill" : "mic.slash.fill")
+            Image(systemName: isReceipt ? "checkmark.circle.fill" : isDevice ? "mic.fill" : "mic.slash.fill")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(isReceipt ? .green : .orange)
+                .foregroundStyle(isReceipt ? .green : isDevice ? .white.opacity(0.85) : .orange)
             VStack(alignment: .leading, spacing: 1) {
                 Text(notice.message)
                     .font(.system(size: 11, weight: .medium))
@@ -101,8 +102,10 @@ struct HUDContentView: View {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                             NSWorkspace.shared.open(url)
                         }
+                        withAnimation { session.transientNotice = nil }
+                    case .useYorickDevice(let kind):
+                        withAnimation { session.useDetectedDevice(kind) }
                     }
-                    withAnimation { session.transientNotice = nil }
                 } label: {
                     Text(action.label)
                         .font(.system(size: 10.5, weight: .semibold))
@@ -127,7 +130,7 @@ struct HUDContentView: View {
         .frame(maxWidth: 400)
         .contentShape(Capsule())
         .onTapGesture {
-            withAnimation { session.transientNotice = nil }
+            withAnimation { session.dismissNotice() }
         }
         .onAppear {
             // Sticky notices (failures the user must see) stay until clicked;

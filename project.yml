@@ -76,6 +76,7 @@ targets:
       - path: Yorick/Config/SkullMiniBluetoothProtocol.swift
       - path: Yorick/Config/DeviceBattery.swift
       - path: Yorick/Config/BluetoothCallMonitor.swift
+      - path: Yorick/Config/YorickDeviceKind.swift
       - path: Yorick/Capture/AudioInputMeter.swift
       - path: Yorick/Config/YorickEyeSettings.swift
       - path: Yorick/Output/SpokenFormNormalizer.swift

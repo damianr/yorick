@@ -123,6 +123,12 @@ final class SkullMiniBluetoothController: NSObject, YorickEyeLink {
             central?.connect(peer); return
         }
         guard allowNew else { status = "Skull unavailable"; return }
+        // Paired in macOS Bluetooth settings, it's already connected to the
+        // Mac and has stopped advertising, so a scan alone would never find it.
+        if let peer = central?.retrieveConnectedPeripherals(withServices: [CBUUID(string: SkullMiniBluetoothProtocol.service)]).first {
+            peripheral = peer; peer.delegate = self; status = "Connecting…"
+            central?.connect(peer); return
+        }
         status = "Looking for the skull…"
         central?.scanForPeripherals(withServices: [CBUUID(string: SkullMiniBluetoothProtocol.service)])
     }

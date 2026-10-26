@@ -61,7 +61,9 @@ struct SettingsView: View {
                 sectionLabel("MICROPHONE")
                 YorickDevicesView(session: session)
                 infoRow("input", "Input",
-                        info: "Any microphone this Mac can hear. Picking a Yorick device above selects it here for you.") {
+                        info: session.hasYorickDevice
+                            ? "Any microphone this Mac can hear. Picking a Yorick device above selects it here for you."
+                            : "Any microphone this Mac can hear.") {
                     Picker("", selection: $mics.selectedDeviceUID) {
                         Text("System Default").tag(String?.none)
                         if !mics.devices.isEmpty {

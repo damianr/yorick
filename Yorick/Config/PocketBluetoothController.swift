@@ -40,6 +40,7 @@ final class PocketBluetoothController: NSObject {
     private var batteryReadAt = Date.distantPast
     private let log = Logger(subsystem: "com.heyyorick.Yorick", category: "pocketBLE")
     private static let savedPeer = "pocketBluetoothPeer"
+    static var isPaired: Bool { UserDefaults.standard.string(forKey: savedPeer) != nil }
 
     func start(pairNew: Bool = false) {
         wanted = true; allowNew = pairNew
@@ -68,6 +69,12 @@ final class PocketBluetoothController: NSObject {
             central?.connect(peer); return
         }
         guard allowNew else { status = "Pocket microphone unavailable"; return }
+        // Paired in macOS Bluetooth settings, it's already connected to the
+        // Mac and has stopped advertising, so a scan alone would never find it.
+        if let peer = central?.retrieveConnectedPeripherals(withServices: [CBUUID(string: PocketBluetoothProtocol.service)]).first {
+            peripheral = peer; peer.delegate = self; status = "Connecting…"
+            central?.connect(peer); return
+        }
         status = "Looking for pocket microphone…"
         central?.scanForPeripherals(withServices: [CBUUID(string: PocketBluetoothProtocol.service)])
     }
