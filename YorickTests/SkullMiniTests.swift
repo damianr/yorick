@@ -20,7 +20,7 @@ final class SkullMiniTests:XCTestCase {
   #if YORICK_HARDWARE_LAB
   let mic=YorickMicController(monitor:false,defaults:d,discover:{(0,[])})
   #else
-  _=d; let mic=YorickMicController(monitor:false)
+  let mic=YorickMicController(monitor:false,defaults:d)
   #endif
   let big=MiniTestLink(),mini=MiniTestLink()
   mic.bluetoothSelected={true};mic.bluetoothLink=big;mic.tick()
@@ -31,5 +31,18 @@ final class SkullMiniTests:XCTestCase {
   XCTAssertEqual(mic.styleGroups.flatMap{$0.1},[YorickEyeStyle.circular,.equalizer,.ember])
   mini.incoming=["YORICK EYES 1"];mic.tick()
   XCTAssertTrue(mic.controlsReady)
+ }
+ @MainActor func testMiniKeepsItsOwnEyeSettings(){
+  let d=UserDefaults(suiteName:"MiniEyes.\(UUID())")!
+  let mic=YorickMicController(monitor:false,defaults:d)
+  mic.settings.brightness=40
+  mic.miniSelected=true
+  XCTAssertEqual(mic.settings.brightness,40,"a Mini with no settings of its own starts from the shared ones")
+  mic.settings.brightness=90
+  mic.miniSelected=false
+  XCTAssertEqual(mic.settings.brightness,40)
+  mic.miniSelected=true
+  XCTAssertEqual(mic.settings.brightness,90)
+  XCTAssertEqual(YorickMicController(monitor:false,defaults:d).settings.brightness,40,"settings survive a relaunch")
  }
 }

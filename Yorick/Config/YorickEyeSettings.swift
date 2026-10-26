@@ -52,6 +52,8 @@ struct YorickEyeSettings: Codable, Equatable, Sendable {
     var sensitivity: Int = 100
     var reactive: Bool = true
     static let defaultsKey = "yorickMic.eyes.v1"
+    /// The Skull Mini keeps its own eyes; its OLEDs have fewer styles.
+    static let miniDefaultsKey = "yorickMic.eyes.mini.v1"
 
     func normalized() -> Self {
         var s = self
@@ -62,13 +64,13 @@ struct YorickEyeSettings: Codable, Equatable, Sendable {
         s.sensitivity = min(200, max(25, sensitivity))
         return s
     }
-    static func load(from defaults: UserDefaults = .standard) -> Self {
-        guard let data = defaults.data(forKey: defaultsKey),
+    static func load(from defaults: UserDefaults = .standard, key: String = defaultsKey) -> Self {
+        guard let data = defaults.data(forKey: key),
               let settings = try? JSONDecoder().decode(Self.self, from: data) else { return Self() }
         return settings.normalized()
     }
-    func save(to defaults: UserDefaults = .standard) {
-        defaults.set(try? JSONEncoder().encode(normalized()), forKey: Self.defaultsKey)
+    func save(to defaults: UserDefaults = .standard, key: String = defaultsKey) {
+        defaults.set(try? JSONEncoder().encode(normalized()), forKey: key)
     }
     func command(sequence: UInt32) -> String {
         let s = normalized()

@@ -1,9 +1,6 @@
 import SwiftUI
 import WebKit
 
-// Eye tuning is hardware-lab only; public builds use the default eyes.
-#if YORICK_HARDWARE_LAB
-
 struct YorickMicSettingsView: View {
     @Bindable var mic: YorickMicController
     @State private var preview = "waiting"
@@ -148,4 +145,3 @@ private struct YorickEyePreview: NSViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { apply(webView) }
     }
 }
-#endif

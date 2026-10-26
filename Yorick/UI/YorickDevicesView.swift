@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// The Yorick hardware block: the microphones made for Yorick, which are
-/// connected, which one is in use, and a one-tap way to add another. With
-/// nothing known it shows nothing in public builds: the app never mentions
-/// the hardware until one turns up (see YorickDeviceDetector). The lab build
-/// keeps the introduction card.
+/// The Yorick hardware block: one row per Yorick device this Mac has
+/// connected, which one is in use, and that device's own settings (a
+/// skull's eyes). A model that's never been connected doesn't appear, and
+/// with none the block shows nothing: the app never mentions the hardware
+/// until one turns up (see YorickDeviceDetector). The lab build keeps the
+/// introduction card and the picker for pairing a model from here.
 struct YorickDevicesView: View {
     var session: SessionManager
     @State private var choosing = false
@@ -33,23 +34,16 @@ struct YorickDevicesView: View {
         #endif
     }
 
-    /// Eye tuning lives in the hardware lab; public builds run the default eyes.
-    private var showsEyeTuning: Bool {
-        #if YORICK_HARDWARE_LAB
-        session.yorickMic.showEyeControls
-        #else
-        false
-        #endif
-    }
+    private var showsEyeTuning: Bool { session.yorickMic.showEyeControls }
 
     private var skullBluetoothKnown: Bool {
         session.skullBluetooth.connected || mics.selectedDeviceUID == SkullBluetoothProtocol.deviceUID
-            || SkullBluetoothController.isPaired
+            || SkullBluetoothController.isPaired || session.detectedDevices.contains(.skull)
     }
 
     private var pocketKnown: Bool {
         session.pocketBluetooth.connected || mics.selectedDeviceUID == PocketBluetoothProtocol.deviceUID
-            || PocketBluetoothController.isPaired
+            || PocketBluetoothController.isPaired || session.detectedDevices.contains(.pocket)
     }
 
     private func isConnected(_ device: Device) -> Bool {
@@ -65,7 +59,7 @@ struct YorickDevicesView: View {
         // Settings snapshots can show the empty (no hardware) state.
         if ProcessInfo.processInfo.environment["YORICK_SNAPSHOT_NO_DEVICES"] != nil { return false }
         #endif
-        return device == .mini ? (session.skullMiniBluetooth.connected || SkullMiniBluetoothController.isPaired || mics.selectedDeviceUID == SkullMiniBluetoothProtocol.deviceUID) : device == .pocket ? pocketKnown : skullBluetoothKnown || skullInput != nil
+        return device == .mini ? (session.skullMiniBluetooth.connected || SkullMiniBluetoothController.isPaired || mics.selectedDeviceUID == SkullMiniBluetoothProtocol.deviceUID || session.detectedDevices.contains(.mini)) : device == .pocket ? pocketKnown : skullBluetoothKnown || skullInput != nil
     }
 
     private func isInUse(_ device: Device) -> Bool {
@@ -94,6 +88,7 @@ struct YorickDevicesView: View {
                 #endif
             } else {
                 ForEach(listed) { deviceRow($0) }
+                #if YORICK_HARDWARE_LAB
                 if choosing {
                     picker
                 } else if listed.count < Device.allCases.count {
@@ -106,6 +101,7 @@ struct YorickDevicesView: View {
                     .underline()
                     .padding(.top, 2)
                 }
+                #endif
             }
         }
         .padding(.vertical, 6)
@@ -236,12 +232,10 @@ struct YorickDevicesView: View {
                     .buttonStyle(.plain)
                 }
             }
-            #if YORICK_HARDWARE_LAB
             if device != .pocket, inUse, showsEyeTuning {
                 YorickCompactEyeControls(mic: session.yorickMic)
                     .padding(.leading, 28)
             }
-            #endif
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

@@ -27,6 +27,8 @@ extension YorickDeviceKind {
 ///   its product name, which needs no permission.
 @MainActor
 final class YorickDeviceDetector: NSObject {
+    /// Every kind the Mac shows, once per launch, offered or not.
+    var onSeen: ((YorickDeviceKind) -> Void)?
     var onFound: ((YorickDeviceKind) -> Void)?
     /// Kinds Yorick already uses or has offered; never offered again.
     var isKnown: (YorickDeviceKind) -> Bool = { $0.isPaired }
@@ -35,6 +37,7 @@ final class YorickDeviceDetector: NSObject {
     private var timer: Timer?
     private var notifyPort: IONotificationPortRef?
     private var usbIterator: io_iterator_t = 0
+    private var seen: Set<YorickDeviceKind> = []
     private var offered: Set<YorickDeviceKind> = []
     private let log = Logger(subsystem: "com.heyyorick.Yorick", category: "deviceDetector")
 
@@ -57,6 +60,7 @@ final class YorickDeviceDetector: NSObject {
     }
 
     private func report(_ kind: YorickDeviceKind, via source: String) {
+        if seen.insert(kind).inserted { onSeen?(kind) }
         guard !isKnown(kind), !Self.dismissed.contains(kind), offered.insert(kind).inserted else { return }
         log.notice("found \(kind.rawValue, privacy: .public) over \(source, privacy: .public)")
         onFound?(kind)
@@ -66,7 +70,7 @@ final class YorickDeviceDetector: NSObject {
 
     private func checkBluetooth() {
         guard let central, central.state == .poweredOn else { return }
-        for kind in YorickDeviceKind.allCases where !offered.contains(kind) {
+        for kind in YorickDeviceKind.allCases where !seen.contains(kind) {
             if !central.retrieveConnectedPeripherals(withServices: [kind.service]).isEmpty {
                 report(kind, via: "Bluetooth")
             }

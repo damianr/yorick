@@ -251,6 +251,9 @@ final class SessionManager {
     // MARK: Found Yorick devices
 
     let deviceDetector = YorickDeviceDetector()
+    /// Yorick devices the Mac has shown this launch (Bluetooth or USB), so
+    /// Settings can list one before Yorick has ever connected to it.
+    private(set) var detectedDevices: Set<YorickDeviceKind> = []
     /// Found while Yorick was busy; offered once it's idle with nothing showing.
     private var pendingDevicePrompt: YorickDeviceKind?
     private var acceptingDevicePrompt = false
@@ -261,7 +264,7 @@ final class SessionManager {
     /// Some Yorick device is known: paired, connected, or the selected mic.
     /// Without one, the app doesn't mention the hardware at all.
     var hasYorickDevice: Bool {
-        YorickDeviceKind.allCases.contains { $0.isPaired || microphoneManager.selectedDeviceUID == $0.deviceUID }
+        YorickDeviceKind.allCases.contains { $0.isPaired || microphoneManager.selectedDeviceUID == $0.deviceUID || detectedDevices.contains($0) }
             || pocketBluetooth.connected || skullBluetooth.connected || skullMiniBluetooth.connected
     }
 
@@ -269,6 +272,7 @@ final class SessionManager {
         deviceDetector.isKnown = { [weak self] kind in
             kind.isPaired || self?.microphoneManager.selectedDeviceUID == kind.deviceUID
         }
+        deviceDetector.onSeen = { [weak self] kind in self?.detectedDevices.insert(kind) }
         deviceDetector.onFound = { [weak self] kind in self?.offerDevice(kind) }
         deviceDetector.start()
     }

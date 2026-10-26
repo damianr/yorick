@@ -31,9 +31,7 @@ final class YorickMicController {
     private(set) var status = "Connect a Yorick microphone to customize its eyes."
     var settings: YorickEyeSettings {
         didSet {
-            #if YORICK_HARDWARE_LAB
-            settings.save(to: defaults)
-            #endif
+            settings.save(to: defaults, key: settingsKey)
             applied = false; dirtyAt = clock()
         }
     }
@@ -52,7 +50,16 @@ final class YorickMicController {
     @ObservationIgnored private var sequence: UInt32 = 0
     @ObservationIgnored private var pendingSequence: UInt32?
     @ObservationIgnored private var pendingSettings: YorickEyeSettings?
-    var miniSelected = false
+    /// Each skull keeps its own eye settings.
+    var miniSelected = false {
+        didSet {
+            guard miniSelected != oldValue else { return }
+            // A Mini tuned before it had its own key starts from the shared settings.
+            let key = defaults.data(forKey: settingsKey) == nil ? YorickEyeSettings.defaultsKey : settingsKey
+            settings = YorickEyeSettings.load(from: defaults, key: key)
+        }
+    }
+    private var settingsKey: String { miniSelected ? YorickEyeSettings.miniDefaultsKey : YorickEyeSettings.defaultsKey }
     var styleGroups: [(String, [YorickEyeStyle])] { miniSelected ? [("OLED", [.circular, .equalizer, .ember])] : YorickEyeStyle.groups }
     @ObservationIgnored weak var bluetoothLink: YorickEyeLink?
     @ObservationIgnored var bluetoothSelected: @MainActor () -> Bool = {
@@ -61,6 +68,7 @@ final class YorickMicController {
     @ObservationIgnored private var usingBluetooth = false
     @ObservationIgnored private var bluetoothWasReady = false
     @ObservationIgnored private let clock: @MainActor () -> Date
+    @ObservationIgnored private let defaults: UserDefaults
 
     #if YORICK_HARDWARE_LAB
     @ObservationIgnored private var fd: Int32 = -1
@@ -74,7 +82,6 @@ final class YorickMicController {
 
     typealias Inventory = (audioCount: Int, ports: [String])
     @ObservationIgnored private let discover: @MainActor () -> Inventory
-    @ObservationIgnored private let defaults: UserDefaults
     init(monitor: Bool = true, defaults: UserDefaults = .standard, discover: @escaping @MainActor () -> Inventory = YorickMicController.inventory, configurePort: @escaping @Sendable (String) -> Int32 = YorickMicController.configureSerialPort, clock: @escaping @MainActor () -> Date = { Date() }) {
         self.clock = clock
         self.configurePort = configurePort
@@ -85,9 +92,10 @@ final class YorickMicController {
     }
     deinit { task?.cancel(); if fd >= 0 { Darwin.close(fd) } }
     #else
-    init(monitor: Bool = true, clock: @escaping @MainActor () -> Date = { Date() }) {
+    init(monitor: Bool = true, defaults: UserDefaults = .standard, clock: @escaping @MainActor () -> Date = { Date() }) {
         self.clock = clock
-        self.settings = YorickEyeSettings()
+        self.defaults = defaults
+        self.settings = YorickEyeSettings.load(from: defaults)
         if monitor { startMonitoring() }
     }
     deinit { task?.cancel() }
