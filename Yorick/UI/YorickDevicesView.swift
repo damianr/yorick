@@ -89,7 +89,9 @@ struct YorickDevicesView: View {
     private func devices(_ listed: [Device]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if listed.isEmpty && !choosing {
+                #if YORICK_HARDWARE_LAB
                 introCard
+                #endif
             } else {
                 ForEach(listed) { deviceRow($0) }
                 if choosing {
@@ -111,6 +113,7 @@ struct YorickDevicesView: View {
 
     // MARK: - Pieces
 
+    #if YORICK_HARDWARE_LAB
     private var introCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -148,6 +151,7 @@ struct YorickDevicesView: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bone.opacity(0.04)))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.bone.opacity(0.14), lineWidth: 1))
     }
+    #endif
 
     private var picker: some View {
         VStack(alignment: .leading, spacing: 8) {
