@@ -201,7 +201,7 @@ final class SessionManager {
     /// A skull's BLE audio failed. Its onStop runs right after and finalizes
     /// the partial, so the reason is kept for that processing pass.
     private func skullAudioFailed(_ reason: String) {
-        let message = BluetoothCallMonitor.failureMessage(reason, callDevice: BluetoothCallMonitor.activeCallDeviceName())
+        let message = BluetoothCallMonitor.failureMessage(reason, busy: BluetoothCallMonitor.busyBluetoothAudio())
         if state == .recording { externalFailureReason = message }
         transientNotice = TransientNotice(message: message, sticky: true)
     }
@@ -1085,18 +1085,20 @@ final class SessionManager {
             }
         }
 
-        // A headset on a call starves the skull's BLE audio (see
-        // BluetoothCallMonitor). Record from its USB mic instead when cabled.
+        // Busy Bluetooth audio (a call, or music to headphones) starves the
+        // skull's BLE audio (see BluetoothCallMonitor). Record from its USB
+        // mic instead when cabled.
         var usbOverrideUID: String?
-        if skullSelected || miniSelected, let call = BluetoothCallMonitor.activeCallDeviceName() {
+        if skullSelected || miniSelected, let busy = BluetoothCallMonitor.busyBluetoothAudio() {
             let skull = miniSelected ? "Skull Mini" : "Skull"
             if let usb = BluetoothCallMonitor.skullUSBMicrophone(mini: miniSelected) {
-                Self.bluetoothCallLog.notice("call on \(call, privacy: .public); recording from \(usb.localizedName, privacy: .public) over USB")
+                Self.bluetoothCallLog.notice("\(busy.device, privacy: .public) \(busy.activity, privacy: .public); recording from \(usb.localizedName, privacy: .public) over USB")
                 usbOverrideUID = usb.uniqueID
-                transientNotice = TransientNotice(message: "Using the \(skull)’s USB mic while \(call) is on a call")
+                transientNotice = TransientNotice(message: "Using the \(skull)’s USB mic while \(busy.device) is \(busy.activity)")
             } else {
-                Self.bluetoothCallLog.notice("call on \(call, privacy: .public); no \(skull, privacy: .public) USB mic, staying on BLE")
-                transientNotice = TransientNotice(message: "Bluetooth is busy with a call on \(call); the skull’s audio may cut out. Plug in its USB cable to avoid this.")
+                Self.bluetoothCallLog.notice("\(busy.device, privacy: .public) \(busy.activity, privacy: .public); no \(skull, privacy: .public) USB mic, staying on BLE")
+                let fix = busy.call ? "Plug in its USB cable to avoid this." : "Pause the audio or plug in its USB cable to avoid this."
+                transientNotice = TransientNotice(message: "\(busy.device) is \(busy.activity) over Bluetooth; the \(skull)’s audio may cut out. \(fix)")
             }
         }
         if skullSelected, usbOverrideUID == nil {

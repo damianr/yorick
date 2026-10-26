@@ -1,29 +1,46 @@
 import AVFoundation
 import CoreAudio
 
-/// Notices a Bluetooth headset holding a call (HFP/eSCO voice) link.
+/// Notices Bluetooth audio busy enough to starve a skull's BLE audio.
 ///
-/// WHY: an eSCO voice link reserves fixed Bluetooth radio airtime, and the
-/// skulls' BLE audio notifications share that radio. FIELD-REPORTED
-/// 2026-10-26: a Zoom call on AirPods Max made every Skull Mini dictation
-/// overflow the skull's buffer ~2 s in, and the near-empty recording then
-/// showed "No audio detected". The skulls also enumerate as USB microphones
-/// when cabled, so during a call Yorick records from that instead.
+/// WHY: the skulls' BLE audio notifications share the Mac's Bluetooth radio
+/// with every other Bluetooth audio link. FIELD-REPORTED 2026-10-26: a Zoom
+/// call on AirPods Max (an HFP/eSCO voice link, fixed reserved airtime) made
+/// every Skull Mini dictation overflow the skull's buffer ~2 s in, and the
+/// near-empty recording then showed "No audio detected". Music playing to
+/// the same headphones (A2DP) did the same, and pausing it fixed it. The
+/// skulls also enumerate as USB microphones when cabled, so while Bluetooth
+/// audio is busy Yorick records from that instead.
 enum BluetoothCallMonitor {
-    /// The name of a Bluetooth input that is running at a voice-link rate,
-    /// or nil. A2DP music runs at 44.1/48 kHz and doesn't count; HFP voice
-    /// runs at 8–24 kHz.
-    static func activeCallDeviceName() -> String? {
+    struct BusyAudio: Equatable {
+        /// The headset or speaker, as macOS names it.
+        let device: String
+        /// A call (voice link) rather than playback.
+        let call: Bool
+
+        var activity: String { call ? "on a call" : "playing audio" }
+    }
+
+    /// The Bluetooth audio device currently moving audio, or nil. A call
+    /// shows as a Bluetooth input running at a voice-link rate (8–24 kHz);
+    /// playback as a Bluetooth output that's running. A call wins when both.
+    static func busyBluetoothAudio() -> BusyAudio? {
+        var playing: BusyAudio?
         for id in deviceIDs() {
             guard let transport: UInt32 = property(id, kAudioDevicePropertyTransportType),
                   transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE,
-                  hasInputStreams(id),
-                  let running: UInt32 = property(id, kAudioDevicePropertyDeviceIsRunningSomewhere), running != 0,
-                  let rate: Float64 = property(id, kAudioDevicePropertyNominalSampleRate), rate <= 24_000
+                  let running: UInt32 = property(id, kAudioDevicePropertyDeviceIsRunningSomewhere), running != 0
             else { continue }
-            return name(id) ?? "a Bluetooth headset"
+            let device = name(id) ?? "a Bluetooth headset"
+            if hasStreams(id, scope: kAudioObjectPropertyScopeInput),
+               let rate: Float64 = property(id, kAudioDevicePropertyNominalSampleRate), rate <= 24_000 {
+                return BusyAudio(device: device, call: true)
+            }
+            if playing == nil, hasStreams(id, scope: kAudioObjectPropertyScopeOutput) {
+                playing = BusyAudio(device: device, call: false)
+            }
         }
-        return nil
+        return playing
     }
 
     /// The cabled skull's USB microphone, if plugged in. Matched by name:
@@ -37,11 +54,13 @@ enum BluetoothCallMonitor {
             }
     }
 
-    /// What the pill says when the skull's BLE audio failed. During a call the
-    /// raw reason ("buffer overflowed") is replaced by the cause and the fix.
-    static func failureMessage(_ reason: String, callDevice: String?) -> String {
-        guard let callDevice else { return reason }
-        return "Skull audio couldn’t keep up because \(callDevice) is on a Bluetooth call. Plug in the skull’s USB cable, or end the call."
+    /// What the pill says when the skull's BLE audio failed. With Bluetooth
+    /// audio busy, the raw reason ("buffer overflowed") is replaced by the
+    /// cause and the fix.
+    static func failureMessage(_ reason: String, busy: BusyAudio?) -> String {
+        guard let busy else { return reason }
+        let fix = busy.call ? "end the call" : "pause the audio"
+        return "Skull audio couldn’t keep up because \(busy.device) is \(busy.activity) over Bluetooth. Plug in the skull’s USB cable, or \(fix)."
     }
 
     // MARK: CoreAudio
@@ -71,10 +90,10 @@ enum BluetoothCallMonitor {
         return value.pointee
     }
 
-    private static func hasInputStreams(_ id: AudioObjectID) -> Bool {
+    private static func hasStreams(_ id: AudioObjectID, scope: AudioObjectPropertyScope) -> Bool {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyStreams,
-            mScope: kAudioObjectPropertyScopeInput,
+            mScope: scope,
             mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
         return AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr && size > 0
