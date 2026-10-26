@@ -101,6 +101,16 @@ final class SessionManager {
         }
     }
 
+    /// The battery of the Yorick device that is the selected mic, when it's
+    /// connected and reporting. Nil for any other mic.
+    var activeDeviceBattery: DeviceBattery? {
+        switch microphoneManager.selectedDeviceUID {
+        case PocketBluetoothProtocol.deviceUID: return pocketBluetooth.connected ? pocketBluetooth.battery : nil
+        case SkullBluetoothProtocol.deviceUID: return skullBluetooth.connected ? skullBluetooth.battery : nil
+        default: return nil
+        }
+    }
+
     private var skullSelected: Bool { microphoneManager.selectedDeviceUID == SkullBluetoothProtocol.deviceUID }
 
     func configureSkullBluetooth() {

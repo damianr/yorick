@@ -15,9 +15,15 @@ struct DeviceBattery: Equatable {
     /// [version 1, flags (1 charging, 2 USB power), millivolts LE16, percent]
     static let power = CBUUID(string: "61C57A10-4CC3-4B68-ACD7-14C4A67E1204")
     static let lowPercent = 15
+    /// The recording pill starts hinting a little before the low warning, so
+    /// the sticky notice at 15% is never the first you hear of it.
+    static let pillHintPercent = 20
 
     /// Low only means something on battery; plugged in, it's on its way up.
     var isLow: Bool { percent <= Self.lowPercent && !usbPower }
+
+    /// Worth a quiet glyph in the recording pill.
+    var showsPillHint: Bool { percent <= Self.pillHintPercent && !usbPower }
 
     var label: String {
         if charging { return "\(percent)% · charging" }
