@@ -256,6 +256,24 @@ struct HUDContentView: View {
         }
     }
 
+    /// A Pocket or Skull running down: a small battery glyph beside the mark,
+    /// amber as it nears empty and the error tint once it's low. No word, no
+    /// motion; the field pill gets the glyph only, the unanchored pill adds
+    /// the percent. The sticky notice at idle is still the loud warning.
+    private func batteryHint(_ battery: DeviceBattery, unanchored: Bool) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: battery.symbol)
+                .font(.system(size: unanchored ? 10.5 : 9.5, weight: .medium))
+            if unanchored {
+                Text("\(battery.percent)%")
+                    .font(.system(size: 10, weight: .medium).monospacedDigit())
+            }
+        }
+        .foregroundStyle((battery.isLow ? Theme.error : Theme.accentAmber).opacity(0.85))
+        .help("Mic battery \(battery.percent)% — charge soon")
+        .accessibilityLabel("Mic battery \(battery.percent) percent")
+    }
+
     // MARK: - Session Pill (recording + transcribing, one identity)
     //
     // One pill, states within: recording (skull · status · EQ) crossfades
@@ -273,6 +291,9 @@ struct HUDContentView: View {
             HStack(spacing: unanchored ? 10 : 9) {
                 skullMark(16)
                     .frame(height: 19) // seat at button height so hover adds no vertical jump
+                if let battery = session.activeDeviceBattery, battery.showsPillHint {
+                    batteryHint(battery, unanchored: unanchored)
+                }
                 if unanchored {
                     // A stalled mic must never read as "Listening…". The
                     // whole bug was the pill claiming to hear you while

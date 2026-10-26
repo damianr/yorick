@@ -19,4 +19,13 @@ final class DeviceBatteryTests: XCTestCase {
     func testUnknownVersionIsIgnored() {
         XCTAssertNil(DeviceBattery.updated(nil, uuid: DeviceBattery.power, value: Data([2, 0, 0, 0, 50])))
     }
+
+    func testPillHintStartsBeforeLowAndNeverOnUSB() {
+        var b = DeviceBattery(percent: 21)
+        XCTAssertFalse(b.showsPillHint)
+        b.percent = 20
+        XCTAssertTrue(b.showsPillHint); XCTAssertFalse(b.isLow)
+        b.usbPower = true
+        XCTAssertFalse(b.showsPillHint)
+    }
 }
