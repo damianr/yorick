@@ -36,6 +36,7 @@ final class SkullMiniBluetoothController: NSObject, YorickEyeLink {
     private var assembler: PocketBluetoothProtocol.Assembler?
     private var stopTarget: UInt32?
     private var stopDeadline: Date?
+    private var stopRequestedAt: Date?
     private var lastAudio = Date.distantPast
     private var reconnectAfter = Date.distantPast
     private var batteryCharacteristics: [CBCharacteristic] = []
@@ -78,7 +79,7 @@ final class SkullMiniBluetoothController: NSObject, YorickEyeLink {
     func stopListening() {
         guard assembler != nil, stopDeadline == nil else { return }
         write(SkullMiniBluetoothProtocol.stopListening, reliable: true)
-        stopDeadline = Date().addingTimeInterval(0.8)
+        stopDeadline = Date().addingTimeInterval(0.8); stopRequestedAt = Date()
     }
 
     private func finish() {
@@ -145,7 +146,14 @@ final class SkullMiniBluetoothController: NSObject, YorickEyeLink {
         if wanted, peripheral == nil, Date() >= reconnectAfter {
             reconnectAfter = Date().addingTimeInterval(3); connectIfPossible()
         }
-        if let deadline = stopDeadline, Date() >= deadline {
+        // Busy Bluetooth (music, a call) leaves the skull seconds behind; it
+        // keeps flushing its backlog after release, so wait while frames are
+        // still arriving, up to 6 s, rather than cut the tail at 0.8 s.
+        if let deadline = stopDeadline, Date() >= deadline, assembler != nil,
+           Date().timeIntervalSince(lastAudio) < 0.4, let asked = stopRequestedAt,
+           Date().timeIntervalSince(asked) < 6 {
+            stopDeadline = Date().addingTimeInterval(0.3)
+        } else if let deadline = stopDeadline, Date() >= deadline {
             if let a = assembler, let target = stopTarget, a.expectedOffset < target {
                 missingSamples += Int(target - a.expectedOffset)
                 log.error("tail missing samples=\(target - a.expectedOffset)")

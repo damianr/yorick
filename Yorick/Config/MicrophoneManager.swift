@@ -72,8 +72,10 @@ final class MicrophoneManager {
             MicrophoneDevice(id: $0.uniqueID, name: $0.localizedName, isConnected: true)
         }
 
-        connectedDevices.append(MicrophoneDevice(id: PocketBluetoothProtocol.deviceUID,
-            name: PocketBluetoothProtocol.deviceName, isConnected: pocketConnected))
+        if pocketConnected || PocketBluetoothController.isPaired {
+            connectedDevices.append(MicrophoneDevice(id: PocketBluetoothProtocol.deviceUID,
+                name: PocketBluetoothProtocol.deviceName, isConnected: pocketConnected))
+        }
         if skullConnected || SkullBluetoothController.isPaired {
             connectedDevices.append(MicrophoneDevice(id: SkullBluetoothProtocol.deviceUID,
                 name: SkullBluetoothProtocol.deviceName, isConnected: skullConnected))

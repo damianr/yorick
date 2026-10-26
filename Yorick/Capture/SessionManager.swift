@@ -278,8 +278,10 @@ final class SessionManager {
     }
 
     private func offerDevice(_ kind: YorickDeviceKind) {
-        guard state == .idle, transientNotice == nil else { pendingDevicePrompt = kind; return }
         pendingDevicePrompt = nil
+        // Connected from Settings while the offer waited: nothing to offer.
+        guard !deviceDetector.isKnown(kind) else { return }
+        guard state == .idle, transientNotice == nil else { pendingDevicePrompt = kind; return }
         transientNotice = .yorickDeviceFound(kind)
     }
 
@@ -999,7 +1001,8 @@ final class SessionManager {
     private func startCapture() {
         elapsedSeconds = 0
         startedAt = Date()
-        transientNotice = nil
+        // The Accessibility warning was set a moment ago, for this dictation.
+        if transientNotice?.action != .openAccessibilitySettings { transientNotice = nil }
         externalFailureReason = nil
         state = .recording
         // A new dictation ends the last one's watch (keeping a finished fix).
@@ -1096,9 +1099,9 @@ final class SessionManager {
                 usbOverrideUID = usb.uniqueID
                 transientNotice = TransientNotice(message: "Using the \(skull)’s USB mic while \(busy.device) is \(busy.activity)")
             } else {
+                // No warning: the skull buffers through a busy radio and skips a
+                // moment only if it falls too far behind. A failure still says why.
                 Self.bluetoothCallLog.notice("\(busy.device, privacy: .public) \(busy.activity, privacy: .public); no \(skull, privacy: .public) USB mic, staying on BLE")
-                let fix = busy.call ? "Plug in its USB cable to avoid this." : "Pause the audio or plug in its USB cable to avoid this."
-                transientNotice = TransientNotice(message: "\(busy.device) is \(busy.activity) over Bluetooth; the \(skull)’s audio may cut out. \(fix)")
             }
         }
         if skullSelected, usbOverrideUID == nil {
