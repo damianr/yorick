@@ -100,9 +100,11 @@ final class AudioCapture: NSObject, @unchecked Sendable {
     private var fileURL: URL?
     private var isActive = false
     private let captureQueue = DispatchQueue(label: "com.heyyorick.audio-capture")
-    private var smoothedLevel: Float = 0
-
-    var onLevelUpdate: (@Sendable (Float) -> Void)?
+    private var inputMeter = AudioInputMeter()
+    var onMeterUpdate: (@Sendable (AudioMeterReading) -> Void)?
+    var onDeviceChanged: (@Sendable (String) -> Void)?
+    private var loggedUnsupportedFormat = false
+    private static let formatLog = Logger(subsystem: "com.heyyorick.Yorick", category: "audioFormat")
 
     // MARK: - Keeping the recording alive
     //
@@ -196,13 +198,15 @@ final class AudioCapture: NSObject, @unchecked Sendable {
         self.captureSession = session
         self.wavWriter = nil
         self.fileURL = url
-        self.smoothedLevel = 0
+        self.inputMeter = AudioInputMeter()
+        self.loggedUnsupportedFormat = false
         self.isActive = true
 
         self.preferredUID = preferredDeviceUID
         observeFailures(of: session)
 
         session.startRunning()
+        onDeviceChanged?(device.localizedName)
         markBufferArrived()
         startWatchdog()
         print("[AudioCapture] start() → session running, file=\(url.lastPathComponent)")
@@ -327,9 +331,32 @@ final class AudioCapture: NSObject, @unchecked Sendable {
             session.addOutput(output)
             self.captureSession = session
             self.observeFailures(of: session)
+            self.inputMeter = AudioInputMeter()
             session.startRunning()
+            self.onDeviceChanged?(device.localizedName)
             self.stallLog.notice("recovery attempted for \(reason, privacy: .public) file=\(url.lastPathComponent, privacy: .public)")
             print("[AudioCapture] recovery attempted after: \(reason)")
+        }
+    }
+
+    /// A selected BLE pocket or skull session supplies decoded PCM through this path.
+    func startExternal(deviceName: String = PocketBluetoothProtocol.deviceName) throws -> URL {
+        cleanStop()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
+        guard let writer = WAVFileWriter(url: url, sampleRate: 16000, channels: 1, bitsPerSample: 16) else {
+            throw AudioCaptureError.noDevice
+        }
+        fileURL = url; wavWriter = writer; isActive = true; inputMeter = AudioInputMeter()
+        onDeviceChanged?(deviceName)
+        return url
+    }
+
+    func appendExternal(_ samples: [Int16]) {
+        guard isActive, captureSession == nil else { return }
+        // Synchronous ordering makes the last BLE frame precede WAV finalization.
+        captureQueue.sync {
+            wavWriter?.write(samples)
+            if let reading = inputMeter.update(samples: samples, sampleRate: 16000) { onMeterUpdate?(reading) }
         }
     }
 
@@ -368,65 +395,113 @@ final class AudioCapture: NSObject, @unchecked Sendable {
         return url
     }
 
-    private func computeLevel(from sampleBuffer: CMSampleBuffer) {
+    // MARK: - Format conversion
+
+    /// Down-mix one buffer to mono floats in -1...1.
+    ///
+    /// FIELD-REPORTED: "No audio detected" with mics that work everywhere
+    /// else. This used to keep channel 0 only, and to read every non-float
+    /// format as Int16. So a two-transmitter wireless lapel receiver (TX2
+    /// arrives on the RIGHT channel), an audio interface with the mic on
+    /// input 2, or a mic with the left side unwired recorded pure silence;
+    /// and a 24- or 32-bit integer device recorded noise. Now every channel
+    /// carrying signal is mixed in, and the sample format is read for what
+    /// it is.
+    ///
+    /// Channels more than 20 dB below the loudest are left out of the mix,
+    /// so an unused input's hiss doesn't dilute the one that has the voice.
+    static func monoSamples(from sampleBuffer: CMSampleBuffer) -> [Float]? {
         guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee
-        else { return }
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee,
+              asbd.mFormatID == kAudioFormatLinearPCM,
+              let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer)
+        else { return nil }
 
-        let numSamples = CMSampleBufferGetNumSamples(sampleBuffer)
-        guard numSamples > 0 else { return }
+        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard frameCount > 0 else { return nil }
 
-        let channels = max(Int(asbd.mChannelsPerFrame), 1)
-        let isFloat = asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0
-        let isNonInterleaved = asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0
-        let bytesPerSample = Int(asbd.mBitsPerChannel / 8)
-        guard bytesPerSample > 0 else { return }
+        let flags = asbd.mFormatFlags
+        guard flags & kAudioFormatFlagIsBigEndian == 0 else { return nil }
+        let isFloat = flags & kAudioFormatFlagIsFloat != 0
+        let isNonInterleaved = flags & kAudioFormatFlagIsNonInterleaved != 0
+        let alignedHigh = flags & kAudioFormatFlagIsAlignedHigh != 0
+        let bits = Int(asbd.mBitsPerChannel)
+        var channels = max(Int(asbd.mChannelsPerFrame), 1)
+        // Bytes one sample of one channel occupies (24-bit audio may sit in
+        // a 3- or 4-byte container; mBitsPerChannel alone can't tell which).
+        let bytesPerFrame = Int(asbd.mBytesPerFrame)
+        let width = isNonInterleaved ? bytesPerFrame : bytesPerFrame / channels
+        guard width > 0 else { return nil }
 
-        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
-        var length = 0
-        var dataPointer: UnsafeMutablePointer<Int8>?
-        guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0,
-                                          lengthAtOffsetOut: nil,
-                                          totalLengthOut: &length,
-                                          dataPointerOut: &dataPointer) == noErr,
-              let rawData = dataPointer, length > 0
-        else { return }
+        // Copy rather than borrow the block buffer's pointer: a block buffer
+        // need not be contiguous, and reading past the first segment is
+        // undefined. A few KB per buffer is nothing.
+        let length = CMBlockBufferGetDataLength(blockBuffer)
+        guard length > 0 else { return nil }
+        var bytes = [UInt8](repeating: 0, count: length)
+        guard CMBlockBufferCopyDataBytes(blockBuffer, atOffset: 0, dataLength: length,
+                                         destination: &bytes) == kCMBlockBufferNoErr
+        else { return nil }
 
-        var sum: Float = 0
-        let frameCount = numSamples
-        let stride = isNonInterleaved ? 1 : channels
-
-        if isFloat && bytesPerSample == 4 {
-            rawData.withMemoryRebound(to: Float.self, capacity: frameCount * stride) { floats in
-                for f in 0..<frameCount {
-                    let s = floats[f * stride]
-                    sum += s * s
-                }
-            }
-        } else if bytesPerSample == 2 {
-            rawData.withMemoryRebound(to: Int16.self, capacity: frameCount * stride) { shorts in
-                for f in 0..<frameCount {
-                    let s = Float(shorts[f * stride]) / 32768.0
-                    sum += s * s
-                }
-            }
-        } else {
-            return
+        // Non-interleaved planes sit back to back; if they don't all fit,
+        // fall back to the first plane rather than read past the end.
+        if frameCount * channels * width > length {
+            channels = 1
+            guard frameCount * width <= length else { return nil }
         }
 
-        let rms = sqrtf(sum / Float(max(frameCount, 1)))
-        guard rms > 0 else { onLevelUpdate?(0); return }
+        return bytes.withUnsafeBytes { raw -> [Float]? in
+            func sample(at offset: Int) -> Float? {
+                switch (isFloat, width) {
+                case (true, 4):
+                    return raw.loadUnaligned(fromByteOffset: offset, as: Float.self)
+                case (true, 8):
+                    return Float(raw.loadUnaligned(fromByteOffset: offset, as: Double.self))
+                case (false, 2):
+                    return Float(Int16(littleEndian: raw.loadUnaligned(fromByteOffset: offset, as: Int16.self))) / 32768
+                case (false, 3):
+                    let v = Int32(raw[offset]) | Int32(raw[offset + 1]) << 8 | Int32(raw[offset + 2]) << 16
+                    return Float((v << 8) >> 8) / 8_388_608
+                case (false, 4):
+                    let v = Int32(littleEndian: raw.loadUnaligned(fromByteOffset: offset, as: Int32.self))
+                    if bits >= 32 || alignedHigh { return Float(v) / 2_147_483_648 }
+                    return Float((v << 8) >> 8) / 8_388_608 // 24-bit, low-aligned
+                default:
+                    return nil
+                }
+            }
 
-        let db = 20.0 * log10f(rms)
-        let floor: Float = -35
-        let ceiling: Float = -6
-        let raw = max(0, min(1, (db - floor) / (ceiling - floor)))
+            func offset(frame: Int, channel: Int) -> Int {
+                isNonInterleaved
+                    ? (channel * frameCount + frame) * width
+                    : frame * bytesPerFrame + channel * width
+            }
 
-        let alpha: Float = raw > smoothedLevel ? 0.4 : 0.15
-        smoothedLevel = smoothedLevel + alpha * (raw - smoothedLevel)
+            guard sample(at: 0) != nil else { return nil } // unsupported format
 
-        let level = smoothedLevel < 0.05 ? Float(0) : smoothedLevel
-        onLevelUpdate?(level)
+            var perChannel = [[Float]](repeating: [Float](repeating: 0, count: frameCount), count: channels)
+            var energy = [Float](repeating: 0, count: channels)
+            for c in 0..<channels {
+                for f in 0..<frameCount {
+                    let s = sample(at: offset(frame: f, channel: c)) ?? 0
+                    let clamped = s.isFinite ? max(-1, min(1, s)) : 0
+                    perChannel[c][f] = clamped
+                    energy[c] += clamped * clamped
+                }
+            }
+            if channels == 1 { return perChannel[0] }
+
+            // -20 dB in power is a factor of 100.
+            let loudest = energy.max() ?? 0
+            let live = (0..<channels).filter { loudest == 0 || energy[$0] * 100 >= loudest }
+            var mono = [Float](repeating: 0, count: frameCount)
+            for c in live {
+                for f in 0..<frameCount { mono[f] += perChannel[c][f] }
+            }
+            let scale = 1 / Float(live.count)
+            for f in 0..<frameCount { mono[f] *= scale }
+            return mono
+        }
     }
 }
 
@@ -455,53 +530,32 @@ extension AudioCapture: AVCaptureAudioDataOutputSampleBufferDelegate {
             // Write mono 16-bit PCM at the device's sample rate — most compatible with Whisper
             let sampleRate = Int(asbd.mSampleRate)
             wavWriter = WAVFileWriter(url: url, sampleRate: sampleRate, channels: 1, bitsPerSample: 16)
-            print("[AudioCapture] WAV writer created: \(sampleRate)Hz mono 16-bit")
+            let isFloat = asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0
+            let nonInterleaved = asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0
+            // What the device actually hands us — the first thing to check
+            // when a mic "isn't heard":
+            //   log show --process Yorick --last 1h | grep audioFormat
+            Self.formatLog.notice("audioFormat rate=\(sampleRate, privacy: .public) channels=\(asbd.mChannelsPerFrame, privacy: .public) bits=\(asbd.mBitsPerChannel, privacy: .public) bytesPerFrame=\(asbd.mBytesPerFrame, privacy: .public) float=\(isFloat, privacy: .public) nonInterleaved=\(nonInterleaved, privacy: .public)")
+            print("[AudioCapture] WAV writer created: \(sampleRate)Hz mono 16-bit from \(asbd.mChannelsPerFrame)ch \(asbd.mBitsPerChannel)-bit\(isFloat ? " float" : "")")
         }
 
         guard let wavWriter else { return }
 
-        // Extract raw audio data and convert to mono 16-bit PCM
-        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
-        var length = 0
-        var dataPointer: UnsafeMutablePointer<Int8>?
-        guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0,
-                                          lengthAtOffsetOut: nil,
-                                          totalLengthOut: &length,
-                                          dataPointerOut: &dataPointer) == noErr,
-              let srcData = dataPointer, length > 0
-        else { return }
-
-        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee
-        else { return }
-
-        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
-        let channels = max(Int(asbd.mChannelsPerFrame), 1)
-        let isFloat = asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0
-        let isNonInterleaved = asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0
-
-        // Convert to mono Int16 samples
-        var monoSamples = [Int16](repeating: 0, count: frameCount)
-
-        if isFloat {
-            srcData.withMemoryRebound(to: Float.self, capacity: frameCount * channels) { floats in
-                let stride = isNonInterleaved ? 1 : channels
-                for f in 0..<frameCount {
-                    let sample = floats[f * stride]
-                    monoSamples[f] = Int16(max(-1, min(1, sample)) * 32767)
-                }
+        guard let mono = Self.monoSamples(from: sampleBuffer) else {
+            if !loggedUnsupportedFormat {
+                loggedUnsupportedFormat = true
+                Self.formatLog.error("audioFormat unsupported — buffers dropped")
             }
-        } else {
-            srcData.withMemoryRebound(to: Int16.self, capacity: frameCount * channels) { shorts in
-                let stride = isNonInterleaved ? 1 : channels
-                for f in 0..<frameCount {
-                    monoSamples[f] = shorts[f * stride]
-                }
-            }
+            return
         }
 
-        wavWriter.write(monoSamples)
+        let pcm = mono.map { Int16($0 * 32767) }
+        wavWriter.write(pcm)
 
-        computeLevel(from: sampleBuffer)
+        let sampleRate = CMSampleBufferGetFormatDescription(sampleBuffer)
+            .flatMap { CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee.mSampleRate } ?? 48_000
+        if let reading = inputMeter.update(samples: pcm, sampleRate: sampleRate) {
+            onMeterUpdate?(reading)
+        }
     }
 }

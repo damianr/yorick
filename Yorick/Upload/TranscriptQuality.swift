@@ -19,6 +19,9 @@ enum TranscriptQuality {
     enum Rejection: Equatable {
         /// No measurable audio reached the app at all.
         case noAudio
+        /// The key was released before the microphone delivered its first
+        /// audio. A quick tap, not a broken mic — so it doesn't say so.
+        case tooShort
         /// Audio was present but contained no detectable speech.
         case noSpeech
         /// Transcript matches a known Whisper hallucination pattern.
@@ -30,6 +33,7 @@ enum TranscriptQuality {
         var userMessage: String {
             switch self {
             case .noAudio: return "No audio detected — check your microphone"
+            case .tooShort: return "Too quick — hold the shortcut while you talk"
             case .noSpeech: return "Didn't catch any speech — try again"
             case .hallucination: return "Didn't catch that clearly — try again"
             case .empty: return "Didn't catch that — try again"
@@ -40,6 +44,7 @@ enum TranscriptQuality {
         var logReason: String {
             switch self {
             case .noAudio: return "no measurable audio reached the app"
+            case .tooShort: return "released before the first audio buffer arrived"
             case .noSpeech: return "audio present but no speech detected"
             case .hallucination: return "transcript matches a Whisper hallucination pattern"
             case .empty: return "empty transcript"

@@ -23,6 +23,8 @@ struct TransientNotice: Equatable, Identifiable {
     enum Style: Equatable {
         case warning
         case receipt
+        /// An offer, not a failure: a Yorick device turned up.
+        case device
     }
 
     let id = UUID()
@@ -33,6 +35,35 @@ struct TransientNotice: Equatable, Identifiable {
     /// Sticky notices stay until clicked — used for failures the user must
     /// see (a 3-second flash after a minutes-long transcription is a miss).
     var sticky: Bool = false
+    /// A one-tap fix shown as a button on the notice.
+    var action: Action? = nil
+
+    enum Action: Equatable {
+        case openAccessibilitySettings
+        case useYorickDevice(YorickDeviceKind)
+        var label: String {
+            switch self {
+            case .openAccessibilitySettings: "Open Settings"
+            case .useYorickDevice: "Use"
+            }
+        }
+    }
+
+    /// macOS shows no prompt when System Settings already lists Yorick (for
+    /// example, a grant left over from a differently signed build), so the
+    /// pill has to say it can't see text fields.
+    static var accessibilityMissing: TransientNotice { TransientNotice(
+        message: "Yorick can’t see text fields, so it’s saving instead of typing",
+        detail: "Turn on Yorick in Privacy & Security › Accessibility",
+        sticky: true,
+        action: .openAccessibilitySettings) }
+
+    static func yorickDeviceFound(_ kind: YorickDeviceKind) -> TransientNotice { TransientNotice(
+        message: "Looks like you’ve connected a Yorick device",
+        style: .device,
+        detail: kind.name,
+        sticky: true,
+        action: .useYorickDevice(kind)) }
 }
 
 /// Where the pill sits relative to its anchor, driving both window origin
@@ -56,11 +87,339 @@ extension Notification.Name {
 @MainActor
 @Observable
 final class SessionManager {
-    var state: SessionState = .idle
-    var audioLevel: Float = 0
+    let yorickMic = YorickMicController()
+    let pocketBluetooth = PocketBluetoothController()
+    private var pocketAudioActive = false
+    private var pocketConfigured = false
+    private var pendingPocketReturns: [(pid_t, AXUIElement?, String?)] = []
+    private var skullButtonOwnsCapture = false
+    private var miniButtonOwnsCapture = false
+    let skullMiniBluetooth = SkullMiniBluetoothController()
+    private var miniAudioActive = false
+    private var miniConfigured = false
+    let skullBluetooth = SkullBluetoothController()
+    private var skullAudioActive = false
+    private var skullConfigured = false
+    /// Why a skull's BLE audio ended early this recording. The processing pass
+    /// shows it instead of "No audio detected" for the short partial.
+    private var externalFailureReason: String?
+    private static let bluetoothCallLog = Logger(subsystem: "com.heyyorick.Yorick", category: "bluetoothCall")
+
+    private var lowBatteryWarned: Set<String> = []
+
+    /// One sticky warning per discharge when a device drops to low; it re-arms
+    /// once the device is plugged in or back above the threshold. The short
+    /// wait lets the level and power readings that arrive together settle.
+    private func warnOnLowBattery(_ name: String, _ current: @escaping () -> DeviceBattery?) -> (DeviceBattery?) -> Void {
+        { [weak self] _ in
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                guard let self, let battery = current() else { return }
+                guard battery.isLow else {
+                    if battery.usbPower || battery.percent > DeviceBattery.lowPercent + 10 { self.lowBatteryWarned.remove(name) }
+                    return
+                }
+                guard self.state == .idle, self.lowBatteryWarned.insert(name).inserted else { return }
+                self.transientNotice = TransientNotice(message: "\(name) battery is at \(battery.percent)%. Charge it soon.", sticky: true)
+            }
+        }
+    }
+
+    /// The battery of the Yorick device that is the selected mic, when it's
+    /// connected and reporting. Nil for any other mic.
+    var activeDeviceBattery: DeviceBattery? {
+        switch microphoneManager.selectedDeviceUID {
+        case PocketBluetoothProtocol.deviceUID: return pocketBluetooth.connected ? pocketBluetooth.battery : nil
+        case SkullBluetoothProtocol.deviceUID: return skullBluetooth.connected ? skullBluetooth.battery : nil
+        case SkullMiniBluetoothProtocol.deviceUID: return skullMiniBluetooth.connected ? skullMiniBluetooth.battery : nil
+        default: return nil
+        }
+    }
+
+    private var skullSelected: Bool { microphoneManager.selectedDeviceUID == SkullBluetoothProtocol.deviceUID }
+
+    func configureSkullBluetooth() {
+        guard !skullConfigured else { return }; skullConfigured = true
+        skullBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.skullConnected = connected; self?.announceIfConnected(.skull, connected) }
+        skullBluetooth.onTalkButton = { [weak self] held in
+            guard let self else { return }
+            if held {
+                guard self.skullSelected, self.state == .idle else { return }
+                self.startIfIdle()
+                self.skullButtonOwnsCapture = self.state == .recording
+            } else if self.skullButtonOwnsCapture {
+                self.skullButtonOwnsCapture = false
+                self.stopIfRecording()
+            }
+        }
+        skullBluetooth.onReturnButton = { [weak self] in
+            guard let self, self.skullSelected, self.skullBluetooth.connected else { return }
+            self.pocketReturnPressed()
+        }
+        skullBluetooth.onBatteryChanged = warnOnLowBattery("Yorick Skull") { [weak self] in self?.skullBluetooth.battery }
+        skullBluetooth.onSamples = { [weak self] samples in
+            guard let self, self.skullAudioActive, self.state == .recording else { return }
+            self.audioCapture.appendExternal(samples)
+        }
+        // The skull flushed its tail (or gave up); only now finalize the WAV.
+        skullBluetooth.onStop = { [weak self] in
+            guard let self, self.skullAudioActive else { return }
+            self.skullAudioActive = false
+            self.skullButtonOwnsCapture = false
+            if self.state == .recording { self.stopCapture() }
+        }
+        skullBluetooth.onFailure = { [weak self] reason in self?.skullAudioFailed(reason) }
+        skullBluetooth.restoreIfConfigured()
+        if skullSelected { skullBluetooth.start(pairNew: !SkullBluetoothController.isPaired) }
+    }
+
+    func connectSkullBluetooth() {
+        configureSkullBluetooth()
+        microphoneManager.selectedDeviceUID = SkullBluetoothProtocol.deviceUID
+        microphoneManager.refresh(); skullSelectionChanged()
+        skullBluetooth.start(pairNew: true)
+    }
+
+    func skullSelectionChanged() {
+        configureSkullBluetooth(); configureSkullMiniBluetooth()
+        if !skullSelected { skullButtonOwnsCapture = false }
+        if !miniSelected { miniButtonOwnsCapture = false }
+        if skullSelected { skullBluetooth.start(pairNew: !SkullBluetoothController.isPaired) }
+        else if skullAudioActive { skullBluetooth.stopListening() }
+        if miniSelected { skullMiniBluetooth.start(pairNew: !SkullMiniBluetoothController.isPaired) }
+        else if miniAudioActive { skullMiniBluetooth.stopListening() }
+        yorickMic.bluetoothLink = miniSelected ? skullMiniBluetooth : skullBluetooth
+        yorickMic.miniSelected = miniSelected
+        if miniSelected && ![YorickEyeStyle.circular, .equalizer, .ember].contains(yorickMic.settings.style) {
+            yorickMic.settings.style = .circular
+        }
+        yorickMic.inputSelectionChanged()
+    }
+
+    private var miniSelected: Bool { microphoneManager.selectedDeviceUID == SkullMiniBluetoothProtocol.deviceUID }
+
+    /// A skull's BLE audio failed. Its onStop runs right after and finalizes
+    /// the partial, so the reason is kept for that processing pass.
+    private func skullAudioFailed(_ reason: String) {
+        let message = BluetoothCallMonitor.failureMessage(reason, busy: BluetoothCallMonitor.busyBluetoothAudio())
+        if state == .recording { externalFailureReason = message }
+        transientNotice = TransientNotice(message: message, sticky: true)
+    }
+
+    func configureSkullMiniBluetooth() {
+        guard !miniConfigured else { return }; miniConfigured = true
+        skullMiniBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.miniConnected = connected; self?.announceIfConnected(.mini, connected) }
+        skullMiniBluetooth.onTalkButton = { [weak self] held in
+            guard let self else { return }
+            if held {
+                guard self.miniSelected, self.state == .idle else { return }
+                self.startIfIdle()
+                self.miniButtonOwnsCapture = self.state == .recording
+            } else if self.miniButtonOwnsCapture {
+                self.miniButtonOwnsCapture = false
+                self.stopIfRecording()
+            }
+        }
+        skullMiniBluetooth.onReturnButton = { [weak self] in
+            guard let self, self.miniSelected, self.skullMiniBluetooth.connected else { return }
+            self.pocketReturnPressed()
+        }
+        skullMiniBluetooth.onBatteryChanged = warnOnLowBattery("Yorick Skull Mini") { [weak self] in self?.skullMiniBluetooth.battery }
+        skullMiniBluetooth.onSamples = { [weak self] samples in
+            guard let self, self.miniAudioActive, self.state == .recording else { return }
+            self.audioCapture.appendExternal(samples)
+        }
+        // The skull flushed its tail (or gave up); only now finalize the WAV.
+        skullMiniBluetooth.onStop = { [weak self] in
+            guard let self, self.miniAudioActive else { return }
+            self.miniAudioActive = false
+            self.miniButtonOwnsCapture = false
+            if self.state == .recording { self.stopCapture() }
+        }
+        skullMiniBluetooth.onFailure = { [weak self] reason in self?.skullAudioFailed(reason) }
+        skullMiniBluetooth.restoreIfConfigured()
+        if miniSelected { skullMiniBluetooth.start(pairNew: !SkullMiniBluetoothController.isPaired) }
+    }
+
+    func connectSkullMiniBluetooth() {
+        configureSkullMiniBluetooth()
+        microphoneManager.selectedDeviceUID = SkullMiniBluetoothProtocol.deviceUID
+        microphoneManager.refresh(); skullSelectionChanged()
+        skullMiniBluetooth.start(pairNew: true)
+    }
+
+    // MARK: Found Yorick devices
+
+    let deviceDetector = YorickDeviceDetector()
+    /// Yorick devices the Mac has shown this launch (Bluetooth or USB), so
+    /// Settings can list one before Yorick has ever connected to it.
+    private(set) var detectedDevices: Set<YorickDeviceKind> = []
+    /// Found while Yorick was busy; offered once it's idle with nothing showing.
+    private var pendingDevicePrompt: YorickDeviceKind?
+    private var acceptingDevicePrompt = false
+    private var dismissingDevicePrompt = false
+    /// The device just picked from the prompt, so its connection gets a receipt.
+    private var announcingDevice: YorickDeviceKind?
+
+    /// Some Yorick device is known: paired, connected, or the selected mic.
+    /// Without one, the app doesn't mention the hardware at all.
+    var hasYorickDevice: Bool {
+        YorickDeviceKind.allCases.contains { $0.isPaired || microphoneManager.selectedDeviceUID == $0.deviceUID || detectedDevices.contains($0) }
+            || pocketBluetooth.connected || skullBluetooth.connected || skullMiniBluetooth.connected
+    }
+
+    func configureDeviceDetection() {
+        deviceDetector.isKnown = { [weak self] kind in
+            kind.isPaired || self?.microphoneManager.selectedDeviceUID == kind.deviceUID
+        }
+        deviceDetector.onSeen = { [weak self] kind in self?.detectedDevices.insert(kind) }
+        deviceDetector.onFound = { [weak self] kind in self?.offerDevice(kind) }
+        deviceDetector.start()
+    }
+
+    private func offerDevice(_ kind: YorickDeviceKind) {
+        pendingDevicePrompt = nil
+        // Connected from Settings while the offer waited: nothing to offer.
+        guard !deviceDetector.isKnown(kind) else { return }
+        guard state == .idle, transientNotice == nil else { pendingDevicePrompt = kind; return }
+        transientNotice = .yorickDeviceFound(kind)
+    }
+
+    private func offerPendingDeviceSoon() {
+        guard pendingDevicePrompt != nil else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard let self, let kind = self.pendingDevicePrompt else { return }
+            self.offerDevice(kind)
+        }
+    }
+
+    /// "Use" on the prompt: connect it over Bluetooth and make it the mic.
+    func useDetectedDevice(_ kind: YorickDeviceKind) {
+        acceptingDevicePrompt = true
+        transientNotice = nil
+        acceptingDevicePrompt = false
+        announcingDevice = kind
+        switch kind {
+        case .pocket: connectPocketBluetooth()
+        case .skull: connectSkullBluetooth()
+        case .mini: connectSkullMiniBluetooth()
+        }
+    }
+
+    /// A click on a notice. For a device offer, that means "not now, not again".
+    func dismissNotice() {
+        dismissingDevicePrompt = true
+        transientNotice = nil
+        dismissingDevicePrompt = false
+    }
+
+    private func announceIfConnected(_ kind: YorickDeviceKind, _ connected: Bool) {
+        guard connected, announcingDevice == kind else { return }
+        announcingDevice = nil
+        guard state == .idle else { return }
+        transientNotice = TransientNotice(message: "\(kind.name) is your mic now", style: .receipt)
+    }
+
+    func configurePocketBluetooth() {
+        guard !pocketConfigured else { return }; pocketConfigured = true
+        pocketBluetooth.isSelected = { [weak self] in
+            self?.microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID
+        }
+        pocketBluetooth.onConnectionChanged = { [weak self] connected in self?.microphoneManager.pocketConnected = connected; self?.announceIfConnected(.pocket, connected) }
+        pocketBluetooth.onBatteryChanged = warnOnLowBattery("Yorick Pocket") { [weak self] in self?.pocketBluetooth.battery }
+        pocketBluetooth.onStart = { [weak self] in
+            guard let self, self.microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID,
+                  self.state == .idle else { return false }
+            self.pocketAudioActive = true; self.startIfIdle()
+            return self.state == .recording
+        }
+        pocketBluetooth.onSamples = { [weak self] samples in
+            guard let self, self.pocketAudioActive, self.state == .recording else { return }
+            self.audioCapture.appendExternal(samples)
+        }
+        pocketBluetooth.onStop = { [weak self] in
+            guard let self, self.pocketAudioActive else { return }
+            self.stopIfRecording(); self.pocketAudioActive = false
+        }
+        pocketBluetooth.onReturn = { [weak self] in self?.pocketReturnPressed() }
+        pocketBluetooth.onFailure = { [weak self] reason in
+            self?.pendingPocketReturns.removeAll()
+            self?.transientNotice = TransientNotice(message: reason, sticky: true)
+        }
+        pocketBluetooth.restoreIfConfigured()
+    }
+
+    func connectPocketBluetooth() {
+        configurePocketBluetooth()
+        microphoneManager.selectedDeviceUID = PocketBluetoothProtocol.deviceUID
+        microphoneManager.refresh(); skullSelectionChanged()
+        pocketBluetooth.start(pairNew: true)
+        pocketBluetooth.selectionChanged()
+    }
+
+    private func pocketReturnPressed() {
+        guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication else { return }
+        let target = (app.processIdentifier, AccessibilityCapture.focusedElementIdentity())
+        if state == .recording || state == .transcribing {
+            if pendingPocketReturns.count < 8 { pendingPocketReturns.append((target.0, target.1, microphoneManager.selectedDeviceUID)) }
+        } else { Self.sendPocketReturn() }
+    }
+
+    private func flushPocketReturns() {
+        let pending = pendingPocketReturns; pendingPocketReturns.removeAll()
+        guard AXIsProcessTrusted() else { return }
+        let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let current = AccessibilityCapture.focusedElementIdentity()
+        for (targetPID, targetField, device) in pending {
+            guard device == microphoneManager.selectedDeviceUID else { continue }
+            guard (device == PocketBluetoothProtocol.deviceUID && pocketBluetooth.connected)
+                || (device == SkullBluetoothProtocol.deviceUID && skullBluetooth.connected)
+                || (device == SkullMiniBluetoothProtocol.deviceUID && skullMiniBluetooth.connected) else { continue }
+            guard targetPID == pid else { continue }
+            if let targetField {
+                guard let current, CFEqual(targetField, current) else { continue }
+            }
+            Self.sendPocketReturn()
+        }
+    }
+
+    private static func sendPocketReturn() {
+        let source = CGEventSource(stateID: .hidSystemState)
+        CGEvent(keyboardEventSource: source, virtualKey: 36, keyDown: true)?.post(tap: .cghidEventTap)
+        CGEvent(keyboardEventSource: source, virtualKey: 36, keyDown: false)?.post(tap: .cghidEventTap)
+    }
+
+    var state: SessionState = .idle {
+        didSet {
+            yorickMic.recording = state == .recording
+            // Leaving recording any other way abandons the skull's session.
+            if state != .recording, miniAudioActive { miniAudioActive = false; skullMiniBluetooth.stopListening() }
+            if state != .recording, skullAudioActive { skullAudioActive = false; skullBluetooth.stopListening() }
+            if state != .recording { yorickMic.recordingMicName = nil; yorickMic.audioLevel = 0 }
+            if state == .idle { offerPendingDeviceSoon() }
+        }
+    }
+    var audioLevel: Float = 0 { didSet { yorickMic.audioLevel = audioLevel } }
     var captureMode: CaptureMode = .contextual
     var lastSavedCapture: Capture?  // For toast display
-    var transientNotice: TransientNotice?  // For dropped-capture HUD notice
+    var transientNotice: TransientNotice? {  // For dropped-capture HUD notice
+        didSet {
+            // Keep the Accessibility warning over later receipts until the
+            // user acts on it, dismisses it, or access comes back.
+            if let old = oldValue, old.action == .openAccessibilitySettings,
+               let new = transientNotice, new.action == nil, !AXIsProcessTrusted() {
+                transientNotice = old
+            }
+            // The device offer comes back after anything that pushed it off
+            // screen; only Use or a click on the notice itself ends it.
+            if let old = oldValue, case .useYorickDevice(let kind) = old.action, transientNotice?.id != old.id {
+                if dismissingDevicePrompt { YorickDeviceDetector.dismissed.insert(kind) }
+                else if !acceptingDevicePrompt { pendingDevicePrompt = kind }
+            }
+            if transientNotice == nil { offerPendingDeviceSoon() }
+        }
+    }
     /// True while the opt-in pre-insert cleanup pass is running — the pill
     /// says "Cleaning up…" so the wait between release and landing is
     /// announced, never a silent stall.
@@ -95,6 +454,9 @@ final class SessionManager {
     /// readable caret (single-line exception) — the pill must render as a
     /// capsule there: the pointer corner claims an exact insertion point.
     var hudAnchorApproximate = false
+    /// The pill sits LEFT of the caret (trailing edge on it) because a
+    /// leading-aligned pill would run off the right edge of the screen.
+    var hudPillTrailing = false
     private var audioFileURL: URL?
     private var startTask: Task<Void, Never>?
     private var processingTask: Task<Void, Never>?
@@ -103,7 +465,6 @@ final class SessionManager {
     private var processingGeneration = 0
     private var recordingTimer: Timer?
     private var elapsedSeconds: Int = 0
-    private var silentSeconds: Int = 0
     private var modeDecisionSummary = ""
     /// Trigger-time evidence quality: .low lets the transcript pick the
     /// disposition after transcription instead of the cursor heuristic.
@@ -124,6 +485,10 @@ final class SessionManager {
     /// "this app doesn't describe its editor."
     private var startFocusElement: AXUIElement?
 
+    /// Watches the field a dictation was just typed into for the user
+    /// fixing a misheard word, and offers the fix as a vocabulary rule.
+    @ObservationIgnored private let correctionWatcher = CorrectionWatcher()
+
     var showSilenceWarning = false
     /// Non-nil while audio has stopped arriving mid-recording. The pill says
     /// so instead of continuing to claim it's listening.
@@ -134,7 +499,7 @@ final class SessionManager {
     /// file, while being honest on screen that something is wrong. Ending it
     /// automatically would turn a recoverable glitch into exactly the silent
     /// truncation this exists to prevent.
-    private(set) var audioStallReason: String?
+    private(set) var audioStallReason: String? { didSet { yorickMic.stalled = audioStallReason != nil } }
 
     var formattedDuration: String {
         let mins = elapsedSeconds / 60
@@ -151,9 +516,24 @@ final class SessionManager {
     /// placement costs nothing: routing re-decides at stop, and every
     /// transcript persists regardless.
     func startIfIdle(forcedMode: CaptureMode? = nil) {
+        if microphoneManager.selectedDeviceUID == PocketBluetoothProtocol.deviceUID, !pocketAudioActive {
+            transientNotice = TransientNotice(message: "Hold the pocket microphone’s left button to talk")
+            return
+        }
+        if miniSelected, !skullMiniBluetooth.connected, state == .idle {
+            transientNotice = TransientNotice(message: "Skull Mini isn’t connected. Connect it in Yorick settings.")
+            return
+        }
+        if skullSelected, !skullBluetooth.connected, state == .idle {
+            transientNotice = TransientNotice(message: "The skull isn’t connected. Turn it on and Yorick reconnects over Bluetooth.")
+            return
+        }
         // A stuck error state must never soft-lock the hotkey.
         if case .error = state { state = .idle }
         guard state == .idle else { return }
+        if !AXIsProcessTrusted(), UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
+            transientNotice = .accessibilityMissing
+        }
 
         modeWasForced = forcedMode != nil
         captureMode = forcedMode ?? .contextual
@@ -278,6 +658,9 @@ final class SessionManager {
     /// Stop capture — transcribes and either types text or saves capture.
     func stopIfRecording() {
         guard case .recording = state else { return }
+        // Keep recording until the skull's last frames arrive; onStop finishes.
+        if miniAudioActive { skullMiniBluetooth.stopListening(); return }
+        if skullAudioActive { skullBluetooth.stopListening(); return }
         stopCapture()
     }
 
@@ -285,6 +668,7 @@ final class SessionManager {
     /// cancel control on the transcribing pill). Nothing is inserted or saved.
     func cancelProcessing() {
         guard state == .transcribing else { return }
+        pendingPocketReturns.removeAll()
         processingTask?.cancel()
         processingTask = nil
         // Invalidate the running task's generation so its unwind can't reset
@@ -297,10 +681,16 @@ final class SessionManager {
 
     /// Surface a self-dismissing HUD notice for a dropped capture. Guarded by
     /// generation so a stale pass can't flash a notice over a newer session.
-    private func presentNotice(_ rejection: TranscriptQuality.Rejection, generation: Int) {
+    /// A skull's audio that failed mid-recording explains a short or silent
+    /// partial better than the rejection does, so its reason stays up.
+    private func presentNotice(_ rejection: TranscriptQuality.Rejection, externalFailure: String? = nil, generation: Int) {
         guard generation == processingGeneration else { return }
-        print("[Session] Dropped capture: \(rejection.logReason)")
-        transientNotice = TransientNotice(message: rejection.userMessage)
+        print("[Session] Dropped capture: \(rejection.logReason)\(externalFailure.map { " (\($0))" } ?? "")")
+        if let externalFailure {
+            transientNotice = TransientNotice(message: externalFailure, sticky: true)
+        } else {
+            transientNotice = TransientNotice(message: rejection.userMessage)
+        }
     }
 
 
@@ -325,6 +715,7 @@ final class SessionManager {
         // must never survive into a new one; only the single-line tier
         // below re-asserts it.
         hudAnchorApproximate = false
+        hudPillTrailing = false
         guard let target else {
             stopAnchorTracking()
             hudPillPlacement = .bottomCenter
@@ -359,19 +750,27 @@ final class SessionManager {
         // the right field — seated at its top-leading corner, as a capsule,
         // never the pointer corner. Exact selection-start geometry still
         // wins wherever the app provides it (native fields, Mail).
-        let selectionEdge: CGRect? = target.hasSelection && target.frame.width > 0
+        //
+        // An EMPTY field opens the same tier for the same reason: with no
+        // text in it, the insertion point can only be the leading edge, so
+        // claiming the field claims the landing spot. This is the common
+        // "click into a fresh composer and talk" case in Chromium apps
+        // that expose no caret geometry for an empty editor.
+        let leadingEdgeHonest = target.hasSelection || target.isEmpty
+        let selectionEdge: CGRect? = leadingEdgeHonest && target.frame.width > 0
             ? CGRect(x: target.frame.minX + 4, y: target.frame.minY, width: 0, height: min(target.frame.height, 24))
             : nil
         let singleLineEdge = roleEdge ?? selectionEdge
         guard let caret = exactCaret ?? singleLineEdge else {
-            Self.placementLog.info("no caret → bottom-center (frame=\(NSStringFromRect(target.frame), privacy: .public))")
+            Self.placementLog.info("no caret → bottom-center (role=\(target.role, privacy: .public) frame=\(NSStringFromRect(target.frame), privacy: .public))")
             hudPillPlacement = .bottomCenter
             NotificationCenter.default.post(name: .hudReposition, object: nil)
             return
         }
         hudAnchorApproximate = (exactCaret == nil)
         if hudAnchorApproximate {
-            Self.placementLog.info("no caret, single-line field → leading-edge capsule (frame=\(NSStringFromRect(target.frame), privacy: .public))")
+            let why = roleEdge != nil ? "single-line" : (target.hasSelection ? "selection" : "empty")
+            Self.placementLog.info("no caret, \(why, privacy: .public) field → leading-edge capsule (frame=\(NSStringFromRect(target.frame), privacy: .public))")
         }
 
         // AX coordinates are global top-left; Cocoa windows are bottom-left,
@@ -396,6 +795,14 @@ final class SessionManager {
         // content sits at the window's left, inset by the content padding —
         // the padding exists so the glow can fade without clipping).
         var x = field.minX - HUDPlacement.contentPadding
+        // FIELD-REPORTED: near the right edge of the screen, clamping the
+        // fixed-width window shoved the pill left, so it sat over a word
+        // from the previous insertion instead of at the caret. Flip instead:
+        // seat the pill's trailing edge on the caret.
+        hudPillTrailing = x > visible.maxX - size.width
+        if hudPillTrailing {
+            x = field.minX + HUDPlacement.contentPadding - size.width
+        }
         x = min(max(x, visible.minX), visible.maxX - size.width)
 
         // The pill hovers just ABOVE the caret line (8px off its midline) —
@@ -428,10 +835,11 @@ final class SessionManager {
         }
         Self.placementLog.info("""
             caret placement: caretAX=\(NSStringFromRect(caret), privacy: .public) \
+            source=\(target.caretSource, privacy: .public) \
             fieldAX=\(NSStringFromRect(target.frame), privacy: .public) \
             flippedField=\(NSStringFromRect(field), privacy: .public) \
             visible=\(NSStringFromRect(visible), privacy: .public) \
-            placement=\(self.hudPillPlacement.rawValue, privacy: .public) \
+            placement=\(self.hudPillPlacement.rawValue, privacy: .public)\(self.hudPillTrailing ? "-trailing" : "", privacy: .public) \
             origin=\(NSStringFromPoint(origin), privacy: .public)
             """)
         NotificationCenter.default.post(
@@ -525,9 +933,16 @@ final class SessionManager {
         case (nil, nil):
             // No caret either side — but the FIELD may have moved (window
             // drag, composer reflow); keep the tracked identity fresh.
+            // The leading-edge tier switching on or off (a selection made,
+            // the field emptied) re-places too — while recording only: the
+            // paste itself fills an empty field, and the pill must not hop
+            // home in the beat before it fades.
             let old = hudAnchor?.frame ?? .zero
             let f = target.frame
-            if abs(f.minX - old.minX) > 1 || abs(f.minY - old.minY) > 1 ||
+            let tierChanged = state == .recording
+                && (hudAnchor?.isEmpty != target.isEmpty || hudAnchor?.hasSelection != target.hasSelection)
+            if tierChanged ||
+               abs(f.minX - old.minX) > 1 || abs(f.minY - old.minY) > 1 ||
                abs(f.width - old.width) > 1 || abs(f.height - old.height) > 1 {
                 setHUDAnchor(target)
             } else {
@@ -586,8 +1001,12 @@ final class SessionManager {
     private func startCapture() {
         elapsedSeconds = 0
         startedAt = Date()
-        transientNotice = nil
+        // The Accessibility warning was set a moment ago, for this dictation.
+        if transientNotice?.action != .openAccessibilitySettings { transientNotice = nil }
+        externalFailureReason = nil
         state = .recording
+        // A new dictation ends the last one's watch (keeping a finished fix).
+        correctionWatcher.stop()
 
         // Cleared BEFORE the capture below, never after — a reset placed
         // after the assignment is how this fix once shipped as dead code
@@ -611,21 +1030,24 @@ final class SessionManager {
                 ? AccessibilityCapture.focusedElementIdentity() : nil
         }
 
-        silentSeconds = 0
+        audioLevel = 0
         showSilenceWarning = false
         // .common run-loop mode: a default-mode timer stops ticking while a menu
         // is open or during drags — exactly when the user is pointing at things.
+        //
+        // FIELD-REPORTED: "No audio detected" on mics that were working. The
+        // warning used to fire after 10s of the pill's EQ reading zero — but
+        // the EQ is a display meter that reads zero below about -33 dBFS, so
+        // a thinking pause, a quiet room, a lapel mic at chest height, or a
+        // wireless receiver whose noise gate outputs silence between words
+        // all looked like a dead mic. The warning now means what it says:
+        // nothing usable has arrived since the key went down. Once the mic
+        // has proven itself, a quiet stretch is a pause. (A mic that dies
+        // MID-recording is the stall watchdog's job, in AudioCapture.)
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.elapsedSeconds += 1
-                if self.audioLevel < 0.001 {
-                    self.silentSeconds += 1
-                } else {
-                    self.silentSeconds = 0
-                    self.showSilenceWarning = false
-                }
-                self.showSilenceWarning = self.silentSeconds >= 10
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -650,14 +1072,72 @@ final class SessionManager {
                 self.transientNotice = nil
             }
         }
-        audioCapture.onLevelUpdate = { [weak self] level in
+        audioCapture.onDeviceChanged = { [weak self] name in
             Task { @MainActor [weak self] in
-                self?.audioLevel = level
+                guard let self, self.state == .recording else { return }
+                self.yorickMic.recordingMicName = name
+            }
+        }
+        let recordingStartedAt = startedAt
+        audioCapture.onMeterUpdate = { [weak self] reading in
+            Task { @MainActor [weak self] in
+                guard let self, self.state == .recording,
+                      self.startedAt == recordingStartedAt else { return }
+                self.audioLevel = reading.level
+                self.showSilenceWarning = reading.showSilenceWarning
             }
         }
 
+        // Busy Bluetooth audio (a call, or music to headphones) starves the
+        // skull's BLE audio (see BluetoothCallMonitor). Record from its USB
+        // mic instead when cabled.
+        var usbOverrideUID: String?
+        if skullSelected || miniSelected, let busy = BluetoothCallMonitor.busyBluetoothAudio() {
+            let skull = miniSelected ? "Skull Mini" : "Skull"
+            if let usb = BluetoothCallMonitor.skullUSBMicrophone(mini: miniSelected) {
+                Self.bluetoothCallLog.notice("\(busy.device, privacy: .public) \(busy.activity, privacy: .public); recording from \(usb.localizedName, privacy: .public) over USB")
+                usbOverrideUID = usb.uniqueID
+                transientNotice = TransientNotice(message: "Using the \(skull)’s USB mic while \(busy.device) is \(busy.activity)")
+            } else {
+                // No warning: the skull buffers through a busy radio and skips a
+                // moment only if it falls too far behind. A failure still says why.
+                Self.bluetoothCallLog.notice("\(busy.device, privacy: .public) \(busy.activity, privacy: .public); no \(skull, privacy: .public) USB mic, staying on BLE")
+            }
+        }
+        if skullSelected, usbOverrideUID == nil {
+            do {
+                audioFileURL = try audioCapture.startExternal(deviceName: SkullBluetoothProtocol.deviceName)
+                skullAudioActive = skullBluetooth.listen()
+                if !skullAudioActive { throw AudioCaptureError.noDevice }
+            } catch {
+                _ = audioCapture.stop(); skullAudioActive = false
+                recordingTimer?.invalidate(); recordingTimer = nil
+                state = .idle; transientNotice = TransientNotice(message: "Could not start the skull microphone")
+            }
+            return
+        }
+        if miniSelected, usbOverrideUID == nil {
+            do {
+                audioFileURL = try audioCapture.startExternal(deviceName: SkullMiniBluetoothProtocol.deviceName)
+                miniAudioActive = skullMiniBluetooth.listen()
+                if !miniAudioActive { throw AudioCaptureError.noDevice }
+            } catch {
+                _ = audioCapture.stop(); miniAudioActive = false
+                recordingTimer?.invalidate(); recordingTimer = nil
+                state = .idle; transientNotice = TransientNotice(message: "Could not start the skull microphone")
+            }
+            return
+        }
+        if pocketAudioActive {
+            do { audioFileURL = try audioCapture.startExternal() }
+            catch {
+                pocketAudioActive = false; recordingTimer?.invalidate(); recordingTimer = nil
+                state = .idle; transientNotice = TransientNotice(message: "Could not start pocket microphone recording")
+            }
+            return
+        }
         startTask = Task {
-            let deviceUID = microphoneManager.effectiveDeviceUID
+            let deviceUID = usbOverrideUID ?? microphoneManager.effectiveDeviceUID
 
             // Start audio capture
             do {
@@ -693,10 +1173,13 @@ final class SessionManager {
         recordingTimer?.invalidate()
         recordingTimer = nil
         audioLevel = 0
-        audioCapture.onLevelUpdate = nil
+        showSilenceWarning = false
+        audioCapture.onMeterUpdate = nil
         audioCapture.onAudioStalled = nil
         audioCapture.onAudioResumed = nil
         audioStallReason = nil
+        let externalFailure = externalFailureReason
+        externalFailureReason = nil
 
         let audioURL = audioCapture.stop()
         state = .transcribing
@@ -715,6 +1198,7 @@ final class SessionManager {
                 mode: mode,
                 modeWasForced: wasForced,
                 startConfidence: confidence,
+                externalFailure: externalFailure,
                 generation: generation
             )
         }
@@ -729,6 +1213,7 @@ final class SessionManager {
         mode: CaptureMode,
         modeWasForced: Bool,
         startConfidence: AccessibilityCapture.EditabilityDecision.Confidence,
+        externalFailure: String? = nil,
         generation: Int
     ) async {
         // Only the generation that still owns the session may reset state. A
@@ -737,6 +1222,7 @@ final class SessionManager {
             if generation == processingGeneration {
                 state = .idle
                 processingTask = nil
+                flushPocketReturns()
             }
         }
 
@@ -754,7 +1240,10 @@ final class SessionManager {
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int) ?? 0
         guard fileSize > 1000 else {
             print("[Session] Audio too small (\(fileSize) bytes), skipping")
-            presentNotice(.noAudio, generation: generation)
+            // Mic spin-up can take most of a second; a hold shorter than that
+            // never reaches the first buffer. That's a tap, not a dead mic —
+            // blaming the microphone for it was one source of false alarms.
+            presentNotice(duration < 2 ? .tooShort : .noAudio, externalFailure: externalFailure, generation: generation)
             return
         }
 
@@ -778,7 +1267,7 @@ final class SessionManager {
         // Silence gate: if the audio levels show no usable speech, don't even
         // transcribe — Whisper would hallucinate caption boilerplate from silence.
         if let rejection = TranscriptQuality.silenceRejection(audioDiagnostics) {
-            presentNotice(rejection, generation: generation)
+            presentNotice(rejection, externalFailure: externalFailure, generation: generation)
             return
         }
 
@@ -795,9 +1284,15 @@ final class SessionManager {
             // address) corrects transcription artifacts, so it applies to
             // every utterance — typed and saved alike. `spoken` survives for
             // the one field kind that must get the words untouched (secure).
-            let cleaned = SpokenFormNormalizer.normalize(spoken)
-            if cleaned != spoken {
+            let normalized = SpokenFormNormalizer.normalize(spoken)
+            if normalized != spoken {
                 print("[Session] Spoken-form normalization rewrote an address run")
+            }
+            // The user's vocabulary, applied the same on every engine:
+            // heard-as spellings ("weights") become their term ("Waits").
+            let cleaned = VocabularyCorrector.apply(normalized, entries: VocabularyDefaults.entries())
+            if cleaned != normalized {
+                print("[Session] Vocabulary corrected the transcript")
             }
 
             guard isLive() else { return }
@@ -820,7 +1315,7 @@ final class SessionManager {
                         duration: duration
                     )
                 } else {
-                    presentNotice(rejection, generation: generation)
+                    presentNotice(rejection, externalFailure: externalFailure, generation: generation)
                 }
                 return
             }
@@ -958,6 +1453,7 @@ final class SessionManager {
                     Self.insertTextAtCursor(shaped.outbound)
                     effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
                     print("[Session] Text inserted at cursor")
+                    if fieldProfile != .secure { correctionWatcher.watch(typed: shaped.outbound) }
                 } else if AccessibilityCapture.hasAnyFocusedElement() {
                     // Detection couldn't confirm a field, but SOMETHING is focused
                     // — almost always a text field we failed to classify. Trust the
@@ -967,6 +1463,7 @@ final class SessionManager {
                     Self.insertTextAtCursor(shaped.outbound)
                     effects.append(CaptureEffect(kind: .inserted, target: targetApp, timestamp: Date()))
                     print("[Session] Text pasted into unclassified focused element")
+                    if fieldProfile != .secure { correctionWatcher.watch(typed: shaped.outbound) }
                 } else {
                     // Nothing focused at all — genuine no-field. Keep it in the
                     // list, where every transcript already lives one Copy click away.
@@ -1170,10 +1667,13 @@ final class SessionManager {
         Task { [weak self] in
             do {
                 let result = try await TranscriptionService.transcribe(audioURL: audioURL)
-                let cleaned = result.transcript
-                    .replacingOccurrences(of: "\n", with: " ")
-                    .replacingOccurrences(of: "  ", with: " ")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let cleaned = VocabularyCorrector.apply(
+                    result.transcript
+                        .replacingOccurrences(of: "\n", with: " ")
+                        .replacingOccurrences(of: "  ", with: " ")
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                    entries: VocabularyDefaults.entries()
+                )
                 guard let self else { return }
                 guard let current = self.captureStore.captures.first(where: { $0.id == captureID }) else { return }
                 guard !cleaned.isEmpty else {

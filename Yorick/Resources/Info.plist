@@ -20,6 +20,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Yorick connects to your pocket microphone and desk skull for audio, buttons and the skull’s eyes.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Yorick connects to your pocket microphone and desk skull.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Yorick records your voice during capture sessions to transcribe and structure your feedback.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

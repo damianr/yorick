@@ -8,8 +8,9 @@ import AVFoundation
 /// faster than Whisper large-turbo — a speed-first engine for users on macOS 26.
 ///
 /// Tradeoffs vs the bundled Whisper model: comparable-but-slightly-lower accuracy
-/// (~Whisper small tier) and no custom-vocabulary biasing, so Whisper remains the
-/// accuracy-first default and the fallback when this is unavailable.
+/// (~Whisper small tier) and only a soft custom-vocabulary hint (contextual
+/// strings), so Whisper remains the accuracy-first engine and the fallback when
+/// this is unavailable. The vocabulary's heard-as rules apply after either.
 @available(macOS 26, *)
 enum AppleSpeechAnalyzer {
     private static let localeIdentifier = "en-US"
@@ -34,6 +35,18 @@ enum AppleSpeechAnalyzer {
         try await ensureModelInstalled(transcriber)
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        // The user's vocabulary as contextual strings: a bias, not a promise.
+        // Best-effort — a rejected context must never cost the transcript.
+        let terms = VocabularyDefaults.terms()
+        if !terms.isEmpty {
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = terms
+            do {
+                try await analyzer.setContext(context)
+            } catch {
+                print("[AppleSpeechAnalyzer] Vocabulary context rejected: \(error)")
+            }
+        }
         let audioFile = try AVAudioFile(forReading: audioURL)
 
         // Consume the results stream concurrently with analysis.
