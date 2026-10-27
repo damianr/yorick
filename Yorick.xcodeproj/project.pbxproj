@@ -18,6 +18,7 @@
 		2CE4AE8B030860497686310F /* SettingsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 859E8929146915671C486F14 /* SettingsSnapshot.swift */; };
 		2E2AFAFEEFD172F632EA9E32 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFDADD63A711A33CB1DAFC49 /* Theme.swift */; };
 		2FC5F1FC0DC65498658B1990 /* AudioVisualLevelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEE4934B44F68520BF425C42 /* AudioVisualLevelTests.swift */; };
+		304FFDACE9B42FDB53C68913 /* OpusPacketDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8545E6245D6DB5FB288997A /* OpusPacketDecoder.swift */; };
 		3117D6647D38ABAB63086A44 /* Vocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B905E97C0FC76543073E0A /* Vocabulary.swift */; };
 		32890F0C1006CF59564E6EBD /* PocketBluetoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F8410FF402D7C071A45DF71 /* PocketBluetoothProtocol.swift */; };
 		341CCEF224DBB126D2ACE707 /* CaptureCardBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF0F174F400DAA6E1AA0200E /* CaptureCardBody.swift */; };
@@ -39,6 +40,7 @@
 		59BA1D0795401D4E78FA1847 /* AccessibilityCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576DB3CE3E387E87C108D6A9 /* AccessibilityCapture.swift */; };
 		5A0A92D6292E2EBDD687E571 /* HUDContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AD999AF3A2983F6D044382B /* HUDContentView.swift */; };
 		5C6C55EBB6222F84BC08017E /* WhisperServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E650E2D930F26266A7838BE /* WhisperServer.swift */; };
+		5F9B630C809661F1AA2B6EE1 /* OpusPacketDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8545E6245D6DB5FB288997A /* OpusPacketDecoder.swift */; };
 		6007E64A5E39615DD61BF4AD /* HUDWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC33F800989734476CB1D6D /* HUDWindow.swift */; };
 		65017F96F7948C7BFB4CD085 /* SkullMiniBluetoothProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461EB5AD18897C780920A50D /* SkullMiniBluetoothProtocol.swift */; };
 		66634CA1A9E415F67CA28866 /* DeviceBattery.swift in Sources */ = {isa = PBXBuildFile; fileRef = C443E460B16B7BE4160D4026 /* DeviceBattery.swift */; };
@@ -75,6 +77,7 @@
 		BFD3A14CCF783E94615CDD3E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 843C685747358500698D6BA3 /* Sparkle */; };
 		C37632F74592629D5A6EB8A1 /* FocusClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDBF384BCCFCABF4918D0DB7 /* FocusClassifierTests.swift */; };
 		C414989B98612864508934B1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 43BE47F86B9BB05696F03D32 /* Assets.xcassets */; };
+		C518802607EC75FE7E5F21F5 /* OpusFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F1D6736F4446DD0E05392CE /* OpusFrameTests.swift */; };
 		C51B26F837994AF4ADB8AF4E /* YorickMicSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3324578525B5871A3348A0 /* YorickMicSettingsView.swift */; };
 		C613A4D66858655E5F98A1D8 /* TranscriptQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232F5B10D1C9FAE986C7C864 /* TranscriptQuality.swift */; };
 		C98F3DCBAAC0162408A1B609 /* PasteboardLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0B5304D771605BC1F26353E /* PasteboardLease.swift */; };
@@ -110,6 +113,7 @@
 		04445CD4EC91A6F127B5A67C /* CaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStore.swift; sourceTree = "<group>"; };
 		0979581E9EFC6EBE464219A1 /* SessionUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionUploader.swift; sourceTree = "<group>"; };
 		0CA03E957CFFE9F00D5351B5 /* CaptureListComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureListComponents.swift; sourceTree = "<group>"; };
+		0F1D6736F4446DD0E05392CE /* OpusFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpusFrameTests.swift; sourceTree = "<group>"; };
 		1276438ACBDE805AE73A96D8 /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 		1644B703BCDFB773ED233BB4 /* AppPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPaths.swift; sourceTree = "<group>"; };
 		1A281AE9455EFE0250E48405 /* OnboardingKeyboardMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingKeyboardMap.swift; sourceTree = "<group>"; };
@@ -185,6 +189,7 @@
 		DC5D45E53DCBF0E30B307567 /* FocusClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusClassifier.swift; sourceTree = "<group>"; };
 		DEE4934B44F68520BF425C42 /* AudioVisualLevelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioVisualLevelTests.swift; sourceTree = "<group>"; };
 		E5E2B480CE59CB88AEAF9F12 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E8545E6245D6DB5FB288997A /* OpusPacketDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpusPacketDecoder.swift; sourceTree = "<group>"; };
 		F02F75CEFEF5B2C3CB857014 /* AudioInputMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputMeter.swift; sourceTree = "<group>"; };
 		F5F87DAB8FBCF6EC788ABBBC /* FieldProfiler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldProfiler.swift; sourceTree = "<group>"; };
 		FB8F71B3FB8F2A899FA8638B /* YorickApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YorickApp.swift; sourceTree = "<group>"; };
@@ -308,6 +313,7 @@
 				6656895E5E06034C360BDF4F /* DeviceBatteryTests.swift */,
 				604E13BD5B2496A065F0E795 /* FieldProfilerTests.swift */,
 				FDBF384BCCFCABF4918D0DB7 /* FocusClassifierTests.swift */,
+				0F1D6736F4446DD0E05392CE /* OpusFrameTests.swift */,
 				A98849F80C512E14B57DDFF7 /* PocketBluetoothProtocolTests.swift */,
 				90791D5CA2974A1236A58247 /* SkullBluetoothProtocolTests.swift */,
 				88396C37B1B801CE55743F3B /* SkullMiniTests.swift */,
@@ -368,6 +374,7 @@
 				1276438ACBDE805AE73A96D8 /* HotkeyManager.swift */,
 				86D3C0B62573CB6B00A999CE /* LoginItem.swift */,
 				2D53E6F316AA44D92EEC4710 /* MicrophoneManager.swift */,
+				E8545E6245D6DB5FB288997A /* OpusPacketDecoder.swift */,
 				C405F3C57FEC1B608D64405A /* PocketBluetoothController.swift */,
 				6F8410FF402D7C071A45DF71 /* PocketBluetoothProtocol.swift */,
 				88C6BDF2913B4E9D9E47D81D /* SkullBluetoothController.swift */,
@@ -497,6 +504,8 @@
 				88A8555B35995E7A2FBB83EC /* FieldProfilerTests.swift in Sources */,
 				B126E650385A2E63BA4A7532 /* FocusClassifier.swift in Sources */,
 				C37632F74592629D5A6EB8A1 /* FocusClassifierTests.swift in Sources */,
+				C518802607EC75FE7E5F21F5 /* OpusFrameTests.swift in Sources */,
+				304FFDACE9B42FDB53C68913 /* OpusPacketDecoder.swift in Sources */,
 				521D33F72B63D3C30E01A4A8 /* PocketBluetoothProtocol.swift in Sources */,
 				3440F8A26977D041B255929B /* PocketBluetoothProtocolTests.swift in Sources */,
 				68EF0A84480DD73E02A1128A /* SkullBluetoothProtocol.swift in Sources */,
@@ -556,6 +565,7 @@
 				FBBC63DD1A56828A26A19364 /* NotificationManager.swift in Sources */,
 				7F369EA3D7469110B47F9B41 /* OnboardingKeyboardMap.swift in Sources */,
 				A957EB88DFD7D005E9D45C79 /* OnboardingView.swift in Sources */,
+				5F9B630C809661F1AA2B6EE1 /* OpusPacketDecoder.swift in Sources */,
 				C98F3DCBAAC0162408A1B609 /* PasteboardLease.swift in Sources */,
 				3562FED63C9A3DC764E2406B /* PocketBluetoothController.swift in Sources */,
 				32890F0C1006CF59564E6EBD /* PocketBluetoothProtocol.swift in Sources */,

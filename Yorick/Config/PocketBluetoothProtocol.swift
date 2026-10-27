@@ -60,6 +60,9 @@ enum PocketBluetoothProtocol {
             }
             samples = result
         }
+        init(session: UInt32, sequence: UInt32, offset: UInt32, samples: [Int16]) {
+            self.session = session; self.sequence = sequence; self.offset = offset; self.samples = samples
+        }
     }
     struct Assembler {
         var session: UInt32
@@ -73,6 +76,33 @@ enum PocketBluetoothProtocol {
             expectedOffset = frame.offset + UInt32(frame.samples.count)
             frames += 1; missingSamples += gap
             return [Int16](repeating: 0, count: gap) + frame.samples
+        }
+    }
+    /// The skulls' Opus frame (format 0xA2): the same session, sequence and
+    /// sample offset as an ADPCM frame, then one 20 ms Opus packet. `count`
+    /// is under 320 only for the last, zero-padded frame of a session.
+    struct OpusFrame {
+        let session: UInt32
+        let sequence: UInt32
+        let offset: UInt32
+        let count: Int
+        let packet: Data
+        init?(_ data: Data) {
+            let b = Array(data)
+            guard b.count > 16, b[0] == 1, b[1] == 0xA2 else { return nil }
+            count = Int(b[2]) | Int(b[3]) << 8
+            guard (1...OpusPacketDecoder.samplesPerPacket).contains(count) else { return nil }
+            session = u32(b, 4); sequence = u32(b, 8); offset = u32(b, 12)
+            guard offset <= 4_800_000 else { return nil }
+            packet = data.subdata(in: data.startIndex + 16 ..< data.endIndex)
+        }
+        /// Decoded to exactly `count` samples, so offsets stay exact even
+        /// when the codec's first packet comes out a little short.
+        func frame(_ decoder: OpusPacketDecoder) -> Frame? {
+            guard let pcm = decoder.decode(packet) else { return nil }
+            var samples = Array(pcm.prefix(count))
+            if samples.count < count { samples += [Int16](repeating: 0, count: count - samples.count) }
+            return Frame(session: session, sequence: sequence, offset: offset, samples: samples)
         }
     }
     static func command(_ operation: UInt8) -> Data {

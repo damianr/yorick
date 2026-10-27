@@ -37,6 +37,8 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     private var stopTarget: UInt32?
     private var stopDeadline: Date?
     private var stopRequestedAt: Date?
+    /// Current skull firmware sends Opus; older firmware, 4-bit ADPCM.
+    private let opusDecoder = OpusPacketDecoder()
     private var lastAudio = Date.distantPast
     private var reconnectAfter = Date.distantPast
     private var batteryCharacteristics: [CBCharacteristic] = []
@@ -68,7 +70,7 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     func listen() -> Bool {
         guard connected, assembler == nil else { return false }
         session = session &+ 1 == 0 ? 1 : session &+ 1
-        assembler = .init(session: session); stopTarget = nil; stopDeadline = nil
+        assembler = .init(session: session); stopTarget = nil; stopDeadline = nil; opusDecoder?.reset()
         receivedFrames = 0; missingSamples = 0; lastAudio = Date()
         write(SkullBluetoothProtocol.listen(session), reliable: true)
         log.notice("listen session=\(self.session)")
@@ -185,7 +187,16 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
         }
     }
     private func handleAudio(_ data: Data) {
-        guard let f = PocketBluetoothProtocol.Frame(data), var a = assembler, let samples = a.accept(f) else { return }
+        guard var a = assembler else { return }
+        let frame: PocketBluetoothProtocol.Frame?
+        if let opus = PocketBluetoothProtocol.OpusFrame(data) {
+            // Opus decoding carries state from packet to packet: only this session's.
+            guard opus.session == a.session, let opusDecoder else { return }
+            frame = opus.frame(opusDecoder)
+        } else {
+            frame = PocketBluetoothProtocol.Frame(data)
+        }
+        guard let frame, let samples = a.accept(frame) else { return }
         assembler = a; receivedFrames = a.frames; missingSamples = a.missingSamples
         lastAudio = Date(); onSamples?(samples)
         if let target = stopTarget, a.expectedOffset >= target { finish() }
