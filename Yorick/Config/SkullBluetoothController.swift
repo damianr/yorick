@@ -250,6 +250,7 @@ extension SkullBluetoothController: @preconcurrency CBCentralManagerDelegate, @p
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         guard peripheral.identifier == self.peripheral?.identifier else { central.cancelPeripheralConnection(peripheral); return }
         central.stopScan(); standby = nil
+        log.notice("link up \(peripheral.name ?? "unnamed", privacy: .public)")
         status = "Preparing encrypted connection…"
         peripheral.discoverServices([CBUUID(string: SkullBluetoothProtocol.service), DeviceBattery.service])
     }
@@ -299,9 +300,13 @@ extension SkullBluetoothController: @preconcurrency CBCentralManagerDelegate, @p
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         if batteryCharacteristics.contains(characteristic) { return }
-        guard error == nil else { status = "Bluetooth pairing or subscription failed"; return }
+        guard error == nil else {
+            log.error("subscribe failed: \(error?.localizedDescription ?? "", privacy: .public)")
+            status = "Bluetooth pairing or subscription failed"; return
+        }
         if audio?.isNotifying == true, replies?.isNotifying == true, !connected {
             connected = true; status = "Connected"; allowNew = false
+            log.notice("connected \(peripheral.name ?? "unnamed", privacy: .public)")
             UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: Self.savedPeer)
             onConnectionChanged?(true)
         }
