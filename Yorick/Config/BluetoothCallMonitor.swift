@@ -57,8 +57,11 @@ enum BluetoothCallMonitor {
     /// What the pill says when the skull's BLE audio failed. With Bluetooth
     /// audio busy, the raw reason ("buffer overflowed") is replaced by the
     /// cause and the fix.
-    static func failureMessage(_ reason: String, busy: BusyAudio?) -> String {
+    static func failureMessage(_ reason: String, busy: BusyAudio?, supportsUSBMicrophone: Bool = true) -> String {
         guard let busy else { return reason }
+        if !supportsUSBMicrophone {
+            return "Skull audio couldn’t keep up while \(busy.device) was \(busy.activity) over Bluetooth. This MG24 skull doesn’t support USB audio. Try another microphone in Yorick for now."
+        }
         let fix = busy.call ? "end the call" : "pause the audio"
         return "Skull audio couldn’t keep up because \(busy.device) is \(busy.activity) over Bluetooth. Plug in the skull’s USB cable, or \(fix)."
     }

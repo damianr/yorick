@@ -81,7 +81,7 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     func stopListening() {
         guard assembler != nil, stopDeadline == nil else { return }
         write(SkullBluetoothProtocol.stopListening, reliable: true)
-        stopDeadline = Date().addingTimeInterval(0.8); stopRequestedAt = Date()
+        stopDeadline = Date().addingTimeInterval(2.0); stopRequestedAt = Date()
     }
 
     private func finish() {
@@ -103,6 +103,10 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     // MARK: YorickEyeLink
 
     var isLinkReady: Bool { connected }
+    // MG24 exposes a USB debug/serial bridge, not a USB Audio Class microphone.
+    var supportsUSBMicrophone: Bool {
+        !(peripheral?.name?.localizedCaseInsensitiveContains("MG24") ?? false)
+    }
     func sendEyeLine(_ line: String) {
         // STATE is a 10 Hz latest-value stream; everything else must arrive.
         write(line, reliable: !line.hasPrefix("YORICK STATE "))

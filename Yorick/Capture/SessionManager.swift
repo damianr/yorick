@@ -201,7 +201,7 @@ final class SessionManager {
     /// A skull's BLE audio failed. Its onStop runs right after and finalizes
     /// the partial, so the reason is kept for that processing pass.
     private func skullAudioFailed(_ reason: String) {
-        let message = BluetoothCallMonitor.failureMessage(reason, busy: BluetoothCallMonitor.busyBluetoothAudio())
+        let message = BluetoothCallMonitor.failureMessage(reason, busy: BluetoothCallMonitor.busyBluetoothAudio(), supportsUSBMicrophone: miniSelected || skullBluetooth.supportsUSBMicrophone)
         if state == .recording { externalFailureReason = message }
         transientNotice = TransientNotice(message: message, sticky: true)
     }
@@ -1094,7 +1094,7 @@ final class SessionManager {
         var usbOverrideUID: String?
         if skullSelected || miniSelected, let busy = BluetoothCallMonitor.busyBluetoothAudio() {
             let skull = miniSelected ? "Skull Mini" : "Skull"
-            if let usb = BluetoothCallMonitor.skullUSBMicrophone(mini: miniSelected) {
+            if miniSelected || skullBluetooth.supportsUSBMicrophone, let usb = BluetoothCallMonitor.skullUSBMicrophone(mini: miniSelected) {
                 Self.bluetoothCallLog.notice("\(busy.device, privacy: .public) \(busy.activity, privacy: .public); recording from \(usb.localizedName, privacy: .public) over USB")
                 usbOverrideUID = usb.uniqueID
                 transientNotice = TransientNotice(message: "Using the \(skull)’s USB mic while \(busy.device) is \(busy.activity)")
