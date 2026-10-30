@@ -66,3 +66,38 @@ struct SkullButtonState {
         return (down == next ? nil : next, delta <= 8 ? Int(delta) : 0)
     }
 }
+
+/// Every skull of one model that's switched on near this Mac, each its own
+/// device. Same-model skulls share one GATT service; CoreBluetooth's
+/// identifier for each (stable on this Mac) tells them apart, so the firmware
+/// needs no serial number.
+struct BluetoothUnits: Equatable {
+    struct Unit: Identifiable, Equatable {
+        let id: UUID
+        var name: String
+        var seenAt: Date
+    }
+    private(set) var all: [Unit] = []
+    /// A skull advertises every 100 ms while on; a rescan every 10 s refreshes it.
+    static let forgetAfter: TimeInterval = 25
+
+    mutating func saw(_ id: UUID, name: String?, at now: Date = Date()) {
+        if let i = all.firstIndex(where: { $0.id == id }) {
+            all[i].seenAt = now
+            if let name, !name.isEmpty { all[i].name = name }
+        } else {
+            all.append(Unit(id: id, name: name.flatMap { $0.isEmpty ? nil : $0 } ?? "Yorick Skull", seenAt: now))
+            all.sort { ($0.name, $0.id.uuidString) < ($1.name, $1.id.uuidString) }
+        }
+    }
+
+    /// A connected skull stops advertising, so the linked one is always kept.
+    mutating func expire(keeping linked: UUID?, at now: Date = Date()) {
+        all.removeAll { $0.id != linked && now.timeIntervalSince($0.seenAt) > Self.forgetAfter }
+    }
+
+    /// Two skulls with the same firmware name get a short suffix to tell apart.
+    func label(_ unit: Unit) -> String {
+        all.filter { $0.name == unit.name }.count > 1 ? "\(unit.name) · \(unit.id.uuidString.prefix(4))" : unit.name
+    }
+}

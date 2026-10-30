@@ -241,6 +241,14 @@ final class SessionManager {
         if miniSelected { skullMiniBluetooth.start(pairNew: !SkullMiniBluetoothController.isPaired) }
     }
 
+    /// Use one particular skull: Settings lists every skull that's on.
+    func useSkullBluetooth(unit: UUID) {
+        configureSkullBluetooth(); skullBluetooth.use(unit); connectSkullBluetooth()
+    }
+    func useSkullMiniBluetooth(unit: UUID) {
+        configureSkullMiniBluetooth(); skullMiniBluetooth.use(unit); connectSkullMiniBluetooth()
+    }
+
     func connectSkullMiniBluetooth() {
         configureSkullMiniBluetooth()
         microphoneManager.selectedDeviceUID = SkullMiniBluetoothProtocol.deviceUID

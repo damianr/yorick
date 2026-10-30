@@ -87,7 +87,14 @@ struct YorickDevicesView: View {
                 introCard
                 #endif
             } else {
-                ForEach(listed) { deviceRow($0) }
+                ForEach(listed) { device in
+                    let units = self.units(device)
+                    if units.isEmpty {
+                        deviceRow(device)
+                    } else {
+                        ForEach(units) { deviceRow(device, unit: $0) }
+                    }
+                }
                 #if YORICK_HARDWARE_LAB
                 if choosing {
                     picker
@@ -190,9 +197,25 @@ struct YorickDevicesView: View {
         }
     }
 
-    private func deviceRow(_ device: Device) -> some View {
-        let connected = isConnected(device)
-        let inUse = isInUse(device)
+    /// Every skull of this model that's on, one row each. The Pocket and a
+    /// wired skull keep a single row.
+    private func units(_ device: Device) -> [BluetoothUnits.Unit] {
+        switch device {
+        case .pocket: return []
+        case .mini: return session.skullMiniBluetooth.units.all
+        case .skull: return skullInput != nil && !isInUse(.skull) ? [] : session.skullBluetooth.units.all
+        }
+    }
+
+    private func linkedID(_ device: Device) -> UUID? {
+        device == .mini ? session.skullMiniBluetooth.linkedID : device == .skull ? session.skullBluetooth.linkedID : nil
+    }
+
+    private func deviceRow(_ device: Device, unit: BluetoothUnits.Unit? = nil) -> some View {
+        let linked = unit == nil || unit?.id == linkedID(device)
+        let connected = linked && isConnected(device)
+        let inUse = linked && isInUse(device)
+        let name = unit.map { (device == .mini ? session.skullMiniBluetooth.units : session.skullBluetooth.units).label($0) } ?? device.name
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: device.symbol)
@@ -200,10 +223,10 @@ struct YorickDevicesView: View {
                     .foregroundStyle(connected ? Theme.bone : Theme.textTertiary)
                     .frame(width: 18)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(device.name)
+                    Text(name)
                         .font(Theme.mono(11.5))
                         .foregroundStyle(Theme.textPrimary)
-                    Text(statusText(device))
+                    Text(linked ? statusText(device) : "On")
                         .font(Theme.mono(9))
                         .foregroundStyle(connected ? Theme.success : Theme.textTertiary)
                 }
@@ -219,8 +242,8 @@ struct YorickDevicesView: View {
                         .padding(.vertical, 3)
                         .overlay(Capsule().stroke(Theme.bone.opacity(0.35), lineWidth: 1))
                 } else {
-                    Button { use(device) } label: {
-                        Text(!connected ? "Reconnect" : "Use")
+                    Button { use(device, unit: unit?.id) } label: {
+                        Text(!connected && linked ? "Reconnect" : "Use")
                             .font(Theme.mono(9.5))
                             .foregroundStyle(Theme.textSecondary)
                             .padding(.horizontal, 11)
@@ -281,16 +304,17 @@ struct YorickDevicesView: View {
     }
 
     /// Picking a device also makes it the recording input.
-    private func use(_ device: Device) {
+    private func use(_ device: Device, unit: UUID? = nil) {
         switch device {
         case .mini:
-            session.connectSkullMiniBluetooth(); choosing = false
+            if let unit { session.useSkullMiniBluetooth(unit: unit) } else { session.connectSkullMiniBluetooth() }
+            choosing = false
         case .pocket:
             session.connectPocketBluetooth()
         case .skull:
             // Bluetooth is the skull's own link. A wired skull stays available
             // in the microphone picker.
-            session.connectSkullBluetooth()
+            if let unit { session.useSkullBluetooth(unit: unit) } else { session.connectSkullBluetooth() }
         }
     }
 }
