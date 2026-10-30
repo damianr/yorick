@@ -113,15 +113,25 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
         log.notice("session complete frames=\(a.frames) missingSamples=\(a.missingSamples) samples=\(a.expectedOffset)")
         assembler = nil; stopTarget = nil; stopDeadline = nil
         onStop?()
+        if a.frames == 0 { relink() }
+    }
+    /// Not one frame for a whole session: the link is wedged (seen on the MG24
+    /// after long dictations with music, where macOS took ~20 s to drop it).
+    /// Reconnecting takes about a second.
+    private func relink() {
+        guard let p = peripheral, p.state == .connected else { return }
+        log.error("no audio for a whole session; reconnecting")
+        central?.cancelPeripheralConnection(p)
     }
     private func fail(_ reason: String) {
         log.error("\(reason, privacy: .public)")
-        let had = assembler != nil
+        let had = assembler != nil, silent = assembler?.frames == 0
         assembler = nil; stopTarget = nil; stopDeadline = nil
         // Reason first: onStop finalizes the partial recording, and its
         // processing must know why it's short instead of blaming the mic.
         onFailure?(reason)
         if had { onStop?() }
+        if silent { relink() }
     }
 
     // MARK: YorickEyeLink
