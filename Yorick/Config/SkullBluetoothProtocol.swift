@@ -78,8 +78,8 @@ struct BluetoothUnits: Equatable {
         var seenAt: Date
     }
     private(set) var all: [Unit] = []
-    /// A skull advertises every 100 ms while on; a rescan every 10 s refreshes it.
-    static let forgetAfter: TimeInterval = 25
+    /// Yorick rescans every 20 s while linked, so a skull missing for two rounds is off.
+    static let forgetAfter: TimeInterval = 45
 
     mutating func saw(_ id: UUID, name: String?, at now: Date = Date()) {
         if let i = all.firstIndex(where: { $0.id == id }) {

@@ -49,6 +49,7 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     /// Every skull of this model that's on, for one Settings row each.
     private(set) var units = BluetoothUnits()
     private var rescanAt = Date.distantPast
+    private var scanStopAt = Date.distantPast
     /// A skull picked with Use is retried, not swapped for another, for this long.
     private var chosenUntil = Date.distantPast
     /// The skull this controller is linked to, or connecting to.
@@ -209,9 +210,13 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
                 status = "Waiting for the skull. Is it on?"
             }
         }
-        if wanted, central?.state == .poweredOn, Date() >= rescanAt {
+        // Scanning takes radio time from every Bluetooth link on the Mac, which
+        // with music playing is already short. So while linked, look for other
+        // skulls in 2 s bursts every 20 s, and never during a recording.
+        if central?.isScanning == true, connected, assembler != nil || Date() >= scanStopAt { central?.stopScan() }
+        if wanted, central?.state == .poweredOn, Date() >= rescanAt, assembler == nil {
+            rescanAt = Date().addingTimeInterval(connected ? 20 : 10); scanStopAt = Date().addingTimeInterval(2)
             // Duplicates are filtered within a scan, so restart it to refresh which are on.
-            rescanAt = Date().addingTimeInterval(10)
             central?.stopScan(); central?.scanForPeripherals(withServices: [CBUUID(string: SkullBluetoothProtocol.service)])
             units.expire(keeping: peripheral?.identifier)
         }
