@@ -49,6 +49,8 @@ final class SkullMiniBluetoothController: NSObject, YorickEyeLink {
     /// Every skull of this model that's on, for one Settings row each.
     private(set) var units = BluetoothUnits()
     private var rescanAt = Date.distantPast
+    /// A skull picked with Use is retried, not swapped for another, for this long.
+    private var chosenUntil = Date.distantPast
     /// The skull this controller is linked to, or connecting to.
     var linkedID: UUID? { peripheral?.identifier }
     private var batteryCharacteristics: [CBCharacteristic] = []
@@ -74,6 +76,7 @@ final class SkullMiniBluetoothController: NSObject, YorickEyeLink {
     /// Switch to one particular skull of this model.
     func use(_ id: UUID) {
         UserDefaults.standard.set(id.uuidString, forKey: Self.savedPeer)
+        chosenUntil = Date().addingTimeInterval(30)
         guard peripheral?.identifier != id else { start(); return }
         if let old = peripheral {
             dropLink(); central?.cancelPeripheralConnection(old)
@@ -182,7 +185,7 @@ final class SkullMiniBluetoothController: NSObject, YorickEyeLink {
         }
         if let pending = peripheral, !connected, pending.state != .connected,
            Date().timeIntervalSince(connectingSince) > 4 {
-            if let other = standby, other.identifier != pending.identifier {
+            if let other = standby, other.identifier != pending.identifier, Date() >= chosenUntil {
                 log.notice("remembered skull not answering; connecting to another")
                 central?.cancelPeripheralConnection(pending)
                 peripheral = other; other.delegate = self; standby = nil
@@ -272,7 +275,9 @@ extension SkullMiniBluetoothController: @preconcurrency CBCentralManagerDelegate
             if !connected, pending.identifier != peripheral.identifier { standby = peripheral }
             return
         }
-        guard allowNew else { return }
+        // Between retries of the remembered skull, don't grab whichever is advertising.
+        let saved = UserDefaults.standard.string(forKey: Self.savedPeer)
+        guard allowNew, saved == nil || saved == peripheral.identifier.uuidString else { return }
         self.peripheral = peripheral; peripheral.delegate = self
         connectingSince = Date(); status = "Connecting…"; central.connect(peripheral)
     }
