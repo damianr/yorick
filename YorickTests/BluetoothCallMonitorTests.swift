@@ -15,6 +15,15 @@ final class BluetoothCallMonitorTests: XCTestCase {
         XCTAssertFalse(message.contains("overflowed"))
     }
 
+    func testMG24DoesNotSuggestAnUnsupportedUSBAudioConnection() {
+        let busy = BluetoothCallMonitor.BusyAudio(device: "AirPods Max", call: true)
+        let message = BluetoothCallMonitor.failureMessage("overflow", busy: busy, supportsUSBMicrophone: false)
+        XCTAssertTrue(message.contains("doesn’t support USB audio"))
+        XCTAssertTrue(message.contains("another microphone in Yorick"))
+        XCTAssertFalse(message.contains("USB cable"))
+        XCTAssertFalse(message.contains("end the call"))
+    }
+
     func testFailureDuringMusicSaysToPauseIt() {
         let busy = BluetoothCallMonitor.BusyAudio(device: "AirPods Max", call: false)
         let message = BluetoothCallMonitor.failureMessage("Skull audio buffer overflowed", busy: busy)

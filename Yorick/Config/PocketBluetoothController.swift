@@ -29,6 +29,8 @@ final class PocketBluetoothController: NSObject {
     private var allowNew = false
     private var armed = false
     private var assembler: PocketBluetoothProtocol.Assembler?
+    /// Opus firmware (format 0xA2, as the skulls send); older firmware sends ADPCM.
+    private let opusDecoder = OpusPacketDecoder()
     private var stopTarget: UInt32?
     private var stopDeadline: Date?
     private var lastAudio = Date.distantPast
@@ -131,7 +133,7 @@ final class PocketBluetoothController: NSObject {
             guard isSelected?() == true, assembler == nil, onStart?() == true else {
                 accepted = false; break
             }
-            assembler = .init(session: e.session); receivedFrames = 0; missingSamples = 0
+            assembler = .init(session: e.session); receivedFrames = 0; missingSamples = 0; opusDecoder?.reset()
             lastAudio = Date(); log.notice("talk start session=\(e.session)")
         case 2:
             if assembler?.session == e.session {
@@ -151,7 +153,16 @@ final class PocketBluetoothController: NSObject {
         send(e.acknowledgment(accepted: accepted))
     }
     private func handleAudio(_ data: Data) {
-        guard let f = PocketBluetoothProtocol.Frame(data), var a = assembler else { rejectedFrames += 1; return }
+        guard var a = assembler else { rejectedFrames += 1; return }
+        let frame: PocketBluetoothProtocol.Frame?
+        if let opus = PocketBluetoothProtocol.OpusFrame(data) {
+            // Opus decoding carries state from packet to packet: only this session's.
+            guard opus.session == a.session, let opusDecoder else { rejectedFrames += 1; return }
+            frame = opus.frame(opusDecoder)
+        } else {
+            frame = PocketBluetoothProtocol.Frame(data)
+        }
+        guard let f = frame else { rejectedFrames += 1; return }
         guard let samples = a.accept(f) else { rejectedFrames += 1; return }
         assembler = a; receivedFrames = a.frames; missingSamples = a.missingSamples
         lastAudio = Date(); onSamples?(samples)

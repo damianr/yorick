@@ -41,6 +41,19 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     private let opusDecoder = OpusPacketDecoder()
     private var lastAudio = Date.distantPast
     private var reconnectAfter = Date.distantPast
+    /// When the pending connect began. CoreBluetooth never times one out.
+    private var connectingSince = Date.distantPast
+    /// Another skull of this model seen advertising while the remembered one
+    /// hasn't answered (it's switched off, or it's the other board).
+    private var standby: CBPeripheral?
+    /// Every skull of this model that's on, for one Settings row each.
+    private(set) var units = BluetoothUnits()
+    private var rescanAt = Date.distantPast
+    private var scanStopAt = Date.distantPast
+    /// A skull picked with Use is retried, not swapped for another, for this long.
+    private var chosenUntil = Date.distantPast
+    /// The skull this controller is linked to, or connecting to.
+    var linkedID: UUID? { peripheral?.identifier }
     private var batteryCharacteristics: [CBCharacteristic] = []
     private var batteryReadAt = Date.distantPast
     private var eyeLines: [String] = []
@@ -60,6 +73,18 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
         } else { connectIfPossible() }
     }
     func restoreIfConfigured() { if Self.isPaired { start() } }
+
+    /// Switch to one particular skull of this model.
+    func use(_ id: UUID) {
+        UserDefaults.standard.set(id.uuidString, forKey: Self.savedPeer)
+        chosenUntil = Date().addingTimeInterval(30)
+        guard peripheral?.identifier != id else { start(); return }
+        if let old = peripheral {
+            dropLink(); central?.cancelPeripheralConnection(old)
+            log.notice("switching to \(self.units.all.first { $0.id == id }?.name ?? "another skull", privacy: .public)")
+        }
+        start()
+    }
 
     // MARK: Listening sessions
 
@@ -81,7 +106,7 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
     func stopListening() {
         guard assembler != nil, stopDeadline == nil else { return }
         write(SkullBluetoothProtocol.stopListening, reliable: true)
-        stopDeadline = Date().addingTimeInterval(0.8); stopRequestedAt = Date()
+        stopDeadline = Date().addingTimeInterval(2.0); stopRequestedAt = Date()
     }
 
     private func finish() {
@@ -89,20 +114,34 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
         log.notice("session complete frames=\(a.frames) missingSamples=\(a.missingSamples) samples=\(a.expectedOffset)")
         assembler = nil; stopTarget = nil; stopDeadline = nil
         onStop?()
+        if a.frames == 0 { relink() }
+    }
+    /// Not one frame for a whole session: the link is wedged (seen on the MG24
+    /// after long dictations with music, where macOS took ~20 s to drop it).
+    /// Reconnecting takes about a second.
+    private func relink() {
+        guard let p = peripheral, p.state == .connected else { return }
+        log.error("no audio for a whole session; reconnecting")
+        central?.cancelPeripheralConnection(p)
     }
     private func fail(_ reason: String) {
         log.error("\(reason, privacy: .public)")
-        let had = assembler != nil
+        let had = assembler != nil, silent = assembler?.frames == 0
         assembler = nil; stopTarget = nil; stopDeadline = nil
         // Reason first: onStop finalizes the partial recording, and its
         // processing must know why it's short instead of blaming the mic.
         onFailure?(reason)
         if had { onStop?() }
+        if silent { relink() }
     }
 
     // MARK: YorickEyeLink
 
     var isLinkReady: Bool { connected }
+    // MG24 exposes a USB debug/serial bridge, not a USB Audio Class microphone.
+    var supportsUSBMicrophone: Bool {
+        !(peripheral?.name?.localizedCaseInsensitiveContains("MG24") ?? false)
+    }
     func sendEyeLine(_ line: String) {
         // STATE is a 10 Hz latest-value stream; everything else must arrive.
         write(line, reliable: !line.hasPrefix("YORICK STATE "))
@@ -123,17 +162,31 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
         if let value = UserDefaults.standard.string(forKey: Self.savedPeer), let id = UUID(uuidString: value),
            let peer = central?.retrievePeripherals(withIdentifiers: [id]).first {
             peripheral = peer; peer.delegate = self; status = "Connecting…"
-            central?.connect(peer); return
+            connectingSince = Date(); standby = nil
+            central?.connect(peer)
+            // A pending connect to a switched-off skull waits forever, so also
+            // look for any skull that's on (see tick).
+            central?.scanForPeripherals(withServices: [CBUUID(string: SkullBluetoothProtocol.service)]); return
         }
         guard allowNew else { status = "Skull unavailable"; return }
         // Paired in macOS Bluetooth settings, it's already connected to the
         // Mac and has stopped advertising, so a scan alone would never find it.
         if let peer = central?.retrieveConnectedPeripherals(withServices: [CBUUID(string: SkullBluetoothProtocol.service)]).first {
             peripheral = peer; peer.delegate = self; status = "Connecting…"
-            central?.connect(peer); return
+            connectingSince = Date(); central?.connect(peer); return
         }
         status = "Looking for the skull…"
         central?.scanForPeripherals(withServices: [CBUUID(string: SkullBluetoothProtocol.service)])
+    }
+    /// Forget the current link's state; the caller decides what's next.
+    private func dropLink() {
+        let was = connected
+        resetButtons()
+        connected = false; audio = nil; replies = nil; control = nil; eyeLines.removeAll()
+        battery = nil; batteryCharacteristics.removeAll()
+        if was { onConnectionChanged?(false) }
+        if assembler != nil { fail("The skull disconnected; the partial recording was kept") }
+        peripheral = nil
     }
     private func resetButtons() {
         if buttonHeld { onTalkButton?(false) }
@@ -144,6 +197,28 @@ final class SkullBluetoothController: NSObject, YorickEyeLink {
         // Notifications carry changes; a slow poll keeps voltage fresh and covers older firmware.
         if connected, !batteryCharacteristics.isEmpty, Date().timeIntervalSince(batteryReadAt) > 60 {
             batteryReadAt = Date(); batteryCharacteristics.forEach { peripheral?.readValue(for: $0) }
+        }
+        if let pending = peripheral, !connected, pending.state != .connected,
+           Date().timeIntervalSince(connectingSince) > 4 {
+            if let other = standby, other.identifier != pending.identifier, Date() >= chosenUntil {
+                log.notice("remembered skull not answering; connecting to another")
+                central?.cancelPeripheralConnection(pending)
+                peripheral = other; other.delegate = self; standby = nil
+                connectingSince = Date(); status = "Connecting…"
+                central?.connect(other)
+            } else if Date().timeIntervalSince(connectingSince) > 8 {
+                status = "Waiting for the skull. Is it on?"
+            }
+        }
+        // Scanning takes radio time from every Bluetooth link on the Mac, which
+        // with music playing is already short. So while linked, look for other
+        // skulls in 2 s bursts every 20 s, and never during a recording.
+        if central?.isScanning == true, connected, assembler != nil || Date() >= scanStopAt { central?.stopScan() }
+        if wanted, central?.state == .poweredOn, Date() >= rescanAt, assembler == nil {
+            rescanAt = Date().addingTimeInterval(connected ? 20 : 10); scanStopAt = Date().addingTimeInterval(2)
+            // Duplicates are filtered within a scan, so restart it to refresh which are on.
+            central?.stopScan(); central?.scanForPeripherals(withServices: [CBUUID(string: SkullBluetoothProtocol.service)])
+            units.expire(keeping: peripheral?.identifier)
         }
         if wanted, peripheral == nil, Date() >= reconnectAfter {
             reconnectAfter = Date().addingTimeInterval(3); connectIfPossible()
@@ -213,27 +288,36 @@ extension SkullBluetoothController: @preconcurrency CBCentralManagerDelegate, @p
         }
     }
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        guard self.peripheral == nil, allowNew else { return }
-        self.peripheral = peripheral; peripheral.delegate = self; central.stopScan()
-        status = "Connecting…"; central.connect(peripheral)
+        units.saw(peripheral.identifier, name: advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name)
+        if let pending = self.peripheral {
+            // Waiting on the remembered skull; tick switches if it never answers.
+            if !connected, pending.identifier != peripheral.identifier { standby = peripheral }
+            return
+        }
+        // Between retries of the remembered skull, don't grab whichever is advertising.
+        let saved = UserDefaults.standard.string(forKey: Self.savedPeer)
+        guard allowNew, saved == nil || saved == peripheral.identifier.uuidString else { return }
+        self.peripheral = peripheral; peripheral.delegate = self
+        connectingSince = Date(); status = "Connecting…"; central.connect(peripheral)
     }
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard peripheral.identifier == self.peripheral?.identifier else { central.cancelPeripheralConnection(peripheral); return }
+        standby = nil; units.saw(peripheral.identifier, name: peripheral.name)
+        log.notice("link up \(peripheral.name ?? "unnamed", privacy: .public)")
         status = "Preparing encrypted connection…"
         peripheral.discoverServices([CBUUID(string: SkullBluetoothProtocol.service), DeviceBattery.service])
     }
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        // A skull given up on in favour of another reports here too.
+        guard peripheral.identifier == self.peripheral?.identifier else { return }
         self.peripheral = nil; reconnectAfter = Date().addingTimeInterval(3)
         status = "Connection failed — retrying…"
         log.error("connection failed: \(error?.localizedDescription ?? "unknown", privacy: .public)")
     }
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        let was = connected
-        resetButtons()
-        connected = false; audio = nil; replies = nil; control = nil; eyeLines.removeAll()
-        battery = nil; batteryCharacteristics.removeAll()
-        if was { onConnectionChanged?(false) }
-        if assembler != nil { fail("The skull disconnected; the partial recording was kept") }
-        self.peripheral = nil; status = "Reconnecting…"
+        guard peripheral.identifier == self.peripheral?.identifier else { return }
+        dropLink()
+        status = "Reconnecting…"
         if wanted { connectIfPossible() }
     }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
@@ -264,9 +348,13 @@ extension SkullBluetoothController: @preconcurrency CBCentralManagerDelegate, @p
     }
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         if batteryCharacteristics.contains(characteristic) { return }
-        guard error == nil else { status = "Bluetooth pairing or subscription failed"; return }
+        guard error == nil else {
+            log.error("subscribe failed: \(error?.localizedDescription ?? "", privacy: .public)")
+            status = "Bluetooth pairing or subscription failed"; return
+        }
         if audio?.isNotifying == true, replies?.isNotifying == true, !connected {
             connected = true; status = "Connected"; allowNew = false
+            log.notice("connected \(peripheral.name ?? "unnamed", privacy: .public)")
             UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: Self.savedPeer)
             onConnectionChanged?(true)
         }

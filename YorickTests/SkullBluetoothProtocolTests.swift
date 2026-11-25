@@ -90,3 +90,30 @@ final class SkullBluetoothProtocolTests: XCTestCase {
         XCTAssertFalse(mic.attached); XCTAssertTrue(link.sent.isEmpty)
     }
 }
+
+final class BluetoothUnitsTests: XCTestCase {
+    private let a = UUID(uuidString: "7D80318B-9BE2-677C-E957-5F7160C9BBED")!
+    private let b = UUID(uuidString: "93418D2C-5DB9-5321-D5A9-D65EE2E1D494")!
+
+    func testEachSkullIsItsOwnUnit() {
+        var units = BluetoothUnits()
+        units.saw(a, name: "Yorick Skull MG24")
+        units.saw(b, name: "Yorick Skull")
+        units.saw(a, name: nil)
+        XCTAssertEqual(units.all.map(\.name), ["Yorick Skull", "Yorick Skull MG24"])
+    }
+
+    func testSameNamesGetASuffix() {
+        var units = BluetoothUnits()
+        units.saw(a, name: "Yorick Skull"); units.saw(b, name: "Yorick Skull")
+        XCTAssertEqual(Set(units.all.map(units.label)), ["Yorick Skull · 7D80", "Yorick Skull · 9341"])
+    }
+
+    func testSwitchedOffSkullsDropButTheLinkedOneStays() {
+        var units = BluetoothUnits()
+        let then = Date()
+        units.saw(a, name: "Yorick Skull MG24", at: then); units.saw(b, name: "Yorick Skull", at: then)
+        units.expire(keeping: b, at: then.addingTimeInterval(BluetoothUnits.forgetAfter + 1))
+        XCTAssertEqual(units.all.map(\.id), [b])
+    }
+}
