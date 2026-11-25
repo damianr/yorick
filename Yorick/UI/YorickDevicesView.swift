@@ -74,7 +74,7 @@ struct YorickDevicesView: View {
     var body: some View {
         let listed = Device.allCases.filter(isListed)
         #if !YORICK_HARDWARE_LAB
-        if !listed.isEmpty { devices(listed) }
+        if !listed.isEmpty { devices(listed) } else { findDevice }
         #else
         devices(listed)
         #endif
@@ -115,6 +115,28 @@ struct YorickDevicesView: View {
     }
 
     // MARK: - Pieces
+
+    /// The one hardware mention before any device has connected: a quiet
+    /// link for someone holding a skull whose Mac has never seen it.
+    @ViewBuilder private var findDevice: some View {
+        if session.isSearchingForDevices {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini)
+                Text("Looking for a Yorick skull or Pocket nearby. Make sure it's switched on.")
+                    .font(Theme.mono(9.5))
+                    .foregroundStyle(Theme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 6)
+        } else {
+            Button("Have a Yorick skull? Find it") { session.searchForYorickDevices() }
+                .buttonStyle(.plain)
+                .font(Theme.mono(9.5))
+                .foregroundStyle(Theme.textSecondary)
+                .underline()
+                .padding(.vertical, 6)
+        }
+    }
 
     #if YORICK_HARDWARE_LAB
     private var introCard: some View {

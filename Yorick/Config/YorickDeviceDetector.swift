@@ -41,6 +41,11 @@ final class YorickDeviceDetector: NSObject {
     private var offered: Set<YorickDeviceKind> = []
     private let log = Logger(subsystem: "com.heyyorick.Yorick", category: "deviceDetector")
 
+    /// Settings' "Find my skull": scanning for nearby Yorick devices until then.
+    private var searchUntil: Date?
+    var onSearchChanged: ((Bool) -> Void)?
+    static let searchDuration: TimeInterval = 30
+
     private static let dismissedKey = "dismissedYorickDevicePrompts"
 
     static var dismissed: Set<YorickDeviceKind> {
@@ -50,13 +55,50 @@ final class YorickDeviceDetector: NSObject {
 
     func start() {
         watchUSB()
-        if CBCentralManager.authorization == .allowedAlways, central == nil {
-            central = CBCentralManager(delegate: self, queue: .main, options: [CBCentralManagerOptionShowPowerAlertKey: false])
-            let t = Timer(timeInterval: 4, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.checkBluetooth() }
-            }
-            RunLoop.main.add(t, forMode: .common); timer = t
+        if CBCentralManager.authorization == .allowedAlways { startBluetooth() }
+    }
+
+    private func startBluetooth() {
+        guard central == nil else { return }
+        central = CBCentralManager(delegate: self, queue: .main, options: [CBCentralManagerOptionShowPowerAlertKey: false])
+        let t = Timer(timeInterval: 4, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkBluetooth() }
         }
+        RunLoop.main.add(t, forMode: .common); timer = t
+    }
+
+    /// Asked for from Settings, so it may put up the Bluetooth permission
+    /// prompt. On a Mac that has never seen a Yorick device this is the only
+    /// way to find one: a new skull isn't paired in macOS, and its USB port
+    /// (MG24 boards) is a serial bridge with no Yorick product name.
+    func search() {
+        searchUntil = Date().addingTimeInterval(Self.searchDuration)
+        onSearchChanged?(true)
+        startBluetooth()
+        scanIfSearching()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.searchDuration))
+            self?.endSearchIfDue()
+        }
+    }
+
+    var isSearching: Bool { searchUntil.map { Date() < $0 } ?? false }
+
+    private func scanIfSearching() {
+        guard isSearching, let central, central.state == .poweredOn else { return }
+        central.scanForPeripherals(withServices: YorickDeviceKind.allCases.map(\.service))
+        checkBluetooth()
+    }
+
+    private func endSearchIfDue() {
+        guard let until = searchUntil, Date() >= until else { return }
+        endSearch()
+    }
+
+    private func endSearch() {
+        searchUntil = nil
+        if central?.isScanning == true { central?.stopScan() }
+        onSearchChanged?(false)
     }
 
     private func report(_ kind: YorickDeviceKind, via source: String) {
@@ -105,5 +147,19 @@ final class YorickDeviceDetector: NSObject {
 }
 
 extension YorickDeviceDetector: @preconcurrency CBCentralManagerDelegate {
-    func centralManagerDidUpdateState(_ central: CBCentralManager) { checkBluetooth() }
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        checkBluetooth()
+        if central.state == .poweredOn { scanIfSearching() }
+        else if central.state == .unauthorized || central.state == .unsupported { if isSearching { endSearch() } }
+    }
+
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        let advertised = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? [])
+            + (advertisementData[CBAdvertisementDataOverflowServiceUUIDsKey] as? [CBUUID] ?? [])
+        guard let kind = YorickDeviceKind.allCases.first(where: { advertised.contains($0.service) }) else { return }
+        // Found on request: offer it even if an earlier prompt was dismissed.
+        if Self.dismissed.contains(kind) { Self.dismissed.remove(kind) }
+        report(kind, via: "search")
+        if YorickDeviceKind.allCases.allSatisfy({ seen.contains($0) }) { endSearch() }
+    }
 }

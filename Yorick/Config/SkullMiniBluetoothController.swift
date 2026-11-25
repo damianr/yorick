@@ -106,7 +106,7 @@ final class SkullMiniBluetoothController: NSObject, YorickEyeLink {
     func stopListening() {
         guard assembler != nil, stopDeadline == nil else { return }
         write(SkullMiniBluetoothProtocol.stopListening, reliable: true)
-        stopDeadline = Date().addingTimeInterval(0.8); stopRequestedAt = Date()
+        stopDeadline = Date().addingTimeInterval(2.0); stopRequestedAt = Date()
     }
 
     private func finish() {

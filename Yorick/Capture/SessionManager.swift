@@ -282,8 +282,13 @@ final class SessionManager {
         }
         deviceDetector.onSeen = { [weak self] kind in self?.detectedDevices.insert(kind) }
         deviceDetector.onFound = { [weak self] kind in self?.offerDevice(kind) }
+        deviceDetector.onSearchChanged = { [weak self] on in self?.isSearchingForDevices = on }
         deviceDetector.start()
     }
+
+    /// Settings is looking for a nearby Yorick device on request.
+    private(set) var isSearchingForDevices = false
+    func searchForYorickDevices() { deviceDetector.search() }
 
     private func offerDevice(_ kind: YorickDeviceKind) {
         pendingDevicePrompt = nil
