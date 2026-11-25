@@ -36,4 +36,11 @@ enum YorickDeviceKind: String, CaseIterable, Codable, Sendable {
         else if name.contains("Mini") { self = .mini }
         else { self = .skull }
     }
+
+    /// Seeed XIAO MG24's onboard CMSIS-DAP bridge, the only USB an MG24 skull
+    /// has. Any XIAO MG24 matches, so this only starts a Bluetooth search.
+    static func isSkullUSBBridge(vendor: Int?, product: Int?, name: String?) -> Bool {
+        guard vendor == 0x2886 else { return false }
+        return product == 0x0062 || (name?.localizedCaseInsensitiveContains("MG24") ?? false)
+    }
 }

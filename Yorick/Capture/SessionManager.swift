@@ -282,12 +282,13 @@ final class SessionManager {
         }
         deviceDetector.onSeen = { [weak self] kind in self?.detectedDevices.insert(kind) }
         deviceDetector.onFound = { [weak self] kind in self?.offerDevice(kind) }
-        deviceDetector.onSearchChanged = { [weak self] on in self?.isSearchingForDevices = on }
+        deviceDetector.onSearchChanged = { [weak self] search in self?.deviceSearch = search }
+        deviceDetector.isBusy = { [weak self] in self?.state == .recording }
         deviceDetector.start()
     }
 
-    /// Settings is looking for a nearby Yorick device on request.
-    private(set) var isSearchingForDevices = false
+    /// How Settings' "find my skull" search is going.
+    private(set) var deviceSearch: YorickDeviceDetector.Search = .idle
     func searchForYorickDevices() { deviceDetector.search() }
 
     private func offerDevice(_ kind: YorickDeviceKind) {

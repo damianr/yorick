@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The Yorick hardware block: one row per Yorick device this Mac has
 /// connected, which one is in use, and that device's own settings (a
@@ -116,25 +117,58 @@ struct YorickDevicesView: View {
 
     // MARK: - Pieces
 
-    /// The one hardware mention before any device has connected: a quiet
-    /// link for someone holding a skull whose Mac has never seen it.
-    @ViewBuilder private var findDevice: some View {
-        if session.isSearchingForDevices {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.mini)
-                Text("Looking for a Yorick skull or Pocket nearby. Make sure it's switched on.")
-                    .font(Theme.mono(9.5))
-                    .foregroundStyle(Theme.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 6)
-        } else {
-            Button("Have a Yorick skull? Find it") { session.searchForYorickDevices() }
+    /// The one hardware mention before any device has connected, for someone
+    /// holding a skull whose Mac has never seen it. Plugging in an MG24 skull's
+    /// USB, or switching one on once Bluetooth is allowed, also finds it.
+    private var findDevice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Have a Yorick skull or Pocket?")
+                .font(Theme.mono(11, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+            Text(findDeviceDetail)
+                .font(Theme.mono(9.5))
+                .foregroundStyle(Theme.textTertiary)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+            if session.deviceSearch == .searching {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("Looking…").font(Theme.mono(9.5)).foregroundStyle(Theme.textSecondary)
+                }
+            } else if session.deviceSearch == .bluetoothDenied {
+                Button("Open Bluetooth privacy settings") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth")!)
+                }
                 .buttonStyle(.plain)
                 .font(Theme.mono(9.5))
                 .foregroundStyle(Theme.textSecondary)
                 .underline()
-                .padding(.vertical, 6)
+            } else {
+                Button { session.searchForYorickDevices() } label: {
+                    Text(session.deviceSearch == .idle ? "Find it" : "Look again")
+                        .font(Theme.mono(10, weight: .medium))
+                        .foregroundStyle(Theme.bgPrimary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Theme.bone))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bone.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.bone.opacity(0.14), lineWidth: 1))
+        .padding(.vertical, 6)
+    }
+
+    private var findDeviceDetail: String {
+        switch session.deviceSearch {
+        case .foundNothing: "Yorick didn't find one nearby. Make sure it's switched on and close to this Mac, then look again."
+        case .bluetoothOff: "Bluetooth is off on this Mac. Turn it on, then look again."
+        case .bluetoothDenied: "Yorick needs Bluetooth to talk to it. Turn on Yorick under Privacy & Security, Bluetooth, then come back here."
+        default: "Switch it on and Yorick will connect to it over Bluetooth. Yorick asks for Bluetooth access the first time."
         }
     }
 

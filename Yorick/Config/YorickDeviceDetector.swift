@@ -41,10 +41,20 @@ final class YorickDeviceDetector: NSObject {
     private var offered: Set<YorickDeviceKind> = []
     private let log = Logger(subsystem: "com.heyyorick.Yorick", category: "deviceDetector")
 
-    /// Settings' "Find my skull": scanning for nearby Yorick devices until then.
+    /// How the last search went, for Settings' Find card.
+    enum Search: Equatable { case idle, searching, foundNothing, bluetoothOff, bluetoothDenied }
+    private(set) var searchState: Search = .idle { didSet { if searchState != oldValue { onSearchChanged?(searchState) } } }
+    var onSearchChanged: ((Search) -> Void)?
+    /// True while Yorick is recording: no extra scanning then, it starves BLE audio.
+    var isBusy: () -> Bool = { false }
     private var searchUntil: Date?
-    var onSearchChanged: ((Bool) -> Void)?
+    private var searchFound = false
+    private var lastBackgroundScan = Date.distantPast
+    private var backgroundScanUntil: Date?
     static let searchDuration: TimeInterval = 30
+    /// With Bluetooth allowed, a skull switched on later is noticed within ~20 s.
+    static let backgroundScanEvery: TimeInterval = 20
+    static let backgroundScanFor: TimeInterval = 2
 
     private static let dismissedKey = "dismissedYorickDevicePrompts"
 
@@ -61,44 +71,56 @@ final class YorickDeviceDetector: NSObject {
     private func startBluetooth() {
         guard central == nil else { return }
         central = CBCentralManager(delegate: self, queue: .main, options: [CBCentralManagerOptionShowPowerAlertKey: false])
-        let t = Timer(timeInterval: 4, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkBluetooth() }
+        let t = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
         }
         RunLoop.main.add(t, forMode: .common); timer = t
     }
 
-    /// Asked for from Settings, so it may put up the Bluetooth permission
-    /// prompt. On a Mac that has never seen a Yorick device this is the only
-    /// way to find one: a new skull isn't paired in macOS, and its USB port
-    /// (MG24 boards) is a serial bridge with no Yorick product name.
+    /// Asked for from Settings, or a skull's USB bridge was plugged in, so it
+    /// may put up the Bluetooth permission prompt. On a Mac that has never
+    /// seen a Yorick device this is the way to find one: a new skull isn't
+    /// paired in macOS, and an MG24 board's USB has no Yorick product name.
     func search() {
-        searchUntil = Date().addingTimeInterval(Self.searchDuration)
-        onSearchChanged?(true)
-        startBluetooth()
-        scanIfSearching()
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(Self.searchDuration))
-            self?.endSearchIfDue()
+        if CBCentralManager.authorization == .denied || CBCentralManager.authorization == .restricted {
+            searchState = .bluetoothDenied; return
         }
+        searchUntil = Date().addingTimeInterval(Self.searchDuration); searchFound = false
+        searchState = .searching
+        startBluetooth()
+        updateScan()
     }
 
     var isSearching: Bool { searchUntil.map { Date() < $0 } ?? false }
 
-    private func scanIfSearching() {
-        guard isSearching, let central, central.state == .poweredOn else { return }
-        central.scanForPeripherals(withServices: YorickDeviceKind.allCases.map(\.service))
+    /// Some kind the Mac hasn't shown yet and Yorick isn't already using.
+    private var anythingToFind: Bool {
+        YorickDeviceKind.allCases.contains { !seen.contains($0) && !isKnown($0) }
+    }
+
+    private func tick() {
         checkBluetooth()
+        if let until = searchUntil, Date() >= until {
+            searchUntil = nil
+            searchState = searchFound ? .idle : .foundNothing
+        }
+        if let until = backgroundScanUntil, Date() >= until { backgroundScanUntil = nil }
+        if searchUntil == nil, backgroundScanUntil == nil, anythingToFind, !isBusy(),
+           Date().timeIntervalSince(lastBackgroundScan) >= Self.backgroundScanEvery {
+            lastBackgroundScan = Date()
+            backgroundScanUntil = Date().addingTimeInterval(Self.backgroundScanFor)
+        }
+        updateScan()
     }
 
-    private func endSearchIfDue() {
-        guard let until = searchUntil, Date() >= until else { return }
-        endSearch()
-    }
-
-    private func endSearch() {
-        searchUntil = nil
-        if central?.isScanning == true { central?.stopScan() }
-        onSearchChanged?(false)
+    private func updateScan() {
+        guard let central, central.state == .poweredOn else { return }
+        let want = (isSearching || backgroundScanUntil != nil) && !isBusy()
+        if want, !central.isScanning {
+            central.scanForPeripherals(withServices: YorickDeviceKind.allCases.map(\.service))
+        } else if !want, central.isScanning {
+            central.stopScan()
+        }
     }
 
     private func report(_ kind: YorickDeviceKind, via source: String) {
@@ -141,7 +163,17 @@ final class YorickDeviceDetector: NSObject {
             let name = ["USB Product Name", "kUSBProductString"].lazy.compactMap {
                 IORegistryEntryCreateCFProperty(service, $0 as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? String
             }.first
-            if let name, let kind = YorickDeviceKind(usbProductName: name) { report(kind, via: "USB") }
+            if let name, let kind = YorickDeviceKind(usbProductName: name) { report(kind, via: "USB"); continue }
+            // An MG24 skull's USB is the XIAO's own debug bridge: plugging
+            // one in starts a Bluetooth search, which says which skull it is.
+            let number = { (key: String) in
+                (IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber)?.intValue
+            }
+            if YorickDeviceKind.isSkullUSBBridge(vendor: number("idVendor"), product: number("idProduct"), name: name),
+               anythingToFind, !isSearching, !isBusy() {
+                log.notice("MG24 USB bridge plugged in; searching Bluetooth")
+                search()
+            }
         }
     }
 }
@@ -149,17 +181,25 @@ final class YorickDeviceDetector: NSObject {
 extension YorickDeviceDetector: @preconcurrency CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         checkBluetooth()
-        if central.state == .poweredOn { scanIfSearching() }
-        else if central.state == .unauthorized || central.state == .unsupported { if isSearching { endSearch() } }
+        switch central.state {
+        case .poweredOn: updateScan()
+        case .unauthorized: if isSearching { searchUntil = nil; searchState = .bluetoothDenied }
+        case .poweredOff: if isSearching { searchUntil = nil; searchState = .bluetoothOff }
+        default: break
+        }
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let advertised = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? [])
             + (advertisementData[CBAdvertisementDataOverflowServiceUUIDsKey] as? [CBUUID] ?? [])
         guard let kind = YorickDeviceKind.allCases.first(where: { advertised.contains($0.service) }) else { return }
-        // Found on request: offer it even if an earlier prompt was dismissed.
-        if Self.dismissed.contains(kind) { Self.dismissed.remove(kind) }
-        report(kind, via: "search")
-        if YorickDeviceKind.allCases.allSatisfy({ seen.contains($0) }) { endSearch() }
+        if isSearching {
+            // Found on request: offer it even if an earlier prompt was dismissed.
+            if Self.dismissed.contains(kind) { Self.dismissed.remove(kind) }
+            searchFound = true
+        }
+        report(kind, via: isSearching ? "search" : "scan")
+        if isSearching, !anythingToFind { searchUntil = nil; searchState = .idle }
+        updateScan()
     }
 }
