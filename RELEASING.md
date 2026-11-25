@@ -19,13 +19,19 @@ signs, notarizes, and produces the signed appcast.
      --apple-id "you@example.com" --team-id "TEAMID" --password "xxxx-xxxx-xxxx-xxxx"
    ```
 
-3. **EdDSA update-signing key** — already generated; the **private key lives in
-   your login keychain** and the public key is in `Info.plist` (`SUPublicEDKey`).
-   ⚠️ Back this key up (Keychain Access → search "Sparkle" / "ed25519") and never
-   commit it. Losing it means no user can auto-update to a build signed with a new
-   key — they'd have to re-download manually. To export a backup:
-   `scripts/.sparkle-tools/bin/generate_keys -x sparkle_private_key.txt` (store it
-   somewhere safe offline, then delete the file).
+3. **EdDSA update-signing key**: the **private key lives in your login
+   keychain** (Keychain Access → "Private key for signing Sparkle updates",
+   account `ed25519`) and the public key is in `Info.plist` (`SUPublicEDKey`).
+   The current key was generated on 2026-11-25 and first shipped in 0.3.2. The
+   original key was lost from the keychain sometime between 0.2.5 (Aug 27) and
+   0.3.0 (Oct 27), which is why 0.3.0 and 0.3.1 never reached the appcast.
+   ⚠️ Backups: `~/yorick-backups/sparkle_private_key-2026-11-25.txt` (mode 600)
+   and your password manager. Never commit it. To restore on a new Mac:
+   `scripts/.sparkle-tools/bin/generate_keys -f <file>`.
+   If the key is lost again: generate a new one, put its public key in
+   `Info.plist`, and sign the next release with it. Sparkle accepts the new key
+   because the update is Developer ID signed by the same team as the installed
+   app, so existing users still auto-update.
 
 ## Cutting a release
 

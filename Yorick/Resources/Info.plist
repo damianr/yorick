@@ -33,7 +33,7 @@
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/damianr/yorick/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>N+0Un+ZU/MsWNDM+9d7x5Opyi6oVWLUpMb7VcYl5M+Q=</string>
+	<string>DZZXbKgCWbne5xP+fjJ0ypE7jn6tB8S5uTrcYDSorvE=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>

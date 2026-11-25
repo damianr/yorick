@@ -49,7 +49,7 @@ if [ ! -x "$SPARKLE_BIN/sign_update" ]; then
   SPK_ARTIFACT="$(find "$DERIVED/SourcePackages/artifacts" -type d -path '*/Sparkle/bin' -print -quit 2>/dev/null || true)"
   if [ -n "$SPK_ARTIFACT" ]; then
     mkdir -p "$(dirname "$SPARKLE_BIN")"
-    ln -sfn "$SPK_ARTIFACT" "$SPARKLE_BIN"
+    ln -sfn "$PWD/$SPK_ARTIFACT" "$SPARKLE_BIN"  # absolute: a relative target resolves from scripts/.sparkle-tools
     echo "✓ linked Sparkle tools from SPM artifact bundle"
   fi
 fi
